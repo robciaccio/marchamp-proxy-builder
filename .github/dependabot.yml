@@ -1,0 +1,18 @@
+# github-actions is the only ecosystem enableable before a language is chosen.
+# Add the package ecosystem alongside the first lockfile (TODO(TECH_STACK)).
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies", "security"]
+    groups:
+      actions:
+        patterns: ["*"]
+    cooldown:
+      # Reduces exposure to the window where a compromised release is published
+      # and not yet yanked.
+      default-days: 3
+      semver-major-days: 7

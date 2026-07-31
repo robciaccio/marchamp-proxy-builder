@@ -1,0 +1,79 @@
+# Mechanical half of the constitution's pre-merge security review.
+# The judgment half is in the PR template and cannot be automated away.
+#
+# Actions are pinned to full commit SHAs because tags are mutable.
+# Verified via `git ls-remote --tags` on 2026-07-31; the trailing comment is
+# the human-readable version Dependabot keeps in sync.
+
+name: security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 4 * * 1" # Mondays 04:00 UTC — catches newly-published detections
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secret-scan:
+    name: secret-scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # REQUIRED — without this you scan a single commit
+
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          set -euo pipefail
+          curl -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Scan full history
+        run: gitleaks git . --redact -v --log-opts="--all" --exit-code 1
+
+  dependency-review:
+    name: dependency-review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+
+  workflow-audit:
+    name: workflow-audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install zizmor
+        run: pipx install zizmor==1.28.0
+      - name: Audit workflow definitions
+        # Catches template injection, pull_request_target misuse, unpinned
+        # actions, and over-broad token scope. Threshold starts at high; lower
+        # it once the workflow set is stable.
+        run: zizmor --min-severity high .github/workflows/
+
+  verified-credentials:
+    name: verified-credentials
+    # Makes live API calls to check whether found credentials are still valid,
+    # so it is too slow and too network-dependent to gate a PR on.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: trufflesecurity/trufflehog@6f3c981e7b77f235fd2702dd74af25fc4b72bf11 # v3.96.0
+        with:
+          extra_args: --results=verified,unknown

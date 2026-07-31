@@ -99,6 +99,17 @@ Enable the message scaffold once per clone:
 git config commit.template .gitmessage
 ```
 
+## One-time setup
+
+```bash
+brew install gitleaks                        # secret scanner
+pipx install pre-commit && pre-commit install # runs it on staged changes
+git config commit.template .gitmessage        # commit message scaffold
+```
+
+The pre-commit hook is a convenience, not a control — `--no-verify` bypasses it. The
+enforceable controls are GitHub push protection and the `secret-scan` status check.
+
 ## Pull requests
 
 1. Push the branch and open a PR against `main`.
@@ -106,8 +117,12 @@ git config commit.template .gitmessage
    checklist is the constitution's merge gates, not decoration.
 3. Confirm every gate. A gate that does not apply is marked N/A **with a reason**; it is
    never silently left unchecked.
-4. Merge with **squash** or **rebase**. Merge commits must not land on `main`.
-5. Delete the branch after merge.
+4. **Complete the security review.** Every PR needs one. If the change touches auth,
+   outbound network calls, file/image/PDF parsing, the asset adapter, the content store,
+   dependencies, or CI workflows, write actual notes — a checked box is not a review.
+   Runbook: [`SECURITY.md`](SECURITY.md).
+5. Merge with **squash** or **rebase**. Merge commits must not land on `main`.
+6. Delete the branch after merge.
 
 Solo maintainer self-merge is fine. The PR still has to exist — the record is the point.
 
