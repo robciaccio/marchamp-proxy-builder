@@ -1,0 +1,57 @@
+# Constitution: card images and generated output are never committed.
+# This file is the safety net; review is the control.
+
+# Source card assets (external — Drive today, object store later)
+assets/
+cards/
+*.tif
+*.tiff
+*.psd
+
+# Generated output and derived renditions
+out/
+output/
+dist/
+build/
+*.pdf
+.cache/
+.renditions/
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+service-account*.json
+client_secret*.json
+token.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+.turbo/
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Claude Code local overrides
+.claude/settings.local.json

@@ -1,0 +1,17 @@
+# <type>(<scope>): <subject>          — imperative, <=72 chars, no trailing period
+#
+# Why this change is needed (not what the diff shows). Wrap at 72.
+#
+# Refs: #
+#
+# ----------------------------------------------------------------------
+# type:  feat fix docs test refactor perf build ci chore revert
+#        append ! for a breaking change, e.g. feat(api)!:
+# scope: pdf catalog assets api ui constitution   (optional; omit rather
+#        than invent one)
+#
+# Breaking changes need a footer:
+#   BREAKING CHANGE: <what broke and what to use instead>
+#
+# Never commit: card images, generated PDFs, caches, secrets, .env
+# Full standard: CONTRIBUTING.md
