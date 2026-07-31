@@ -1,0 +1,28 @@
+# Local convenience, NOT a control — `--no-verify` and `SKIP=` both bypass it.
+# The enforceable controls are GitHub push protection and the required
+# `secret-scan` status check in .github/workflows/security.yml.
+#
+# Install once per clone:
+#   pipx install pre-commit && pre-commit install
+#
+# Migration note: gitleaks is feature-complete upstream and receives security
+# patches only. Betterleaks is the sanctioned successor with an identical CLI
+# and hook id; swap this block when it has a longer production track record.
+
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: [--maxkb=1024] # card images and PDFs must never be committed
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-json

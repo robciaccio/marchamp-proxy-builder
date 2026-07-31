@@ -1,0 +1,18 @@
+# Routes security-sensitive paths to a required reviewer.
+# Inert unless the branch ruleset sets require_code_owner_review: true.
+#
+# Gotcha: the LAST matching pattern wins, not the most specific one.
+
+*                                   @robciaccio
+
+# Governance — amendments must not slip through unreviewed
+/.specify/memory/constitution.md    @robciaccio
+/CONTRIBUTING.md                    @robciaccio
+/SECURITY.md                        @robciaccio
+
+# Supply chain and CI — the highest-leverage attack surface in the repo
+/.github/workflows/                 @robciaccio
+/.github/dependabot.yml             @robciaccio
+/.github/CODEOWNERS                 @robciaccio
+/.pre-commit-config.yaml            @robciaccio
+/.gitignore                         @robciaccio
