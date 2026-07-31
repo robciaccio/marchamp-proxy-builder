@@ -1,11 +1,12 @@
 <!--
 Sync Impact Report
 ==================
-Version change: TEMPLATE (unversioned) → 1.0.0
-Rationale: Initial ratification. Version held at 1.0.0 rather than bumped to 2.0.0
-despite a principle redefinition, because the prior 1.0.0 draft was never committed
-(repository has zero commits) and therefore governed no work. This is a revision of
-the initial ratification, not an amendment to a live document.
+Version change: 1.0.0 → 1.1.0
+Rationale: MINOR. Adds a Security section and extends the merge gates. No existing
+principle is removed or redefined, so previously compliant work remains compliant —
+but new work must now clear gates that did not exist before.
+
+Prior entry (1.0.0, initial ratification) retained below for history.
 
 Modified principles:
   [PRINCIPLE_1_NAME] → I. Test-First (NON-NEGOTIABLE)
@@ -18,6 +19,7 @@ Added sections:
   [SECTION_2_NAME] → Asset Pipeline & Output Constraints
   [SECTION_3_NAME] → Development Workflow & Quality Gates
   (new) → Version Control & Change Flow
+  (1.1.0) → Security
 
 Removed sections: none
 
@@ -26,6 +28,12 @@ Companion artifacts (rules live here; formats live in files the tooling reads):
   .github/pull_request_template.md   — PR body scaffold carrying the merge gates
   .gitmessage                        — commit message template
   .gitignore                         — enforces the "never commit assets/output" rules
+  SECURITY.md                        — reporting, scanning, and leak-remediation runbook
+  .github/workflows/security.yml     — the mechanical gates as required status checks
+  .pre-commit-config.yaml            — local secret-scan hook (convenience, not control)
+
+Standards cited in the Security section are versioned and dated deliberately. They
+move; see "Standards currency" for the review obligation.
 
 Changes from the uncommitted 1.0.0 draft:
   - Dropped the standalone "Print Fidelity" principle. Concrete print parameters are
@@ -192,6 +200,126 @@ not yet chosen. The choice MUST be recorded in the first implementation plan and
 section amended accordingly. Until then, no code may assume a stack that has not been
 written down here.
 
+## Security
+
+### Baseline
+
+The application MUST satisfy **OWASP ASVS v5.0.0** (May 2025) **Level 1 in full**, plus
+this named Level 2 uplift set: **2.4.1, 5.1.1, 13.2.4, 13.2.5, 15.1.3, 15.2.2, 15.3.2,
+16.3.1–16.3.4, 16.5.1–16.5.3**.
+
+Bare L1 is insufficient here and MUST NOT be treated as the target: it mandates no
+security logging, no egress control, and no anti-automation — the three areas where
+this application is most exposed. Full L2 is over-scoped for a project with no chosen
+stack and no accounts, and ASVS explicitly sanctions starting at L1 and naming uplifts.
+
+**OWASP Top 10:2025** is the shared vocabulary for describing risk in reviews. It is an
+awareness document, not a verification standard: ASVS is normative here, and where the
+two are cited together, ASVS wins.
+
+Deviations from the baseline MUST be recorded as dated, owner-attributed exceptions in
+`SECURITY.md`. An undocumented deviation is a defect.
+
+### Credentials (NON-NEGOTIABLE)
+
+- Credentials, access keys, tokens, and private keys MUST NOT be committed to this
+  repository — not in source, not in tests, not in fixtures, not in build artifacts,
+  not in history. There is no threshold below which this is acceptable and no "it was
+  only a test key" exemption.
+- Secrets MUST be supplied at runtime from environment configuration or a secrets
+  manager. Code MUST fail to start rather than fall back to a default credential.
+- **A secret that has been pushed is compromised.** Remediation is *rotation*, and
+  rotation MUST happen before any other step. Rewriting history is hygiene, not
+  remediation, and MUST NOT be recorded as the fix — GitHub retains unreachable commits
+  and serves them by SHA through the fork network indefinitely, so a force-push does
+  not un-expose anything.
+- Automated secret scanning MUST run on every pull request over the **full history**,
+  as a required status check. GitHub push protection MUST be enabled on the remote.
+- A scanner finding MUST NOT be dismissed without a recorded reason. "Fix it later" is
+  not a reason.
+
+### Security review before merge
+
+Every pull request MUST pass a security review before merge. The review has two parts,
+and mechanical passage does NOT substitute for the judgment part:
+
+1. **Mechanical gates** — secret scanning, dependency review, and workflow static
+   analysis MUST pass as required status checks.
+2. **Judgment review** — the reviewer MUST explicitly consider the change against the
+   baseline and record what they considered in the PR.
+
+A pull request touching any of the following MUST carry written security review notes,
+not merely a checked box: authentication or authorization; any outbound network call;
+file, image, or PDF parsing; the asset adapter; the content store; dependency
+additions; or CI workflow definitions.
+
+### Application requirements
+
+These are the baseline requirements most load-bearing for this application's shape and
+MUST be met by any implementation:
+
+- **Egress is allowlisted.** Every outbound destination MUST be constrained by an
+  explicit allowlist. Backend HTTP clients MUST NOT follow redirects unless a
+  documented feature requires it, and MUST re-validate the target after any redirect.
+  Loopback, link-local, and private ranges MUST be denied — cloud metadata endpoints in
+  particular. Every external destination MUST be documented, including any path where
+  user input influences it. (ASVS 13.1.1, 13.2.4, 13.2.5, 15.3.2)
+- **Ingested binaries are untrusted.** Card images MUST be validated by content —
+  magic bytes and decode — never by extension or declared MIME type, and MUST be
+  rejected when they exceed documented limits on byte size, pixel count, or frame
+  count. Provenance does not make an image trusted. (ASVS 5.2.1, 5.2.2, 5.2.6)
+- **Parsing is isolated.** Image decoding and PDF rendering MUST run at least
+  privilege, without ambient cloud credentials, isolated from the request-serving
+  process, under hard CPU, memory, and wall-clock limits. Image decoders are the most
+  vulnerability-dense dependency this project will take on. (ASVS 15.2.5)
+- **Expensive work is bounded.** PDF generation amplifies one small request into many
+  egress fetches and large CPU and memory cost. Every resource-intensive operation MUST
+  have documented, enforced per-request and per-principal limits, and work that can
+  exceed a client timeout MUST be asynchronous. (ASVS 2.4.1, 15.1.3, 15.2.2)
+- **Rate limits key on a principal.** Limits MUST be keyed to an authenticated
+  principal or issued credential. IP address MUST NOT be the sole basis of a security
+  decision — and with agent and MCP clients, IP is close to meaningless. (ASVS 15.3.4)
+- **Content is validated on read.** Data from the external content store and object
+  storage MUST be validated server-side when read, not only when written. An external
+  store is an untrusted input, and Principle III makes it writable without a deploy.
+- **Failures close.** A failed validation, dependency, or unhandled exception MUST NOT
+  allow the operation to proceed. Client-facing errors MUST be generic and MUST NOT
+  leak stack traces, queries, internal hostnames, or secrets. (ASVS 16.5.1–16.5.3)
+- **Security events are logged.** Authorization failures, validation failures,
+  anti-automation trips, and unexpected errors MUST be logged with UTC timestamp,
+  actor, source, and action. Secrets and tokens MUST NOT appear in logs. This extends
+  Principle V; it does not replace it. (ASVS 16.3.1–16.3.4)
+
+### Supply chain
+
+- Dependency lockfiles MUST be committed, and CI MUST install frozen — a build that
+  would alter the lockfile MUST fail rather than silently update it.
+- GitHub Actions MUST be pinned to a full 40-character commit SHA with the version in a
+  trailing comment. Tags are mutable and MUST NOT be trusted.
+- `GITHUB_TOKEN` MUST default to `contents: read`, with per-job escalation only.
+- Dependency review MUST run on every pull request. Known-vulnerable components MUST be
+  remediated on a documented, risk-based timeline.
+- TODO(SUPPLY_CHAIN_ATTESTATION): SBOM generation and SLSA v1.2 Build L2 signed
+  provenance are the intended end state but are deliberately NOT mandated yet — there is
+  no build to attest. This MUST be revisited when the project first publishes a
+  deployable artifact.
+
+### Deferred until user accounts exist
+
+Not yet in force, and MUST be adopted in the same change that introduces accounts, per
+NIST SP 800-63B-4 (July 2025): passwords ≥15 characters with no composition rules and
+no periodic rotation, checked against a compromised-password blocklist; at least one
+phishing-resistant MFA option offered; session lifetime, idle timeout, and
+reauthentication policy documented and enforced. Where ASVS 6.2.1 permits a lower
+8-character floor, the stricter NIST figure governs.
+
+### Standards currency
+
+Cited standards carry versions and dates because they move, and a stale citation is a
+silent downgrade. This section MUST be reviewed by **2027-07-31** and on any major
+release of a cited standard. A review that changes nothing MUST still be recorded as a
+PATCH amendment noting the date checked.
+
 ## Development Workflow & Quality Gates
 
 - Work follows the Spec Kit flow: `/speckit-specify` → `/speckit-plan` →
@@ -208,6 +336,10 @@ written down here.
   4. No card images or generated PDFs added to version control.
   5. No storage backend, provider SDK, or image-format assumption outside the asset
      adapter.
+  6. Secret scan green over full history, and dependency review green.
+  7. Security review completed per *Security → Security review before merge*, with
+     written notes where that section requires them.
+  8. No unpinned GitHub Action, and no workflow granting write scope it does not need.
 - A change that cannot satisfy a gate MUST either be reduced in scope or accompanied by
   a constitution amendment. Gates MUST NOT be waived per-pull-request.
 
@@ -289,4 +421,4 @@ MUST NOT be suspended for expedience — the correct response to a blocking
 NON-NEGOTIABLE principle is to amend this constitution deliberately, or to change the
 work.
 
-**Version**: 1.0.0 | **Ratified**: 2026-07-31 | **Last Amended**: 2026-07-31
+**Version**: 1.1.0 | **Ratified**: 2026-07-31 | **Last Amended**: 2026-07-31
