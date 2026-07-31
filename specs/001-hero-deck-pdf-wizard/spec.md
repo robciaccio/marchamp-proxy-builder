@@ -8,12 +8,20 @@
 
 **Input**: User description: "Let's develop our webpage that has a wizard that allows you to select a marvel champions hero pack deck that you can easily download as pdf with high enough res to print and play with. the cards should be slightly smaller than standard cards when printed so that they can easily be pushed into standard penny sleeves in front of a dummy marvel champions card (which will be used as the cards back). the site should show you a preview of the pages that will be in your pdf and in a later feature we will likely allow you to select or deselect or even move around cards or replace them with others from the library. the underlying storage mechanism is currently a google drive with high res tiff files."
 
+## Clarifications
+
+### Session 2026-07-31
+
+- Q: Once this site is live, who will be able to reach it and generate PDFs? → A: Local only — runs on the operator's own machine, never hosted. No authentication needed, because there is no remote access to authenticate.
+- Q: How should the application get at the card images — read from a folder on disk, or call Google Drive directly? → A: A local folder on disk. The user syncs or downloads the Drive folder themselves; the application holds no credentials and makes no outbound calls for assets.
+- Q: How should the application work out which image file belongs to which card? → A: A metadata catalog names each card's image file explicitly. Card identity is independent of filename, so the image folder can be renamed or reorganised without breaking decks.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Download a printable hero deck (Priority: P1)
 
-A player wants to try a hero they do not own. They open the site, pick that hero from a
-list, and download a PDF. They print it on their home printer, cut the cards out, and slide
+A player wants to try a hero they do not own. They start the application on their machine,
+pick that hero from a list, and download a PDF. They print it on their home printer, cut the cards out, and slide
 each one into a penny sleeve in front of a spare Marvel Champions card. The spare card
 supplies the back and the rigidity; the printed sheet supplies the face. They sit down and
 play that evening.
@@ -27,7 +35,7 @@ face is legible at arm's length.
 
 **Acceptance Scenarios**:
 
-1. **Given** the hero list is displayed, **When** a user selects a hero and confirms,
+1. **Given** the hero list is displayed, **When** the user selects a hero and confirms,
    **Then** a PDF containing every card in that hero's deck is produced for download.
 2. **Given** a generated PDF, **When** it is printed at 100% scale on Letter or A4,
    **Then** every card measures the target print size within ±0.5 mm on both axes.
@@ -98,8 +106,9 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 
 - A card image is missing, unreadable, or not a valid image → generation fails naming the
   card; no partial or placeholder-filled PDF is delivered.
-- The asset store is unreachable or rate-limits the request → the user sees a clear
-  retryable error distinguishing "temporarily unavailable" from "this card does not exist".
+- An image file exists but cannot be opened — permissions, a lock held by another program,
+  or a partially written file → the user sees an error distinguishing "cannot read this
+  file right now" from "this card does not exist".
 - A deck lists the same card multiple times → each copy is printed, in the listed quantity.
 - A source image has a different aspect ratio than a standard card → it is fitted without
   distortion and the discrepancy is reported rather than silently cropped.
@@ -107,20 +116,49 @@ Value delivered when a mis-scaled printer is detected before the real print run.
   fails or warns explicitly; it is never silently upscaled.
 - A deck is large enough to span many pages → pagination continues correctly with no
   duplicated or dropped cards.
-- Two users request the same deck at the same time → both receive correct, identical PDFs.
-- A user requests a deck while its content is being updated → the PDF reflects one
-  consistent content revision, never a mixture.
+- The catalog is edited while the application is running → a generation uses one consistent
+  catalog revision throughout, never a mixture of old and new.
 - A user's browser cancels a slow download → no partially written PDF is presented as
   complete.
+- The application is started while another program already holds its port → it reports the
+  conflict clearly instead of failing silently or falling back to a public interface.
+- The configured image directory is missing, unreadable, empty, or points at the wrong
+  place → the user gets an actionable message naming the problem, not a generic failure.
+- The catalog names an image file that is not present in the directory → validation fails
+  naming the card and the expected filename, before any generation is attempted.
+- Two different cards map to the same image file → this is reported, since it is far more
+  often a copy-paste mistake than a deliberate choice.
+- The directory contains image files no catalog entry references → these are ignored
+  without error; an unreferenced file is not a fault.
+- The catalog is malformed or unparseable → the application reports where, and refuses to
+  operate on a partially understood catalog.
+- The image directory is a cloud-sync folder whose files are placeholders not yet
+  downloaded to disk → this is reported as an unreadable asset naming the card, not treated
+  as a missing card.
+- A single source image is pathologically large or malformed → the bounded-cost limits in
+  FR-0A4 stop it rather than letting it consume the machine.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
+**Deployment and access**
+
+- **FR-0A1**: System MUST run entirely on the operator's own machine, with no hosted or
+  publicly reachable deployment.
+- **FR-0A2**: System MUST bind only to a loopback interface. It MUST NOT listen on an
+  externally reachable address, and MUST NOT require a firewall rule or reverse proxy to
+  stay private.
+- **FR-0A3**: System MUST NOT include authentication, accounts, or sessions. The sole user
+  is the person running it, and the trust boundary is the machine itself.
+- **FR-0A4**: System MUST bound the cost of a single generation with explicit limits on
+  decode time, memory, and total work, so that a malformed or oversized source image cannot
+  exhaust the machine. This protects against bad data, not against a hostile user.
+
 **Selection**
 
 - **FR-001**: System MUST present the list of available hero decks with a recognizable
-  name for each, sourced from the content store rather than hard-coded.
+  name for each, sourced from the content catalog rather than hard-coded.
 - **FR-002**: Users MUST be able to select exactly one hero deck per generation request.
 - **FR-003**: System MUST guide the user through selection, preview, and download as an
   ordered sequence in which the user can return to a prior step without losing selection.
@@ -130,7 +168,18 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 **Deck composition**
 
 - **FR-005**: System MUST resolve a selected hero deck into an ordered list of card
-  identifiers with quantities, defined by the content store.
+  identifiers with quantities, defined by the content catalog.
+- **FR-005a**: System MUST determine a card's image file from an explicit mapping in the
+  content catalog. It MUST NOT infer the file from the card's name, its position, or the
+  folder layout.
+- **FR-005b**: Card identity MUST be stable and independent of filename, so that renaming a
+  file or substituting a better scan of the same card does not change the card's identity
+  or invalidate any deck referencing it.
+- **FR-005c**: System MUST validate the catalog before use, checking that it parses, that
+  every card a deck references exists, that every card maps to an image file, and that
+  every mapped file is present in the configured directory.
+- **FR-005d**: System MUST report all catalog validation failures together, naming each
+  offending card or deck, rather than stopping at the first error.
 - **FR-006**: System MUST include, for a selected hero, the full published pre-built player
   deck: the hero card, the hero-specific signature cards, and the aspect cards the pack
   ships with. The result MUST be playable without the user supplying additional cards. The
@@ -170,8 +219,14 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 
 **Assets and failure behavior**
 
-- **FR-019**: System MUST retrieve card images from the operator-configured asset store
-  without requiring the end user to authenticate to it or supply credentials.
+- **FR-019**: System MUST read card images from a local directory the user configures, and
+  MUST NOT require credentials, sign-in, or any network call to retrieve them.
+- **FR-019a**: System MUST complete a full generation with no network connection available.
+- **FR-019b**: System MUST report a clear, actionable error when the configured image
+  directory is missing, unreadable, or empty, distinguishing "not configured yet" from
+  "configured but wrong".
+- **FR-019c**: System MUST NOT write to, move, rename, or delete anything in the configured
+  image directory. It is read-only source material.
 - **FR-020**: System MUST fail generation with a message naming the specific card when an
   image is missing, unreadable, or below the required resolution, and MUST NOT substitute a
   placeholder or silently omit the card.
@@ -188,12 +243,17 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 ### Key Entities
 
 - **Hero Deck**: A named, published pre-built deck associated with one hero. Has a display
-  name, a hero identity, and an ordered list of card entries. Defined in the content store.
+  name, a hero identity, and an ordered list of card entries. Defined in the content catalog.
 - **Card Entry**: One line of a deck — a reference to a Card plus a quantity.
-- **Card**: A single distinct Marvel Champions card. Has a stable identifier, a display
-  name, and a reference to its face image asset.
-- **Card Image Asset**: The high-resolution source image for one card face, held in the
-  external asset store. Has a resolution and a format; not stored in this project.
+- **Content Catalog**: The authored metadata defining every hero deck and every card, and
+  mapping each card to its image filename. Lives outside the application as editable data,
+  is validated before use, and carries a revision so a generated PDF can be traced to the
+  catalog state that produced it.
+- **Card**: A single distinct Marvel Champions card. Has a stable identifier independent of
+  any filename, a display name, and an explicit reference to its face image file.
+- **Card Image Asset**: The high-resolution source image for one card face, held as a file
+  in the user's configured local image directory. Has a resolution and a format. Read-only,
+  and never stored in this project.
 - **Print Layout**: The rules turning an ordered card list into pages — target card size,
   grid arrangement, margins, and cut guides. The same layout drives both preview and PDF.
 - **Generation Request**: One user request to produce a PDF. Has a selected deck, a content
@@ -203,8 +263,11 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 
 ### Measurable Outcomes
 
-- **SC-001**: A first-time visitor goes from landing on the site to a downloaded PDF in
-  under 2 minutes and no more than 4 interactions.
+- **SC-001**: With the application running, a user goes from opening it to a downloaded PDF
+  in under 2 minutes and no more than 4 interactions.
+- **SC-001a**: The running application is not reachable from another device on the same
+  network, verified by attempting to connect from a second machine.
+- **SC-001b**: A full deck generates successfully with networking disabled on the machine.
 - **SC-002**: Sleeve fit is measured, not assumed. A printed card is inserted into a
   standard penny sleeve in front of a standard Marvel Champions card across at least 3
   printer models and the outcome recorded. Success is either that it seats without forcing
@@ -221,8 +284,11 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 - **SC-007**: 95% of deck generations complete within 30 seconds of confirmation.
 - **SC-008**: 100% of generation failures name the specific card or condition responsible;
   no failure surfaces as a generic error and none produces a partial PDF.
-- **SC-009**: A new hero deck becomes selectable on the live site without a software
-  release, within 15 minutes of being added to the content store.
+- **SC-009**: A new hero deck becomes selectable without rebuilding or reinstalling the
+  application — adding it to the catalog and restarting is sufficient.
+- **SC-010**: 100% of catalog problems — a missing image file, an unknown card reference, a
+  malformed entry — are caught by validation and reported together with the offending card
+  or deck named, before any generation begins.
 
 ## Assumptions
 
@@ -231,8 +297,18 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 - Card selection, deselection, reordering, and substitution are explicitly **out of scope**
   for this feature and are deferred to a later one, per the feature description. This
   feature produces the complete published deck as-is.
-- User accounts, saved decks, and sharing are out of scope. Every visit is anonymous and
-  every generation is self-contained.
+- The application is **local-only**: it runs on the operator's own machine and is never
+  hosted. It is a web application in form — a browser UI over a local service — not in
+  deployment.
+- Authentication, accounts, and sessions are out of scope, and their absence is a
+  consequence of local-only operation rather than an omission. The constitution's account
+  security controls stay deferred, because no accounts exist to govern.
+- Because nothing is publicly reachable, the application does not redistribute card
+  artwork to third parties, which keeps it within the constitution's distribution scope.
+- Saved decks, sharing, and multi-user features are out of scope.
+- **Hosting this publicly later is a scope change, not a deployment step.** It would
+  reintroduce access control, per-principal rate limiting, and the redistribution question
+  the local-only decision currently avoids, and MUST be specified as its own feature.
 - Only hero pack decks are in scope. Villains, modular sets, and scenarios are out of scope
   for this feature despite being in the product's longer-term ambition.
 - Only single-deck generation is in scope; batch or multi-hero downloads are out of scope.
@@ -259,16 +335,28 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 
 **Assets and content**
 
-- Card images are read from an operator-configured asset store. End users never
-  authenticate to it, never see it, and never supply credentials — access is the operator's
-  own.
-- The asset store today is a Google Drive of high-resolution TIFFs. This is transitional;
-  the feature must not assume Drive-specific or TIFF-specific behavior outside the asset
-  adapter.
+- Card images are read from a **local directory** the user points the application at. The
+  application holds no credentials and makes no outbound request to fetch an asset.
+- Getting images onto disk is the user's job and is outside this feature — Google Drive's
+  desktop sync, a one-time download, or any other means. The application neither performs
+  nor supervises that sync, and does not detect whether the folder is current.
+- The Google Drive of high-resolution TIFFs is the upstream source of that folder, not a
+  runtime dependency. Nothing in the feature may assume Drive-specific or TIFF-specific
+  behavior outside the asset adapter, so a later move to object storage or a different
+  encoding remains an adapter change.
+- Because assets involve no outbound calls, this feature exercises none of the
+  egress-allowlist surface the constitution requires. Reintroducing remote asset fetching
+  would bring that requirement back into play.
 - Source images are assumed to be complete, correctly oriented card faces at sufficient
   resolution for 300 DPI at final size. Where they are not, FR-020 governs.
-- Deck composition and card metadata live in the content store, not in this repository, and
-  can be changed without a deploy.
+- Deck composition, card metadata, and the card-to-filename mapping all live in the content
+  catalog — authored data outside the application, editable without rebuilding or
+  redeploying it.
+- Authoring and maintaining that catalog is the user's responsibility. Producing it from
+  the existing Drive folder, whether by hand or with a one-off helper, is outside this
+  feature's scope.
+- Card identifiers are assumed to follow a stable published scheme rather than being
+  invented per-deck, so the same card referenced by two decks resolves to one entry.
 
 **Users and environment**
 
