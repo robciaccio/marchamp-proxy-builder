@@ -115,10 +115,14 @@ src/marchamp/
 │   ├── preview.py      # Rasterise the real PDF via pypdfium2
 │   ├── calibration.py  # Ruler + outline page (User Story 3)
 │   └── workers.py      # ProcessPoolExecutor with rlimits + timeouts
+├── generations/        # Generation lifecycle — the resource Principle II requires
+│   ├── registry.py     # In-memory, process-lifetime only (FR-021b)
+│   └── service.py      # Orchestrates resolve → decode → compose; collects substitutions
 ├── api/
 │   ├── app.py          # FastAPI application, loopback binding
 │   ├── routes.py       # Endpoints per contracts/openapi.yaml
 │   └── errors.py       # Named, actionable failures (FR-020, FR-021)
+├── config.py           # Image dir, catalog path, host/port, FR-0A4 limits
 ├── observability/
 │   └── logging.py      # Structured generation records (FR-022)
 └── web/                # Static browser UI — a client of the API, nothing more
@@ -171,15 +175,19 @@ Development Workflow section as a MINOR amendment.
 | Module | Requirements |
 |---|---|
 | `catalog/` | FR-004, FR-005, FR-005a–d, FR-005b1, FR-005c1–c3 |
+| `catalog/printings.py` | FR-005e–j |
 | `assets/` | FR-019, FR-019a–d |
-| `layout/` | FR-008a–c, FR-009, FR-009a–d, FR-011, FR-012, FR-013 |
-| `render/images.py` | FR-009b1, FR-009b2, FR-010, FR-014, FR-0A4 |
+| `layout/geometry.py` | FR-008a–c, FR-009, FR-009a, FR-011, FR-013 |
+| `layout/paginate.py` | FR-007, FR-012, FR-012a–c |
+| `render/images.py` | FR-009b, FR-009b1, FR-009b2, FR-010, FR-014, FR-0A4 |
 | `render/document.py` | FR-008, FR-015, FR-015a |
-| `render/preview.py` | FR-016, FR-016a–d, FR-017 |
+| `render/preview.py` | FR-016, FR-016b, FR-016d, FR-017 |
 | `render/calibration.py` | FR-023 |
-| `api/` | FR-001–003, FR-003a–g, FR-018, FR-020, FR-020a–b, FR-021, FR-021a–b |
-| `observability/` | FR-022, FR-022a–b |
+| `generations/` | FR-016a, FR-018, FR-018a, FR-020a–b, FR-021a–b |
+| `api/` | FR-001–003, FR-003a–g, FR-009c, FR-020, FR-021 |
 | `api/app.py` | FR-0A1, FR-0A2, FR-0A3 |
+| `observability/` | FR-022, FR-022a–b |
+| `config.py` | FR-005c3, FR-019b, FR-0A4 |
 
 ## Post-Design Constitution Re-Check
 
