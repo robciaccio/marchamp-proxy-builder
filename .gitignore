@@ -1,21 +1,22 @@
 # Constitution: card images and generated output are never committed.
 # This file is the safety net; review is the control.
 
-# Source card assets (external — Drive today, object store later)
-# card_directory/ is ignored wholesale, not just by extension: the extension rules
-# below would still let a stray .json, .DS_Store, or .png slip into a commit.
-assets/
-cards/
-card_directory/
+# Source card assets (external — Drive today, object store later).
+# Anchored with a leading slash so they match ONLY at the repository root. Unanchored,
+# `assets/` also matched src/marchamp/assets/ and silently excluded that whole source
+# package from every commit — local tests passed, CI could not import it.
+/assets/
+/cards/
+/card_directory/
 *.tif
 *.tiff
 *.psd
 
-# Generated output and derived renditions
-out/
-output/
-dist/
-build/
+# Generated output and derived renditions (root-anchored, same reason as above)
+/out/
+/output/
+/dist/
+/build/
 *.pdf
 .cache/
 .renditions/

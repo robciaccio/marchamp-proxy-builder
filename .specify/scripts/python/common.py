@@ -132,9 +132,7 @@ class FeaturePaths:
     contracts_dir: Path
 
 
-def get_feature_paths(
-    *, no_persist: bool = False, script_file: Path | None = None
-) -> FeaturePaths:
+def get_feature_paths(*, no_persist: bool = False, script_file: Path | None = None) -> FeaturePaths:
     repo_root = get_repo_root(script_file)
     current_branch = get_current_branch()
 
@@ -195,9 +193,7 @@ def _sorted_preset_ids(presets_dir: Path) -> list[str]:
                 pid
                 for pid, meta in sorted(
                     presets.items(),
-                    key=lambda kv: kv[1].get("priority", 10)
-                    if isinstance(kv[1], dict)
-                    else 10,
+                    key=lambda kv: kv[1].get("priority", 10) if isinstance(kv[1], dict) else 10,
                 )
                 if isinstance(meta, dict) and meta.get("enabled", True) is not False
             ]
@@ -205,9 +201,7 @@ def _sorted_preset_ids(presets_dir: Path) -> list[str]:
             pass
     try:
         return sorted(
-            p.name
-            for p in presets_dir.iterdir()
-            if p.is_dir() and not p.name.startswith(".")
+            p.name for p in presets_dir.iterdir() if p.is_dir() and not p.name.startswith(".")
         )
     except OSError:
         return []
