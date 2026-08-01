@@ -124,8 +124,8 @@ constitution requires these values be asserted, not inspected.
 
 | Field | Type | Value / Rules |
 |---|---|---|
-| `card_size_mm` | (float, float) | `(63.5, 88.9)`. **Single configurable value** (FR-009a) so a change from beta print evidence touches one place. |
-| `page_size` | enum | `LETTER` (215.9 × 279.4 mm) or `A4` (210 × 297 mm). Per-generation parameter. |
+| `slot_size_mm` | (float, float) | `(63.5, 88.9)`. **Single configurable value** (FR-009a) so a change from beta print evidence touches one place. Canonical term is *slot*; "card box" and "card size" are not used elsewhere. |
+| `page_size` | enum | `LETTER` (215.9 × 279.4 mm) or `A4` (210 × 297 mm). Per-generation parameter (FR-008a). Portrait only (FR-008b). |
 | `grid` | (int, int) | Fixed `(3, 3)` — nine per page for both page sizes (FR-011). |
 | `margins_mm` | derived | Centred: Letter 12.70 × 6.35, A4 9.75 × 15.15. |
 | `cut_guides` | derived | Marks in the margin only; never overlapping a card face (FR-013). |
@@ -142,6 +142,32 @@ modes are exercised by real data — none is a theoretical branch:
 
 `CROP` trims symmetrically — half the overflow from each edge, never all from one side.
 `STRETCH` is the only path permitted to distort, and only when explicitly selected (FR-014).
+
+In `FIT`, the unused slot area is left **blank** — no frame, border, fill, or shadow
+(FR-009b1). Cut guides mark the slot in every mode, so all cards cut to one size regardless.
+Each card is fitted on its own measurements (FR-009b2); source scans vary from one another,
+so no single ratio is assumed across a deck.
+
+The fit mode must be identifiable from the generated document itself (FR-009d), not only
+from application state — a printed sheet outlives the session that produced it.
+
+## Cost Limits
+
+Absolute ceilings from FR-0A4, stated here because they constrain the model, not only the
+runtime. Exceeding any of them fails the generation naming the limit — never a silent
+truncation.
+
+| Limit | Value | Scope |
+|---|---|---|
+| Decode time | 10 s | Per image |
+| Decode memory | 512 MB | Per image |
+| Pixel count | 80 MP | Per image, checked before decode |
+| Card faces | 200 | Per generation |
+| Wall clock | 120 s | Per generation |
+
+Set against a contemporary consumer laptop, far above real decks (~41 cards, ~3 MP scans)
+and far below anything that would destabilise the machine. Expected to be tuned from
+observation.
 
 ## Page and Slot
 
@@ -194,8 +220,12 @@ retryable from permanent.
 
 Emitted once per generation for observability (FR-022, Principle V).
 
-Fields: `request_id`, `deck_id`, `resolved_card_ids[]`, `catalog_revision`, `page_size`,
-`page_count`, `duration_ms`, `outcome`, `failure_kind?`.
+Fields: `request_id`, `deck_id`, `resolved_card_ids[]`, `catalog_revision`, `fit_mode`,
+`page_size`, `page_count`, `duration_ms`, `outcome`, `failure_kinds[]`.
+
+`fit_mode` is required by FR-022 — without it a recorded generation cannot be matched to the
+sheet it produced. `failure_kinds` is a list because FR-020a requires all failures to be
+reported together.
 
 Contains no file paths from outside the configured directory and no secrets — there are none
 to leak in this feature, and the record should stay safe to paste into an issue.

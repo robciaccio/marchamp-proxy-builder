@@ -194,6 +194,25 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 - **FR-002**: Users MUST be able to select exactly one hero deck per generation request.
 - **FR-003**: System MUST guide the user through selection, preview, and download as an
   ordered sequence in which the user can return to a prior step without losing selection.
+- **FR-003a**: Returning to a prior step while a generation is running MUST be permitted.
+  The running generation is either still available on return or simply abandoned; it MUST
+  NOT block the interface or prevent starting another.
+- **FR-003b**: Explicit cancellation of a running generation is **not required**. Bounded by
+  FR-0A4's 120-second ceiling, abandoning one is sufficient. An abandoned generation MUST NOT
+  hold resources indefinitely.
+- **FR-003c**: While the catalog is being validated at startup, the system MUST indicate that
+  it is doing so rather than presenting an empty or apparently broken deck list.
+- **FR-003d**: Each empty state MUST be presented as an explanation with a next action, not
+  as a blank region: no catalog configured, catalog present but defining no decks, and a
+  deck resolving to no printable cards are each distinguishable from one another.
+- **FR-003e**: A validation report listing many problems MUST remain readable — grouped by
+  the deck or card concerned, and not truncated to an arbitrary first few.
+- **FR-003f**: The calibration page MUST be reachable from the interface itself. It MUST NOT
+  require knowing a URL.
+- **FR-003g**: Keyboard operation MUST be possible for the whole flow — selecting a deck,
+  choosing options, and starting a generation. Conformance to a formal accessibility
+  standard is **out of scope** for this feature; this is a deliberate scope decision for a
+  single-user local tool, not an oversight.
 - **FR-004**: System MUST reflect newly added hero decks without requiring a software
   release.
 
@@ -261,6 +280,9 @@ shipped in *its* pack, so the model must distinguish a card from a particular pr
 **Print output**
 
 - **FR-008**: System MUST produce a single PDF containing every card in the resolved deck.
+- **FR-008c**: The downloaded file's name MUST identify the deck, the fit mode, and the page
+  size, so that sheets printed from different settings remain distinguishable after the
+  application has been closed.
 - **FR-008a**: The user MUST be able to choose the page size the PDF is generated for — US
   Letter or A4 — and the PDF MUST be emitted at that size so the print needs no rescaling.
   Letter is the default.
@@ -327,11 +349,29 @@ shipped in *its* pack, so the model must distinguish a card from a particular pr
 - **FR-015**: System MUST produce byte-identical output for the same deck at the same
   catalog revision, the same asset files, the same fit mode, and the same page size. Those
   five inputs together define the output; changing any of them may change the bytes, and
-  changing none of them MUST NOT.
+  changing none of them MUST NOT. This holds **on one machine with one set of pinned
+  dependency versions**, across separate runs and separate processes. Identical output
+  across differing library versions is explicitly NOT claimed.
+- **FR-015a**: Every operation that could vary between runs MUST be pinned rather than left
+  to a library default — in particular the image resampling filter, iteration order wherever
+  it reaches output, and any timestamp or document identifier the format would otherwise
+  generate. A library default changing between versions MUST NOT be able to alter output
+  silently.
 
 **Preview**
 
 - **FR-016**: System MUST display a page-by-page visual preview of the PDF before download.
+- **FR-016a**: While a generation is running, the system MUST show that work is in progress
+  and MUST convey advancement rather than only a static indicator — a generation is allowed
+  to run for up to 120 seconds, and an interface that looks frozen for two minutes is
+  indistinguishable from one that has failed.
+- **FR-016b**: Preview pages MUST become viewable as they become available rather than only
+  once every page is ready.
+- **FR-016c**: Changing the fit mode or page size MUST invalidate any displayed preview. A
+  preview MUST NOT remain on screen describing settings that are no longer selected.
+- **FR-016d**: Preview raster resolution MUST be sufficient to identify a card by name and
+  art, and MUST be capped so that requesting a preview cannot approach the cost of the
+  generation itself. Preview resolution MUST NOT affect the PDF in any way.
 - **FR-017**: The preview MUST match the generated PDF in page count, card order, and card
   position.
 - **FR-018**: System MUST display the page count and the total number of printed faces
@@ -383,6 +423,12 @@ shipped in *its* pack, so the model must distinguish a card from a particular pr
 - **FR-022**: System MUST record, for each generation, the deck requested, the card
   identifiers used, the catalog revision in effect, the fit mode, the page size, and the
   outcome.
+- **FR-022a**: Records MUST be written as structured, machine-readable lines to the
+  application's standard output or a user-configured file. Retention is the user's concern;
+  the application MUST NOT rotate, prune, or manage log storage.
+- **FR-022b**: Records MUST NOT contain absolute filesystem paths outside the configured
+  directories, environment values, or anything else a user would not want to paste into a
+  bug report. A generation record is expected to be shareable as-is.
 
 **Calibration** *(supports User Story 3)*
 
@@ -439,8 +485,14 @@ shipped in *its* pack, so the model must distinguish a card from a particular pr
 - **SC-005**: The preview matches the downloaded PDF in page count, card order, and card
   position on 100% of generations.
 - **SC-006**: Regenerating the same deck against unchanged content and assets produces an
-  identical file on 100% of attempts.
-- **SC-007**: 95% of deck generations complete within 30 seconds of confirmation.
+  identical file on **20 consecutive attempts**, including at least one in a separate
+  process, on the same machine with unchanged dependency versions.
+- **SC-007**: 95% of deck generations complete within 30 seconds of confirmation, measured
+  on a full ~41-card deck on a consumer laptop of the era. This is a target for typical
+  work; FR-0A4's 120-second ceiling is a hard cutoff that fails the generation, not a
+  second target.
+- **SC-007a**: The first preview page becomes viewable within 5 seconds of confirmation,
+  independent of how long the remaining pages take.
 - **SC-008**: 100% of generation failures name the specific card or condition responsible;
   no failure surfaces as a generic error and none produces a partial PDF.
 - **SC-009**: A new hero deck becomes selectable without rebuilding or reinstalling the
@@ -561,4 +613,8 @@ shipped in *its* pack, so the model must distinguish a card from a particular pr
 - Users are Marvel Champions players printing for personal play. They own the game and are
   proxying cards they do not have or wish to preserve.
 - Users have a modern desktop or mobile browser and a consumer inkjet or laser printer.
-- Traffic is hobby-scale. Concurrency in the low tens, not thousands.
+- The machine running the application is assumed to be a contemporary consumer laptop or
+  desktop — multiple cores and at least 8 GB of RAM. FR-0A4's absolute limits are set against
+  that baseline; on a substantially smaller machine they would need lowering.
+- Only one person uses the application at a time, and only one generation runs at a time.
+  Concurrency is not a design concern for this feature.

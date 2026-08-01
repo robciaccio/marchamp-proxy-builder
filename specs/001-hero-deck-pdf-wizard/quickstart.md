@@ -83,9 +83,17 @@ looking at it:
 uv run pytest tests/integration/test_print_geometry.py -v
 ```
 
-**Expect**: MediaBox equals the selected page size in points (Letter = 612 × 792 pt); each
-placed card measures 63.5 × 88.9 mm within ±0.5 mm; nine cards per full page in a 3 × 3
-grid; no cut guide overlaps a card face.
+**Expect**: MediaBox equals the selected page size in points, portrait (Letter =
+612 × 792 pt); every **slot** measures 63.5 × 88.9 mm within ±0.5 mm; nine slots per full
+page in a 3 × 3 grid, centred; no cut guide enters a slot.
+
+Printed **face** size depends on the fit mode, and the assertions differ accordingly:
+
+| Mode | Expected face | Also assert |
+|---|---|---|
+| `CROP` | 63.5 × 88.9 mm ±0.5 | Fills the slot; overflow trimmed equally top and bottom |
+| `FIT` | 61.8 × 88.9 mm ±0.5 | Neither dimension exceeds the slot; unused area blank, no frame |
+| `STRETCH` | 63.5 × 88.9 mm ±0.5 | Fills the slot; nothing trimmed |
 
 Then the physical check that no test can perform — print page 1 at **100% scale with page
 scaling off** and measure a card with a ruler.
