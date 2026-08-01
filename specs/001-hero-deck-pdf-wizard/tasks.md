@@ -32,13 +32,13 @@ Single Python project per plan.md: `src/marchamp/` and `tests/` at repository ro
 
 **Purpose**: Project initialization
 
-- [ ] T001 Create source tree `src/marchamp/{catalog,assets,layout,render,api,generations,observability,web}/` and `tests/{contract,integration,unit}/`, each with `__init__.py` where it is a package
-- [ ] T002 Initialize uv project in `pyproject.toml` — Python 3.13; runtime deps fastapi, uvicorn, reportlab, pillow, pypdfium2, pydantic; dev deps pytest, pypdf, ruff
-- [ ] T003 Generate and commit `uv.lock`, and confirm `uv sync --locked` fails if the lockfile would change
-- [ ] T004 [P] Configure ruff (lint + format) in `pyproject.toml`
-- [ ] T005 [P] Configure pytest in `pyproject.toml` — `testpaths`, and markers `slow` and `physical` for tests needing a printer
-- [ ] T006 [P] Add `.github/workflows/ci.yml` running `uv sync --locked`, `ruff check`, `ruff format --check`, and `pytest`, with all actions pinned to full commit SHAs
-- [ ] T007 [P] Create `tests/conftest.py` with a synthetic fixture catalog and **generated** placeholder TIFFs at 1446×2079 — real card art MUST NOT enter the repository under any circumstances
+- [X] T001 Create source tree `src/marchamp/{catalog,assets,layout,render,api,generations,observability,web}/` and `tests/{contract,integration,unit}/`, each with `__init__.py` where it is a package
+- [X] T002 Initialize uv project in `pyproject.toml` — Python 3.13; runtime deps fastapi, uvicorn, reportlab, pillow, pypdfium2, pydantic; dev deps pytest, pypdf, ruff
+- [X] T003 Generate and commit `uv.lock`, and confirm `uv sync --locked` fails if the lockfile would change
+- [X] T004 [P] Configure ruff (lint + format) in `pyproject.toml`
+- [X] T005 [P] Configure pytest in `pyproject.toml` — `testpaths`, and markers `slow` and `physical` for tests needing a printer
+- [X] T006 [P] Add `.github/workflows/ci.yml` running `uv sync --locked`, `ruff check`, `ruff format --check`, and `pytest`, with all actions pinned to full commit SHAs
+- [X] T007 [P] Create `tests/conftest.py` with a synthetic fixture catalog and **generated** placeholder TIFFs at 1446×2079 — real card art MUST NOT enter the repository under any circumstances
 
 **Checkpoint**: `uv run pytest` runs and collects zero tests without error.
 
@@ -52,48 +52,48 @@ Single Python project per plan.md: `src/marchamp/` and `tests/` at repository ro
 
 ### Configuration, errors, logging
 
-- [ ] T008 Write failing test for settings resolution and its "not configured" vs "configured but wrong" distinction in `tests/unit/test_config.py` (FR-005c3, FR-019b)
-- [ ] T009 Implement `src/marchamp/config.py` — image directory, catalog path, host/port, and the FR-0A4 limits as named constants
-- [ ] T010 [P] Write failing test for the six failure kinds and the single retryable one in `tests/unit/test_errors.py` (FR-021)
-- [ ] T011 [P] Implement `src/marchamp/api/errors.py` — failure taxonomy with `retryable` and card naming (FR-019b1, FR-021)
-- [ ] T012 [P] Write failing test asserting generation records carry fit mode and page size, and exclude outside paths, in `tests/unit/test_logging.py` (FR-022, FR-022a, FR-022b)
-- [ ] T013 [P] Implement `src/marchamp/observability/logging.py` — structured records to stdout or a configured file
+- [X] T008 Write failing test for settings resolution and its "not configured" vs "configured but wrong" distinction in `tests/unit/test_config.py` (FR-005c3, FR-019b)
+- [X] T009 Implement `src/marchamp/config.py` — image directory, catalog path, host/port, and the FR-0A4 limits as named constants
+- [X] T010 [P] Write failing test for the six failure kinds and the single retryable one in `tests/unit/test_errors.py` (FR-021)
+- [X] T011 [P] Implement `src/marchamp/api/errors.py` — failure taxonomy with `retryable` and card naming (FR-019b1, FR-021)
+- [X] T012 [P] Write failing test asserting generation records carry fit mode and page size, and exclude outside paths, in `tests/unit/test_logging.py` (FR-022, FR-022a, FR-022b)
+- [X] T013 [P] Implement `src/marchamp/observability/logging.py` — structured records to stdout or a configured file
 
 ### Asset store (the adapter seam)
 
-- [ ] T014 Write failing test for path containment, read-only behaviour, and content-sniffed format detection in `tests/unit/test_assets.py` (FR-019c, FR-019d)
-- [ ] T015 Implement the `Store` protocol in `src/marchamp/assets/store.py` — `exists` / `open` / `describe`, with refs opaque to callers
-- [ ] T016 Implement `src/marchamp/assets/local_dir.py` — reads from the configured local directory with no credentials and no network call; the only implementation today; rejects absolute paths and `..` escapes (FR-019)
+- [X] T014 Write failing test for path containment, read-only behaviour, and content-sniffed format detection in `tests/unit/test_assets.py` (FR-019c, FR-019d)
+- [X] T015 Implement the `Store` protocol in `src/marchamp/assets/store.py` — `exists` / `open` / `describe`, with refs opaque to callers
+- [X] T016 Implement `src/marchamp/assets/local_dir.py` — reads from the configured local directory with no credentials and no network call; the only implementation today; rejects absolute paths and `..` escapes (FR-019)
 
 ### Catalog
 
-- [ ] T017 Write failing test for the card/printing split and `double_sided` in `tests/unit/test_catalog_models.py` (FR-005e)
-- [ ] T018 Implement `src/marchamp/catalog/models.py` — Card, Printing, HeroDeck, CardEntry with Pydantic v2
-- [ ] T019 Write failing test that catalog revision is content-derived and stable across reorderings and file moves in `tests/unit/test_catalog_loader.py` (FR-005c2)
-- [ ] T020 Implement `src/marchamp/catalog/loader.py` — parse, reject unknown `schema_version`, compute revision (FR-005c1)
-- [ ] T021 Write failing test that validation reports **all** errors at once, never first-and-stop, and that image files are found only via explicit mapping rather than by name or folder, in `tests/unit/test_catalog_validation.py` (FR-005a, FR-005b, FR-005b1, FR-005c, FR-005d)
-- [ ] T022 Implement `src/marchamp/catalog/validation.py` — the ten checks in data-model.md, with duplicate image mapping as a warning not an error
-- [ ] T023 Write failing test that preferred printings win, stand-ins are deterministic, and a card with no usable printing fails, in `tests/unit/test_printings.py` (FR-005f–j)
-- [ ] T024 Implement `src/marchamp/catalog/printings.py` — resolution ordered by printing id, never by directory or hash iteration
+- [X] T017 Write failing test for the card/printing split and `double_sided` in `tests/unit/test_catalog_models.py` (FR-005e)
+- [X] T018 Implement `src/marchamp/catalog/models.py` — Card, Printing, HeroDeck, CardEntry with Pydantic v2
+- [X] T019 Write failing test that catalog revision is content-derived and stable across reorderings and file moves in `tests/unit/test_catalog_loader.py` (FR-005c2)
+- [X] T020 Implement `src/marchamp/catalog/loader.py` — parse, reject unknown `schema_version`, compute revision (FR-005c1)
+- [X] T021 Write failing test that validation reports **all** errors at once, never first-and-stop, and that image files are found only via explicit mapping rather than by name or folder, in `tests/unit/test_catalog_validation.py` (FR-005a, FR-005b, FR-005b1, FR-005c, FR-005d)
+- [X] T022 Implement `src/marchamp/catalog/validation.py` — the ten checks in data-model.md, with duplicate image mapping as a warning not an error
+- [X] T023 Write failing test that preferred printings win, stand-ins are deterministic, and a card with no usable printing fails, in `tests/unit/test_printings.py` (FR-005f–j)
+- [X] T024 Implement `src/marchamp/catalog/printings.py` — resolution ordered by printing id, never by directory or hash iteration
 
 ### Layout geometry
 
-- [ ] T025 Write failing test asserting slot size 63.5×88.9 mm ±0.5, Letter and A4 margins, portrait, and cut guides outside every slot in `tests/unit/test_geometry.py` (FR-008a, FR-008b, FR-009, FR-011, FR-013)
-- [ ] T026 Implement `src/marchamp/layout/geometry.py` — mm↔pt at a single boundary, slot size as one configurable value (FR-009a)
-- [ ] T027 Write failing test that quantities expand to one face per copy, that a 40-card deck plus a double-sided hero yields **42** faces on 5 pages, and that the hero's two faces are adjacent, in `tests/unit/test_paginate.py` (FR-007, FR-012, FR-012a, FR-012b, FR-012c)
-- [ ] T028 Implement `src/marchamp/layout/paginate.py` — ordered faces to positioned slots, last page partially filled with no placeholder outlines
+- [X] T025 Write failing test asserting slot size 63.5×88.9 mm ±0.5, Letter and A4 margins, portrait, and cut guides outside every slot in `tests/unit/test_geometry.py` (FR-008a, FR-008b, FR-009, FR-011, FR-013)
+- [X] T026 Implement `src/marchamp/layout/geometry.py` — mm↔pt at a single boundary, slot size as one configurable value (FR-009a)
+- [X] T027 Write failing test that quantities expand to one face per copy, that a 40-card deck plus a double-sided hero yields **42** faces on 5 pages, and that the hero's two faces are adjacent, in `tests/unit/test_paginate.py` (FR-007, FR-012, FR-012a, FR-012b, FR-012c)
+- [X] T028 Implement `src/marchamp/layout/paginate.py` — ordered faces to positioned slots, last page partially filled with no placeholder outlines
 
 ### Isolated decoding
 
-- [ ] T029 Write failing test that a worker exceeding memory, CPU, or wall-clock limits fails the generation naming the limit in `tests/unit/test_workers.py` (FR-0A4)
-- [ ] T030 Implement `src/marchamp/render/workers.py` — `ProcessPoolExecutor` with `RLIMIT_AS`, `RLIMIT_CPU`, and a wall-clock timeout
-- [ ] T031 Write failing test for the three fit modes' output geometry, the 300 DPI floor measured post-crop, and rejection of oversized or malformed images, in `tests/unit/test_images.py` (FR-009b, FR-009b1, FR-009b2, FR-010, FR-014)
-- [ ] T032 Implement `src/marchamp/render/images.py` — content sniffing, explicit `Image.MAX_IMAGE_PIXELS`, pinned resampling filter (FR-015a), runs inside a worker
+- [X] T029 Write failing test that a worker exceeding memory, CPU, or wall-clock limits fails the generation naming the limit in `tests/unit/test_workers.py` (FR-0A4)
+- [X] T030 Implement `src/marchamp/render/workers.py` — `ProcessPoolExecutor` with `RLIMIT_AS`, `RLIMIT_CPU`, and a wall-clock timeout
+- [X] T031 Write failing test for the three fit modes' output geometry, the 300 DPI floor measured post-crop, and rejection of oversized or malformed images, in `tests/unit/test_images.py` (FR-009b, FR-009b1, FR-009b2, FR-010, FR-014)
+- [X] T032 Implement `src/marchamp/render/images.py` — content sniffing, explicit `Image.MAX_IMAGE_PIXELS`, pinned resampling filter (FR-015a), runs inside a worker
 
 ### Service skeleton
 
-- [ ] T033 Write failing test that the service binds loopback only, is unreachable from a non-loopback address, and exposes no authentication or session surface in `tests/integration/test_binding.py` (FR-0A1, FR-0A2, FR-0A3, SC-001a)
-- [ ] T034 Implement `src/marchamp/api/app.py` — FastAPI app bound to `127.0.0.1`, never `0.0.0.0`, serving `src/marchamp/web/` statically
+- [X] T033 Write failing test that the service binds loopback only, is unreachable from a non-loopback address, and exposes no authentication or session surface in `tests/integration/test_binding.py` (FR-0A1, FR-0A2, FR-0A3, SC-001a)
+- [X] T034 Implement `src/marchamp/api/app.py` — FastAPI app bound to `127.0.0.1`, never `0.0.0.0`, serving `src/marchamp/web/` statically
 
 **Checkpoint**: Foundation ready — user stories can begin.
 
@@ -109,23 +109,23 @@ insert it into a sleeved standard card. Succeeds when the card fits and the face
 ### Tests for User Story 1 ⚠️ Write first, observe failing
 
 - [ ] T035 [P] [US1] Contract test asserting the live OpenAPI matches `contracts/openapi.yaml` in `tests/contract/test_openapi_matches.py` (Principle II, merge gate)
-- [ ] T036 [P] [US1] Integration test generating a full deck end to end from the fixture catalog, and that a deck added to the catalog becomes selectable after restart with no rebuild, in `tests/integration/test_generate_deck.py` (FR-004, FR-006, SC-009)
-- [ ] T037 [P] [US1] Integration test asserting PDF geometry — MediaBox, slot size, 3×3 grid, guides outside slots — for all three fit modes in `tests/integration/test_print_geometry.py` (SC-003)
-- [ ] T038 [P] [US1] Integration test that regeneration is byte-identical across 20 attempts including one in a separate process in `tests/integration/test_determinism.py` (FR-015, SC-006)
-- [ ] T039 [P] [US1] Integration test that all failing cards are reported together, that no document is downloadable, that a card with no usable printing fails rather than falling back, and that nothing retries on its own in `tests/integration/test_failure_reporting.py` (FR-005i, FR-020, FR-020a, FR-020b, FR-021a)
-- [ ] T040 [P] [US1] Integration test that stand-ins are used and reported before download in `tests/integration/test_printing_fallback.py` (FR-005g, FR-005h, SC-012)
-- [ ] T041 [P] [US1] Integration test that a full generation succeeds with networking unavailable in `tests/integration/test_offline.py` (FR-019a, SC-001b)
+- [X] T036 [P] [US1] Integration test generating a full deck end to end from the fixture catalog, and that a deck added to the catalog becomes selectable after restart with no rebuild, in `tests/integration/test_generate_deck.py` (FR-004, FR-006, SC-009)
+- [X] T037 [P] [US1] Integration test asserting PDF geometry — MediaBox, slot size, 3×3 grid, guides outside slots — for all three fit modes in `tests/integration/test_print_geometry.py` (SC-003)
+- [X] T038 [P] [US1] Integration test that regeneration is byte-identical across 20 attempts including one in a separate process in `tests/integration/test_determinism.py` (FR-015, SC-006)
+- [X] T039 [P] [US1] Integration test that all failing cards are reported together, that no document is downloadable, that a card with no usable printing fails rather than falling back, and that nothing retries on its own in `tests/integration/test_failure_reporting.py` (FR-005i, FR-020, FR-020a, FR-020b, FR-021a)
+- [X] T040 [P] [US1] Integration test that stand-ins are used and reported before download in `tests/integration/test_printing_fallback.py` (FR-005g, FR-005h, SC-012)
+- [X] T041 [P] [US1] Integration test that a full generation succeeds with networking unavailable in `tests/integration/test_offline.py` (FR-019a, SC-001b)
 
 ### Implementation for User Story 1
 
-- [ ] T042 [US1] Implement `src/marchamp/render/document.py` — ReportLab composition with `invariant=1`, placing faces per the layout (FR-008, FR-015)
-- [ ] T043 [P] [US1] Implement `src/marchamp/generations/registry.py` — in-memory store living only for the process lifetime (FR-021b)
-- [ ] T044 [US1] Implement `src/marchamp/generations/service.py` — orchestrate resolve → decode → compose, capture catalog revision at creation, collect substitutions and failures (depends on T024, T028, T032, T042)
-- [ ] T045 [US1] Implement deck endpoints `GET /api/decks` and `GET /api/decks/{deckId}` in `src/marchamp/api/routes.py` (FR-001, FR-005, FR-018)
-- [ ] T046 [US1] Implement `POST /api/generations`, `GET /api/generations/{id}`, and `GET /api/generations/{id}/document` in `src/marchamp/api/routes.py` (FR-008, FR-020)
-- [ ] T047 [US1] Implement `GET /api/health` and `GET /api/catalog/validation` in `src/marchamp/api/routes.py` (FR-003c, FR-005d)
-- [ ] T048 [US1] Set the download `Content-Disposition` filename to deck, fit mode, and page size in `src/marchamp/api/routes.py`, so the mode is identifiable from the document itself (FR-008c, FR-009d)
-- [ ] T049 [US1] Emit the structured generation record on every terminal outcome in `src/marchamp/generations/service.py` (FR-022)
+- [X] T042 [US1] Implement `src/marchamp/render/document.py` — ReportLab composition with `invariant=1`, placing faces per the layout (FR-008, FR-015)
+- [X] T043 [P] [US1] Implement `src/marchamp/generations/registry.py` — in-memory store living only for the process lifetime (FR-021b)
+- [X] T044 [US1] Implement `src/marchamp/generations/service.py` — orchestrate resolve → decode → compose, capture catalog revision at creation, collect substitutions and failures (depends on T024, T028, T032, T042)
+- [X] T045 [US1] Implement deck endpoints `GET /api/decks` and `GET /api/decks/{deckId}` in `src/marchamp/api/routes.py` (FR-001, FR-005, FR-018)
+- [X] T046 [US1] Implement `POST /api/generations`, `GET /api/generations/{id}`, and `GET /api/generations/{id}/document` in `src/marchamp/api/routes.py` (FR-008, FR-020)
+- [X] T047 [US1] Implement `GET /api/health` and `GET /api/catalog/validation` in `src/marchamp/api/routes.py` (FR-003c, FR-005d)
+- [X] T048 [US1] Set the download `Content-Disposition` filename to deck, fit mode, and page size in `src/marchamp/api/routes.py`, so the mode is identifiable from the document itself (FR-008c, FR-009d)
+- [X] T049 [US1] Emit the structured generation record on every terminal outcome in `src/marchamp/generations/service.py` (FR-022)
 - [ ] T050 [US1] Build the minimal wizard — deck list, fit mode and page size selection with their stated costs, generate, download — in `src/marchamp/web/` (FR-002, FR-003, FR-009c)
 
 **Checkpoint**: A deck downloads as a correct, printable PDF. MVP complete.
@@ -164,12 +164,12 @@ card order, and card position must agree exactly.
 
 ### Tests for User Story 3 ⚠️ Write first, observe failing
 
-- [ ] T058 [P] [US3] Integration test that the calibration ruler and card outline measure exactly, and the outline equals the slot rather than a fit-mode face, in `tests/integration/test_calibration.py` (FR-023)
+- [X] T058 [P] [US3] Integration test that the calibration ruler and card outline measure exactly, and the outline equals the slot rather than a fit-mode face, in `tests/integration/test_calibration.py` (FR-023)
 
 ### Implementation for User Story 3
 
-- [ ] T059 [US3] Implement `src/marchamp/render/calibration.py` — one page, measurable ruler, one 63.5×88.9 mm outline
-- [ ] T060 [US3] Implement `GET /api/calibration` with a page size parameter in `src/marchamp/api/routes.py`
+- [X] T059 [US3] Implement `src/marchamp/render/calibration.py` — one page, measurable ruler, one 63.5×88.9 mm outline
+- [X] T060 [US3] Implement `GET /api/calibration` with a page size parameter in `src/marchamp/api/routes.py`
 - [ ] T061 [US3] Surface calibration in the interface so it needs no URL knowledge, in `src/marchamp/web/` (FR-003f)
 
 **Checkpoint**: All three stories independently functional.

@@ -1,0 +1,49 @@
+[project]
+name = "marchamp-proxy-builder"
+version = "0.1.0"
+description = "Local web app that assembles print-ready proxy PDFs for Marvel Champions"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.34",
+    "reportlab>=4.2",
+    "pillow>=11.0",
+    "pypdfium2>=4.30",
+    "pydantic>=2.9",
+]
+
+[project.scripts]
+marchamp = "marchamp.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pypdf>=5.1",
+    "ruff>=0.8",
+    "httpx>=0.28",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/marchamp"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+# Spec Kit ships these; they are vendored tooling, not this project's code.
+extend-exclude = [".specify"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q --strict-markers"
+markers = [
+    "slow: takes more than a couple of seconds",
+    "physical: needs a printer and a ruler; never run in CI",
+]
