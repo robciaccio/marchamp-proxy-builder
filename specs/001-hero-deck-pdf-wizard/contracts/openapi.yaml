@@ -324,7 +324,9 @@ components:
         name: { type: string }
         card_count:
           type: integer
-          description: Total faces printed, counting quantities (FR-007).
+          description: |
+            Total faces printed, counting quantities (FR-007) and counting a double-sided
+            card as two (FR-012c).
 
     DeckDetail:
       allOf:
@@ -337,11 +339,22 @@ components:
               type: array
               items:
                 type: object
-                required: [card_id, name, quantity]
+                required: [card_id, name, quantity, preferred_printing_id, double_sided]
                 properties:
                   card_id: { type: string }
                   name: { type: string }
                   quantity: { type: integer, minimum: 1 }
+                  double_sided:
+                    type: boolean
+                    description: When true this entry yields two faces per copy (FR-012a).
+                  preferred_printing_id:
+                    type: string
+                    description: The printing from this deck's own pack (FR-005f).
+                  preferred_printing_available:
+                    type: boolean
+                    description: |
+                      False means generation will fall back to another printing of the same
+                      card and report a substitution (FR-005g).
 
     GenerationRequest:
       type: object
@@ -365,7 +378,18 @@ components:
           enum: [pending, running, succeeded, failed]
           description: No `partial` state — a failure yields no document at all.
         page_count: { type: [integer, "null"] }
-        card_count: { type: [integer, "null"] }
+        card_count:
+          type: [integer, "null"]
+          description: |
+            Printed faces, not distinct cards. A double-sided card counts as two
+            (FR-012c), so a 40-card deck plus a double-sided hero is 42.
+        substitutions:
+          type: array
+          description: |
+            Art stand-ins used because a deck's own pack printing was unavailable
+            (FR-005g). MUST be surfaced before the user commits paper (FR-005h) — an
+            empty array means every face uses the deck's own pack art.
+          items: { $ref: "#/components/schemas/Substitution" }
         failures:
           type: array
           description: |
@@ -373,6 +397,24 @@ components:
             (FR-020a) — fixing one problem per attempt across repeated runs is the failure
             mode this exists to prevent.
           items: { $ref: "#/components/schemas/Failure" }
+
+    Substitution:
+      type: object
+      description: |
+        One card printed with artwork from a pack other than its deck's own. The card and
+        its rules are correct; only the art differs. Not a failure — but never silent.
+      required: [card_id, card_name, wanted_printing_id, used_printing_id]
+      properties:
+        card_id: { type: string }
+        card_name: { type: string }
+        wanted_printing_id: { type: string }
+        wanted_pack:
+          type: [string, "null"]
+          description: The pack whose art was preferred but unavailable.
+        used_printing_id: { type: string }
+        used_pack:
+          type: [string, "null"]
+          description: The pack whose art was printed instead.
 
     Failure:
       type: object

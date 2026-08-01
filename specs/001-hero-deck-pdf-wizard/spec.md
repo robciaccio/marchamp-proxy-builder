@@ -140,9 +140,18 @@ Value delivered when a mis-scaled printer is detected before the real print run.
   place → the user gets an actionable message naming the problem, not a generic failure.
 - The catalog names an image file that is not present in the directory → validation fails
   naming the card and the expected filename, before any generation is attempted.
-- Two different cards map to the same image file → reported as a **warning, not an error**.
-  It is usually a copy-paste mistake, but it is legitimate often enough that it must not
-  block generation.
+- Two different **printings** reference the same image file → reported as a warning, not an
+  error. Usually a copy-paste mistake, but legitimate often enough not to block generation.
+- A deck's preferred printing is unavailable but another printing of the same card is → the
+  stand-in is used and the substitution is reported before printing (FR-005g, FR-005h).
+- A card has exactly one printing and its image is missing → generation fails naming the
+  card; there is nothing to fall back to (FR-005i).
+- Several printings of a card are available as stand-ins → the choice is deterministic, so
+  regenerating the same deck yields the same file (FR-005j).
+- The same card appears in two decks with different preferred printings → each deck prints
+  its own pack's art; the card's identity is unchanged.
+- A double-sided card's second face is missing → the card cannot be printed usefully, so the
+  generation fails naming the card and the missing side.
 - The directory contains image files no catalog entry references → these are ignored
   without error; an unreferenced file is not a fault.
 - The catalog is malformed or unparseable → the application reports where, and refuses to
@@ -198,6 +207,31 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 - **FR-005b**: Card identity MUST be stable and independent of filename, so that renaming a
   file or substituting a better scan of the same card does not change the card's identity
   or invalidate any deck referencing it.
+
+**Printings and art provenance**
+
+The same card — same title, same rules — is published in several packs with different
+artwork suited to each pack's theme. A deck is meant to be printed with the artwork that
+shipped in *its* pack, so the model must distinguish a card from a particular printing of it.
+
+- **FR-005e**: The catalog MUST model a **card** (title and rules) separately from a
+  **printing** of that card (the artwork from one specific pack, with its own image file).
+  One card MAY have many printings.
+- **FR-005f**: Each deck entry MUST name the **preferred printing** — the one that shipped
+  in that deck's own pack — rather than only naming the card.
+- **FR-005g**: When a preferred printing's image is unavailable, the system MUST fall back
+  to another available printing of the same card rather than failing the generation. A
+  stand-in is a correct card with different art; it is playable, and refusing to print the
+  deck over it would be worse than printing it.
+- **FR-005h**: Every substitution MUST be reported before the user commits to printing,
+  naming the card, the printing that was wanted, and the printing used instead. Falling back
+  silently is prohibited — a user comparing a printed deck against the pack must be able to
+  tell which cards differ and why.
+- **FR-005i**: When no printing of a card has an available image, the generation MUST fail
+  naming that card, per FR-020. Fallback covers missing *art*, never a missing card.
+- **FR-005j**: Fallback selection MUST be deterministic: the same catalog and the same
+  available files MUST always choose the same stand-in, so FR-015's byte-identical guarantee
+  survives substitution.
 - **FR-005b1**: Card identifiers MUST be assigned by the catalog, treated as opaque by the
   application, and unique within a catalog. The application MUST NOT parse meaning out of an
   identifier or require it to follow any particular format.
@@ -270,8 +304,18 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 - **FR-011**: System MUST lay out cards in a fixed 3 × 3 grid, identical for both supported
   page sizes, centred with equal margins, and MUST NOT depend on printer "fit to page"
   behavior.
-- **FR-012**: System MUST produce card faces only, with no card backs and no duplex
-  pairing, because the physical card behind the proxy supplies the back.
+- **FR-012**: System MUST place every printed face in its own slot on the front of the
+  sheet. Duplex printing MUST NOT be required, because for ordinary cards the physical card
+  behind the proxy supplies the back.
+- **FR-012a**: A card the catalog marks as **double-sided** — the hero identity, whose two
+  sides are the hero and the alter-ego — MUST contribute **both** faces as two separate
+  slots. The user sleeves the two printed faces back-to-back around a dummy card, so each
+  side shows outward and the card flips in play exactly as the real one does.
+- **FR-012b**: The two faces of a double-sided card MUST be laid out adjacently, so they are
+  cut and sleeved as a pair without hunting across pages.
+- **FR-012c**: The total printed face count MUST account for double-sided cards contributing
+  two faces each. A deck of 40 single-sided cards plus one double-sided hero is 42 faces,
+  not 41.
 - **FR-013**: System MUST include cut guides marking every slot boundary, as short marks
   positioned outside the slot in the surrounding margin or gutter. A guide MUST NOT enter
   any slot, and therefore MUST NOT overlap a card face. Guides MUST be fine enough not to
@@ -290,8 +334,10 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 - **FR-016**: System MUST display a page-by-page visual preview of the PDF before download.
 - **FR-017**: The preview MUST match the generated PDF in page count, card order, and card
   position.
-- **FR-018**: System MUST display the page count and the total number of cards before the
-  user commits to downloading.
+- **FR-018**: System MUST display the page count and the total number of printed faces
+  before the user commits to downloading, counting double-sided cards as two.
+- **FR-018a**: System MUST list any art substitutions (FR-005h) alongside the preview,
+  before the user commits paper to the job — not afterwards in a log.
 
 **Assets and failure behavior**
 
@@ -309,9 +355,12 @@ Value delivered when a mis-scaled printer is detected before the real print run.
   current source uses; it MUST NOT be assumed to be the only format.
 - **FR-019c**: System MUST NOT write to, move, rename, or delete anything in the configured
   image directory. It is read-only source material.
-- **FR-020**: System MUST fail generation with a message naming the specific card when an
-  image is missing, unreadable, or below the required resolution, and MUST NOT substitute a
-  placeholder or silently omit the card. A resolution shortfall is a **failure, not a
+- **FR-020**: System MUST fail generation with a message naming the specific card when
+  **no printing** of it has a usable image — missing, unreadable, or below the required
+  resolution — and MUST NOT substitute a placeholder or silently omit the card. Falling back
+  to a different *printing* of the same card is not substitution in this sense and is
+  governed by FR-005g–j; substituting a placeholder image, or a different card, remains
+  prohibited. A resolution shortfall is a **failure, not a
   warning** — proceeding would either upscale, which FR-010 forbids, or print a face that
   cannot be read at play distance.
 - **FR-020a**: When several cards fail, the system MUST report all of them together, in the
@@ -346,13 +395,19 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 
 - **Hero Deck**: A named, published pre-built deck associated with one hero. Has a display
   name, a hero identity, and an ordered list of card entries. Defined in the content catalog.
-- **Card Entry**: One line of a deck — a reference to a Card plus a quantity.
+- **Card Entry**: One line of a deck — a reference to a Card, the preferred Printing for
+  this deck, and a quantity.
+- **Printing**: One published version of a card's artwork, belonging to a pack, with its own
+  image file. A card may have several; a deck prefers the one from its own pack and accepts
+  another as a stand-in (FR-005e–j).
 - **Content Catalog**: The authored metadata defining every hero deck and every card, and
   mapping each card to its image filename. Lives outside the application as editable data,
   is validated before use, and carries a revision so a generated PDF can be traced to the
   catalog state that produced it.
-- **Card**: A single distinct Marvel Champions card. Has a stable identifier independent of
-  any filename, a display name, and an explicit reference to its face image file.
+- **Card**: A single distinct Marvel Champions card — one title with one set of rules. Has a
+  stable identifier independent of any filename, a display name, a flag for whether it is
+  double-sided, and one or more Printings. The card is the thing a deck lists; a printing is
+  the artwork it gets.
 - **Card Image Asset**: The high-resolution source image for one card face, held as a file
   in the user's configured local image directory. Has a resolution and a format. Read-only,
   and never stored in this project.
@@ -396,6 +451,11 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 - **SC-011**: Every failure condition named in FR-021 can be deliberately provoked and
   produces its own distinct, correctly-classified message — no condition falls through to
   the generic internal error.
+- **SC-012**: When a deck's own pack art is complete, 100% of printed faces use it. When it
+  is not, every stand-in is listed before printing, and a user can identify each substituted
+  card from that list without comparing images.
+- **SC-013**: A double-sided card yields two faces that, cut and sleeved back-to-back around
+  a dummy card, flip in play indistinguishably from the real card.
 - **SC-010**: 100% of catalog problems — a missing image file, an unknown card reference, a
   malformed entry — are caught by validation and reported together with the offending card
   or deck named, before any generation begins.
@@ -447,6 +507,13 @@ Value delivered when a mis-scaled printer is detected before the real print run.
   margins) without scaling.
 - Users supply their own spare Marvel Champions cards to act as backs. The site neither
   provides nor prints card backs.
+- The hero identity card is double-sided in play. Its two printed faces sleeve back-to-back
+  around one dummy card, so each side shows outward — the dummy supplies rigidity rather
+  than a back. This is why FR-012a exists and why duplex printing is still not needed.
+- Card numbering is **pack-scoped, not global**. The same card is numbered differently in
+  each pack that publishes it — Make the Call is 16 in the Captain America pack and 71 in
+  the Core Set. Numbers are therefore properties of a printing, never of a card, and never
+  an identifier.
 
 **Assets and content**
 
@@ -483,7 +550,11 @@ Value delivered when a mis-scaled printer is detected before the real print run.
   the existing Drive folder, whether by hand or with a one-off helper, is outside this
   feature's scope.
 - Card identifiers are assumed to follow a stable published scheme rather than being
-  invented per-deck, so the same card referenced by two decks resolves to one entry.
+  invented per-deck, so the same card referenced by two decks resolves to one entry — with
+  each deck free to prefer a different printing of it.
+- Art substitution is assumed to be acceptable to users: a stand-in printing is the correct
+  card with different artwork, and playing with it is normal practice. What is not
+  acceptable is not being told, which is why FR-005h requires the list up front.
 
 **Users and environment**
 

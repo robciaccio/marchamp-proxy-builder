@@ -95,9 +95,10 @@ specs/001-hero-deck-pdf-wizard/
 ```text
 src/marchamp/
 ├── catalog/            # Load + validate the content catalog
-│   ├── models.py       # Pydantic schema for cards, decks, image mapping
+│   ├── models.py       # Cards, printings, decks — card ≠ printing (FR-005e)
 │   ├── loader.py       # Parse, compute revision hash
-│   └── validation.py   # Referential integrity; collects ALL errors (FR-005d)
+│   ├── validation.py   # Referential integrity; collects ALL errors (FR-005d)
+│   └── printings.py    # Preferred-printing resolution + deterministic stand-ins
 ├── assets/             # Storage adapter — the seam Principle III requires
 │   ├── store.py        # Protocol: exists(ref) / open(ref) / describe(ref)
 │   └── local_dir.py    # The only implementation today; read-only

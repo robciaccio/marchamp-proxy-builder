@@ -20,28 +20,66 @@ and is editable without rebuilding the application (SC-009).
 first-error-and-stop:
 
 1. File parses and `schema_version` is known.
-2. Every `Card.id` is unique.
-3. Every `Card.image` resolves to a file present in the configured directory.
-4. Every `CardEntry.card_id` in every deck refers to an existing card.
-5. Every `CardEntry.quantity` is ≥ 1.
-6. No two cards reference the same image file (warning, not error — usually a copy-paste
-   mistake, occasionally deliberate).
-7. Unreferenced files in the image directory are ignored silently; an extra file is not a
-   fault.
+2. Every `Card.id` and every `Printing.id` is unique.
+3. Every card has at least one printing.
+4. Every `Printing.image` resolves to a file present in the configured directory.
+5. Every card marked `double_sided` has `image_back` on each of its printings, and every
+   card *not* so marked has none — a stray back is a modelling mistake worth catching.
+6. Every `CardEntry.card_id` refers to an existing card.
+7. Every `CardEntry.preferred_printing_id` refers to a printing **of that same card**.
+8. Every `CardEntry.quantity` is ≥ 1.
+9. No two printings reference the same image file (warning, not error — usually a
+   copy-paste mistake, occasionally deliberate).
+10. Unreferenced files in the image directory are ignored silently; an extra file is not a
+    fault.
+
+A missing *image file* for one printing is **not** a validation error when the card has
+another usable printing — it becomes a stand-in at generation time (FR-005g). It is an error
+only when no printing of that card is usable.
 
 Validation runs at load. A catalog that fails does not become live, and the application
 serves an actionable error rather than operating on a partial understanding of it.
 
 ## Card
 
+One title with one set of rules. **Not** an image — see Printing.
+
 | Field | Type | Rules |
 |---|---|---|
 | `id` | string | Required, unique, stable. Independent of filename (FR-005b) so re-scanning or renaming does not change identity. |
 | `name` | string | Required. Display and error messages — this is what a user sees named in a failure (FR-020). |
+| `double_sided` | boolean | Default false. When true the card contributes **two** faces (FR-012a). |
+| `printings` | Printing[] | Required, at least one. |
+
+## Printing
+
+One published version of a card's artwork, from one pack. The card/printing split exists
+because the same card is republished with pack-appropriate art, and a deck should print with
+its own pack's version (FR-005e).
+
+| Field | Type | Rules |
+|---|---|---|
+| `id` | string | Required, unique across the catalog. |
+| `pack` | string | Required. Which pack published this artwork. |
+| `number` | string | Optional, informational only. **Pack-scoped, never an identifier** — Make the Call is 16 in the Captain America pack and 71 in the Core Set. |
 | `image` | string | Required. Explicit relative path within the image directory. Never inferred from name, position, or folder layout (FR-005a). |
+| `image_back` | string | Required **only** when the card is double-sided; the second face. |
 
 Path values are constrained to the configured directory: no absolute paths and no `..`
 traversal. The catalog is authored data, but it is data, and it is validated like data.
+
+### Printing resolution
+
+For each deck entry, in order:
+
+1. Use the entry's `preferred_printing_id` if its image file is present and usable.
+2. Otherwise use another printing of the same card whose image is usable — a **stand-in**.
+   Selection is deterministic (FR-005j): order printings by `id` and take the first usable
+   one, never by directory order or hash iteration.
+3. If no printing is usable, **fail** naming the card (FR-005i, FR-020).
+
+Every stand-in used in step 2 is recorded and surfaced before printing (FR-005h). Falling
+back is not the same as substituting a placeholder, which stays prohibited.
 
 ## Hero Deck
 
@@ -60,7 +98,8 @@ Composition is the full published pre-built player deck — hero, signature, and
 | Field | Type | Rules |
 |---|---|---|
 | `card_id` | string | Required. Must exist in `cards`. |
-| `quantity` | integer | Required, ≥ 1. Each copy prints as its own card face (FR-007). |
+| `preferred_printing_id` | string | Required. Must be a printing *of that card* — a printing belonging to another card is a validation error, not a stand-in. |
+| `quantity` | integer | Required, ≥ 1. Each copy prints as its own card face (FR-007), or two faces if the card is double-sided. |
 
 ## Card Image Asset
 
@@ -109,7 +148,10 @@ modes are exercised by real data — none is a theoretical branch:
 | Entity | Fields | Rules |
 |---|---|---|
 | `Page` | `index`, `slots[]` | Ordered. The last page is partially filled with no placeholder outlines (US1 scenario 4). |
-| `Slot` | `row`, `col`, `origin_mm`, `card_id` | Position derived from grid and margins; independent of which card occupies it. |
+| `Slot` | `row`, `col`, `origin_mm`, `card_id`, `printing_id`, `side` | Position derived from grid and margins, independent of occupant. `side` is `front` or `back`; a double-sided card occupies two slots, which MUST be adjacent in order (FR-012b). |
+
+Face count is the sum over entries of `quantity × (2 if double_sided else 1)` — 42 for a
+40-card deck plus a double-sided hero, not 41 (FR-012c).
 
 ## Generation Request
 
