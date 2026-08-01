@@ -83,9 +83,17 @@ looking at it:
 uv run pytest tests/integration/test_print_geometry.py -v
 ```
 
-**Expect**: MediaBox equals the selected page size in points (Letter = 612 × 792 pt); each
-placed card measures 63.5 × 88.9 mm within ±0.5 mm; nine cards per full page in a 3 × 3
-grid; no cut guide overlaps a card face.
+**Expect**: MediaBox equals the selected page size in points, portrait (Letter =
+612 × 792 pt); every **slot** measures 63.5 × 88.9 mm within ±0.5 mm; nine slots per full
+page in a 3 × 3 grid, centred; no cut guide enters a slot.
+
+Printed **face** size depends on the fit mode, and the assertions differ accordingly:
+
+| Mode | Expected face | Also assert |
+|---|---|---|
+| `CROP` | 63.5 × 88.9 mm ±0.5 | Fills the slot; overflow trimmed equally top and bottom |
+| `FIT` | 61.8 × 88.9 mm ±0.5 | Neither dimension exceeds the slot; unused area blank, no frame |
+| `STRETCH` | 63.5 × 88.9 mm ±0.5 | Fills the slot; nothing trimmed |
 
 Then the physical check that no test can perform — print page 1 at **100% scale with page
 scaling off** and measure a card with a ruler.
@@ -116,6 +124,42 @@ done
 Sleeve one card from each in front of a real card before deciding. **When a winner emerges,
 make it the default and reconsider removing the others** — this toggle exists to answer a
 question, not to persist.
+
+### V4c — Pack art preferred, stand-ins reported (FR-005f–j, SC-012)
+
+The Captain America pack folder is missing six cards that exist in the Core Set under
+different numbers, so this path is exercised by the very first real deck.
+
+```bash
+curl -s http://127.0.0.1:8765/api/generations/$GEN | jq '.substitutions'
+```
+
+**Expect**: with complete pack art, `[]`. With the six Core Set stand-ins in place, six
+entries naming each card, the pack whose art was wanted, and the pack used instead — visible
+*before* downloading, not afterwards in a log.
+
+Then confirm determinism survives it (FR-005j): regenerate and diff. A card with several
+available stand-ins must pick the same one every time.
+
+```bash
+uv run pytest tests/integration/test_printing_fallback.py -v
+```
+
+**Expect**: preferred printing wins when present; a deterministic stand-in when absent; a
+**failure naming the card** when no printing of it is usable — falling back covers missing
+art, never a missing card.
+
+### V4d — Double-sided hero yields two faces (FR-012a–c, SC-013)
+
+```bash
+curl -s http://127.0.0.1:8765/api/decks/captain-america | jq '.card_count'
+```
+
+**Expect**: **42**, not 41 — 40 single-sided player cards plus a double-sided hero counting
+twice. The hero and alter-ego faces appear in adjacent slots.
+
+Physically: cut both faces, sleeve them back-to-back around one dummy card, and confirm the
+card flips in play like the real one, with each side showing outward.
 
 ### V5 — Preview matches the PDF exactly (FR-017, SC-005)
 

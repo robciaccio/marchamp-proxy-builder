@@ -37,8 +37,9 @@ pixel-level verification of rendered pages
 
 **Project Type**: Local web application (single deployable, browser front end)
 
-**Performance Goals**: 95% of deck generations (~41 cards) complete within 30 s (SC-007);
-preview first page visible within 5 s of confirmation
+**Performance Goals**: SC-007 (95% of ~41-card decks within 30 s) and SC-007a (first preview
+page within 5 s). Hard ceilings are FR-0A4's, not goals: 10 s / 512 MB / 80 MP per image,
+200 faces and 120 s per generation — exceeding one fails the generation.
 
 **Constraints**: Fully offline — no outbound network calls; card faces at ≥300 DPI at final
 print size with no upscaling; byte-identical output for identical inputs; bind loopback only
@@ -50,7 +51,7 @@ cards and tens of decks. Roughly 40–50 cards per deck, 5–6 pages per PDF.
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-Evaluated against constitution **v1.1.0**.
+Evaluated against constitution **v1.2.0**.
 
 | Gate | Status | How this design satisfies it |
 |---|---|---|
@@ -67,11 +68,12 @@ Evaluated against constitution **v1.1.0**.
 | **Security — supply chain** | PASS | Lockfile committed, CI installs frozen. This feature introduces no new GitHub Actions. |
 | **Account controls** | N/A | Local-only, no accounts. The constitution's deferred account section stays deferred. |
 
-**Constitution amendment required before merge**: this plan resolves `TODO(TECH_STACK)`.
-That is a **MINOR** amendment (v1.1.0 → v1.2.0) recording Python, FastAPI, ReportLab,
-Pillow, and pypdfium2 in the Asset Pipeline section. Per the constitution's own rule, that
-amendment PR must change nothing else. `TODO(ASSET_TARGET)` stays open — a local directory
-is this feature's answer, not the durable object store the constitution anticipates.
+**Constitution amendment: done.** This plan resolved `TODO(TECH_STACK)`, and the
+constitution was amended to **v1.2.0** in its own PR recording Python, FastAPI, ReportLab,
+Pillow, and pypdfium2 — with ReportLab's reproducible-output mode and pypdfium2's permissive
+licence noted as load-bearing rather than matters of taste. `TODO(ASSET_TARGET)` stays open:
+a local directory is this feature's answer, not the durable object store the constitution
+anticipates.
 
 ## Project Structure
 
@@ -86,7 +88,9 @@ specs/001-hero-deck-pdf-wizard/
 ├── contracts/           # Phase 1 output
 │   └── openapi.yaml
 ├── checklists/
-│   └── requirements.md
+│   ├── requirements.md  # Spec-quality gate from /speckit-specify
+│   ├── correctness.md   # Print, catalog, failure semantics — 38/38 resolved
+│   └── coherence.md     # Cross-artifact, UX flow, non-functional — 32/32 resolved
 └── tasks.md             # Created by /speckit-tasks, not here
 ```
 
@@ -95,14 +99,15 @@ specs/001-hero-deck-pdf-wizard/
 ```text
 src/marchamp/
 ├── catalog/            # Load + validate the content catalog
-│   ├── models.py       # Pydantic schema for cards, decks, image mapping
+│   ├── models.py       # Cards, printings, decks — card ≠ printing (FR-005e)
 │   ├── loader.py       # Parse, compute revision hash
-│   └── validation.py   # Referential integrity; collects ALL errors (FR-005d)
+│   ├── validation.py   # Referential integrity; collects ALL errors (FR-005d)
+│   └── printings.py    # Preferred-printing resolution + deterministic stand-ins
 ├── assets/             # Storage adapter — the seam Principle III requires
 │   ├── store.py        # Protocol: exists(ref) / open(ref) / describe(ref)
 │   └── local_dir.py    # The only implementation today; read-only
 ├── layout/             # Print geometry. Pure functions, no I/O.
-│   ├── geometry.py     # mm↔pt, card box, grid, margins, cut guides
+│   ├── geometry.py     # mm↔pt, slot size, grid, margins, cut guides
 │   └── paginate.py     # Ordered card list → pages of positioned slots
 ├── render/
 │   ├── images.py       # Decode, validate, fit — runs in worker process
@@ -140,6 +145,41 @@ that matters at this scale.
 | Worker-process isolation for image decode | The constitution mandates isolated parsing under hard limits, and image decoders are the most CVE-dense dependency here. The TIFFs are third-party files, not the user's own work. | Decoding inline in the request process was rejected: a malformed TIFF takes down the app, and a decompression bomb exhausts the machine, with no memory ceiling available in-process. |
 | Rasterising the actual PDF for preview | FR-017 requires the preview to match the PDF exactly, and SC-005 sets that at 100%. | Rendering the preview from the layout model was rejected: it creates a second rendering path that can silently disagree with the PDF, which is exactly the defect the requirement exists to prevent. |
 | Three selectable fit modes (FR-009b) instead of one default | Source scans are 2.7% taller in proportion than a standard card. Each candidate policy breaks a different requirement, and which looks acceptable is a physical question answerable only from printed output. This is a live experiment, not speculative configurability. | Picking one policy up front was rejected because there is no evidence to pick on — the decision would be a guess that costs a full print run to discover was wrong. **This exception is time-limited:** once printed evidence names a winner it becomes the default and the others are reconsidered for removal. |
+
+## Artifact Update Rule
+
+Requirements-quality passes found spec-to-artifact drift twice — page size and `failures[]`
+in the first pass, four more in the second. The drift was not carelessness in any single
+edit; it was the absence of a stated expectation about what moves together. So:
+
+**A change to a functional requirement is not complete until every artifact it touches has
+been updated in the same commit.** Concretely:
+
+| If you change… | Also check |
+|---|---|
+| A requirement with a numeric limit | data-model.md (does it constrain the model?), this plan's Technical Context |
+| Anything the API exposes or returns | contracts/openapi.yaml, and the quickstart scenario that exercises it |
+| A recorded or logged field | data-model.md § Generation Record |
+| A print-geometry rule | data-model.md § Print Layout, quickstart § V4 |
+| A performance target | this plan's Performance Goals — targets belong in the spec as SC items, and the plan references them rather than inventing its own |
+
+This is a feature-local rule for now. If it holds up, it belongs in the constitution's
+Development Workflow section as a MINOR amendment.
+
+## Requirement-to-Module Traceability
+
+| Module | Requirements |
+|---|---|
+| `catalog/` | FR-004, FR-005, FR-005a–d, FR-005b1, FR-005c1–c3 |
+| `assets/` | FR-019, FR-019a–d |
+| `layout/` | FR-008a–c, FR-009, FR-009a–d, FR-011, FR-012, FR-013 |
+| `render/images.py` | FR-009b1, FR-009b2, FR-010, FR-014, FR-0A4 |
+| `render/document.py` | FR-008, FR-015, FR-015a |
+| `render/preview.py` | FR-016, FR-016a–d, FR-017 |
+| `render/calibration.py` | FR-023 |
+| `api/` | FR-001–003, FR-003a–g, FR-018, FR-020, FR-020a–b, FR-021, FR-021a–b |
+| `observability/` | FR-022, FR-022a–b |
+| `api/app.py` | FR-0A1, FR-0A2, FR-0A3 |
 
 ## Post-Design Constitution Re-Check
 
