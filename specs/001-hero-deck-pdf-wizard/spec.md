@@ -338,7 +338,9 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 **Calibration** *(supports User Story 3)*
 
 - **FR-023**: System MUST offer a single-page calibration PDF containing a measurable
-  printed ruler and one card outline at the exact target print size.
+  printed ruler and one card outline at the exact slot size of 63.5 × 88.9 mm. The outline
+  is the slot, not a fit-mode face, so a real card laid over it should match on all four
+  sides regardless of which fit mode a deck is later generated with.
 
 ### Key Entities
 
