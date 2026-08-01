@@ -168,7 +168,14 @@ paths:
         - $ref: "#/components/parameters/GenerationId"
       responses:
         "200":
-          description: The PDF.
+          description: |
+            The PDF. Content-Disposition names the deck, fit mode, and page size (FR-008c),
+            so sheets printed from different settings stay distinguishable after the
+            application closes.
+          headers:
+            Content-Disposition:
+              schema: { type: string }
+              description: 'e.g. attachment; filename="captain-america-CROP-LETTER.pdf"'
           content:
             application/pdf:
               schema: { type: string, format: binary }
@@ -363,7 +370,23 @@ components:
         status:
           type: string
           enum: [pending, running, succeeded, failed]
-          description: No `partial` state — a failure yields no document at all.
+          description: |
+            No `partial` state — a failure yields no document at all (FR-020b).
+            Generations live only as long as the process; they are not durable across a
+            restart (FR-021b).
+        progress:
+          type: [number, "null"]
+          description: |
+            Fraction of the work completed, 0.0-1.0, while `running`. Required because
+            FR-0A4 permits a generation to run for up to 120 s, and FR-016a forbids an
+            interface that looks frozen for that long.
+          minimum: 0
+          maximum: 1
+        pages_ready:
+          type: [integer, "null"]
+          description: |
+            Preview pages viewable so far. Pages become available progressively rather than
+            only when every page is done (FR-016b).
         page_count: { type: [integer, "null"] }
         card_count: { type: [integer, "null"] }
         failures:
