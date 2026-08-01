@@ -1,12 +1,18 @@
 <!--
 Sync Impact Report
 ==================
-Version change: 1.0.0 → 1.1.0
-Rationale: MINOR. Adds a Security section and extends the merge gates. No existing
-principle is removed or redefined, so previously compliant work remains compliant —
-but new work must now clear gates that did not exist before.
+Version change: 1.1.0 → 1.2.0
+Rationale: MINOR. Records the technology stack, resolving TODO(TECH_STACK), and materially
+expands the Technology paragraph with the constraints two of those choices carry. No
+principle is removed or redefined; no previously compliant work becomes non-compliant.
 
-Prior entry (1.0.0, initial ratification) retained below for history.
+Resolved: TODO(TECH_STACK) — Python 3.13, FastAPI, ReportLab, Pillow, pypdfium2, Pydantic.
+  Selected in specs/001-hero-deck-pdf-wizard/research.md against specific requirements
+  rather than preference; see that document for alternatives considered.
+Still open: TODO(ASSET_TARGET) — the durable object store remains unchosen. Feature 001
+  reads from a local directory, which is that feature's answer, not this one's.
+
+Prior entries (1.1.0 security baseline; 1.0.0 initial ratification) retained below.
 
 Modified principles:
   [PRINCIPLE_1_NAME] → I. Test-First (NON-NEGOTIABLE)
@@ -48,8 +54,7 @@ Changes from the uncommitted 1.0.0 draft:
     content correctness is enforced by validation at ingest.
 
 Deferred items:
-  TODO(TECH_STACK): Language, web framework, and PDF/imaging library undecided.
-    Resolve in the first /speckit-plan; amend as a MINOR bump once chosen.
+  (TODO(TECH_STACK) resolved in 1.2.0 — see the Resolved note above.)
   TODO(PRINT_SPEC): Carry these into the feature spec, not this document —
     card size 63.5 mm x 88.9 mm (2.5 in x 3.5 in) measured on the printed page;
     9-up (3x3) layout fitting US Letter and A4 without scaling; minimum 300 DPI at
@@ -195,10 +200,22 @@ personal play. The project MUST NOT redistribute the card image library and MUST
 bundle card artwork into the deployed application or the repository. Access to source
 assets is the operator's own.
 
-**Technology.** TODO(TECH_STACK): Language, web framework, and PDF/imaging library are
-not yet chosen. The choice MUST be recorded in the first implementation plan and this
-section amended accordingly. Until then, no code may assume a stack that has not been
-written down here.
+**Technology.** The stack is **Python 3.13**, with **FastAPI** for the HTTP interface,
+**ReportLab** for PDF composition, **Pillow** for image decoding, **pypdfium2** for
+rasterising PDFs, and **Pydantic** for schema validation. Code MUST NOT assume any other
+stack, and adding a component of comparable weight requires amending this section.
+
+Two of those choices are load-bearing for principles in this document rather than matters of
+taste, and MUST NOT be swapped without re-establishing what they provide:
+
+- **ReportLab** is used specifically for its documented reproducible-output mode. Principle
+  V's byte-identical requirement rests on it; a PDF writer without an equivalent guarantee
+  would make that principle unenforceable rather than merely inconvenient.
+- **pypdfium2** is used for rasterisation under a permissive licence. The faster alternative
+  is AGPL, which would impose obligations disproportionate to this project.
+
+Dependency versions MUST be pinned in a committed lockfile, and CI MUST install frozen — a
+build that would alter the lockfile MUST fail rather than update it silently.
 
 ## Security
 
@@ -421,4 +438,4 @@ MUST NOT be suspended for expedience — the correct response to a blocking
 NON-NEGOTIABLE principle is to amend this constitution deliberately, or to change the
 work.
 
-**Version**: 1.1.0 | **Ratified**: 2026-07-31 | **Last Amended**: 2026-07-31
+**Version**: 1.2.0 | **Ratified**: 2026-07-31 | **Last Amended**: 2026-07-31
