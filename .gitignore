@@ -2,8 +2,11 @@
 # This file is the safety net; review is the control.
 
 # Source card assets (external — Drive today, object store later)
+# card_directory/ is ignored wholesale, not just by extension: the extension rules
+# below would still let a stray .json, .DS_Store, or .png slip into a commit.
 assets/
 cards/
+card_directory/
 *.tif
 *.tiff
 *.psd
