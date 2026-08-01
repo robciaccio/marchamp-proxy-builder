@@ -39,6 +39,11 @@ extend-exclude = [".specify"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
+[tool.ruff.lint.isort]
+# Declared explicitly: inferring first-party from `src` depends on whether the package
+# happens to be installed in the environment, which made lint pass locally and fail in CI.
+known-first-party = ["marchamp", "tests"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
