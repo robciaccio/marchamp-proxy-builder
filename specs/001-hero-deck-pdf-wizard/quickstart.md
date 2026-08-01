@@ -1,0 +1,195 @@
+# Quickstart & Validation: Hero Deck PDF Wizard
+
+How to run the feature and prove it works. Scenarios map to acceptance criteria in
+[spec.md](./spec.md); entity and endpoint detail lives in [data-model.md](./data-model.md)
+and [contracts/openapi.yaml](./contracts/openapi.yaml) rather than being repeated here.
+
+## Prerequisites
+
+1. **Python 3.13** and [uv](https://docs.astral.sh/uv/).
+2. **A local card image directory.** Sync or download the Drive folder of TIFFs first. The
+   application never fetches these itself (FR-019).
+3. **A content catalog file** mapping cards and decks to image filenames. Authoring it is
+   outside this feature's scope.
+
+### Verify source resolution before anything else
+
+FR-010 requires ≥300 DPI at final print size — **at least 750 × 1050 px** per card at
+63.5 × 88.9 mm. If the scans fall short, the requirement fails and either the DPI floor or
+the card size has to change. This is a spec decision, so find out before writing render
+code:
+
+```bash
+sips -g pixelWidth -g pixelHeight -g dpiWidth "/path/to/images/some-card.tif"
+```
+
+Check a handful across different packs, not just one.
+
+## Setup
+
+```bash
+uv sync --locked          # frozen install; a build that would alter the lockfile must fail
+
+export MARCHAMP_IMAGE_DIR="$HOME/path/to/card-images"
+export MARCHAMP_CATALOG="$HOME/path/to/catalog.json"
+
+uv run marchamp serve     # binds 127.0.0.1:8765
+```
+
+Open <http://127.0.0.1:8765>.
+
+## Validation scenarios
+
+### V1 — Catalog validation reports everything at once (FR-005c, FR-005d, SC-010)
+
+```bash
+curl -s http://127.0.0.1:8765/api/catalog/validation | jq
+```
+
+**Expect**: `valid: true` for a good catalog. For a broken one, `valid: false` with *every*
+problem listed — a missing image file, an unknown card reference, and a bad quantity all
+appear together, each naming the offending card or deck. Stopping at the first error is a
+failure of this scenario.
+
+### V2 — Deck list comes from the catalog, not the code (FR-001, FR-004, SC-009)
+
+```bash
+curl -s http://127.0.0.1:8765/api/decks | jq '.decks[] | {id, name, card_count}'
+```
+
+**Expect**: every deck in the catalog. Now add a deck to the catalog file, restart, and
+re-run — it appears with no rebuild and no reinstall.
+
+### V3 — Generate a deck end to end (US1, FR-008)
+
+```bash
+GEN=$(curl -s -X POST http://127.0.0.1:8765/api/generations \
+        -H 'content-type: application/json' \
+        -d '{"deck_id":"captain-america","page_size":"LETTER"}' | jq -r .id)
+
+curl -s http://127.0.0.1:8765/api/generations/$GEN | jq '{status, page_count, card_count}'
+curl -s -o deck.pdf http://127.0.0.1:8765/api/generations/$GEN/document
+```
+
+**Expect**: status reaches `succeeded`; `card_count` counts quantities, not distinct cards;
+`page_count` is `ceil(card_count / 9)`; `deck.pdf` opens.
+
+### V4 — Printed geometry is correct (FR-009, FR-011, SC-003)
+
+Automated check on the PDF itself, which is what the constitution requires instead of
+looking at it:
+
+```bash
+uv run pytest tests/integration/test_print_geometry.py -v
+```
+
+**Expect**: MediaBox equals the selected page size in points (Letter = 612 × 792 pt); each
+placed card measures 63.5 × 88.9 mm within ±0.5 mm; nine cards per full page in a 3 × 3
+grid; no cut guide overlaps a card face.
+
+Then the physical check that no test can perform — print page 1 at **100% scale with page
+scaling off** and measure a card with a ruler.
+
+### V4b — Compare fit modes on paper (FR-009b, SC-009a)
+
+The scans are 2.7% taller in proportion than a standard card, and which compromise looks
+right cannot be judged on screen. Generate all three and print one page of each:
+
+```bash
+for MODE in CROP FIT STRETCH; do
+  ID=$(curl -s -X POST http://127.0.0.1:8765/api/generations \
+        -H 'content-type: application/json' \
+        -d "{\"deck_id\":\"captain-america\",\"fit_mode\":\"$MODE\"}" | jq -r .id)
+  curl -s -o "deck-$MODE.pdf" "http://127.0.0.1:8765/api/generations/$ID/document"
+  echo "$MODE -> deck-$MODE.pdf"
+done
+```
+
+**Expect**, measuring page 1 of each after printing at 100%:
+
+| Mode | Card face | Look for |
+|---|---|---|
+| `CROP` | 63.5 × 88.9 mm | Is anything important lost at the top or bottom edge? |
+| `FIT` | 61.8 × 88.9 mm | Does the backing card showing at the sides bother you? |
+| `STRETCH` | 63.5 × 88.9 mm | Can you actually see the 2.7% squash? |
+
+Sleeve one card from each in front of a real card before deciding. **When a winner emerges,
+make it the default and reconsider removing the others** — this toggle exists to answer a
+question, not to persist.
+
+### V5 — Preview matches the PDF exactly (FR-017, SC-005)
+
+```bash
+curl -s -o page1.png "http://127.0.0.1:8765/api/generations/$GEN/pages/1?width=800"
+```
+
+**Expect**: page count from the preview endpoint equals the PDF's; card order and position
+match page for page. They are rasterised from the same bytes, so a mismatch means a real
+defect, not a rendering difference.
+
+### V6 — Byte-identical regeneration (FR-015, SC-006)
+
+```bash
+uv run pytest tests/integration/test_determinism.py -v
+```
+
+**Expect**: the same deck at the same catalog revision produces identical bytes, both
+within one process and across two — the cross-process run is what catches hash-ordering
+effects.
+
+### V7 — Works with no network (FR-019a, SC-001b)
+
+Turn networking off entirely, then re-run V3.
+
+**Expect**: full success. Any failure here means something is reaching out that should not
+be.
+
+### V8 — Failures name the specific card (FR-020, FR-021, SC-008)
+
+Temporarily rename one image file referenced by the deck, then re-run V3.
+
+**Expect**: status `failed`; `failure.card_name` names the card; `failure.kind` is
+`asset_missing`; `retryable` is `false`; **no document is downloadable**. A partial PDF, a
+placeholder card, or a generic error each fail this scenario.
+
+For the retryable case, point `MARCHAMP_IMAGE_DIR` at a cloud-sync folder whose files are
+placeholders not yet materialised: expect `asset_unreadable` with `retryable: true`.
+
+### V9 — Not reachable from another machine (FR-0A2, SC-001a)
+
+From a second device on the same network:
+
+```bash
+curl -m 5 http://<this-machine-ip>:8765/api/health
+```
+
+**Expect**: connection refused or timeout. A response is a defect — the service must bind
+loopback, not depend on a firewall.
+
+### V10 — Calibration page (US3, FR-023)
+
+```bash
+curl -s -o calibration.pdf http://127.0.0.1:8765/api/calibration
+```
+
+**Expect**: printed at 100%, the ruler measures true within ±0.5 mm and a real Marvel
+Champions card laid over the outline matches within ±0.5 mm on all four sides. Print this
+*before* a full deck.
+
+### V11 — Live API matches the contract (Principle II)
+
+```bash
+uv run pytest tests/contract/ -v
+```
+
+**Expect**: the running service's generated OpenAPI matches
+[contracts/openapi.yaml](./contracts/openapi.yaml). This test failing means the contract
+drifted and one of the two must be corrected — it is a required merge gate.
+
+## Full gate before opening a PR
+
+```bash
+uv run pytest                        # all tests, including geometry and determinism
+uv run ruff check . && uv run ruff format --check .
+gitleaks git . --redact -v --log-opts="--all"
+```
