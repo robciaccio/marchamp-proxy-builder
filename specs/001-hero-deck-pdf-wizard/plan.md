@@ -51,7 +51,7 @@ cards and tens of decks. Roughly 40–50 cards per deck, 5–6 pages per PDF.
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-Evaluated against constitution **v1.1.0**.
+Evaluated against constitution **v1.2.0**.
 
 | Gate | Status | How this design satisfies it |
 |---|---|---|
@@ -68,11 +68,12 @@ Evaluated against constitution **v1.1.0**.
 | **Security — supply chain** | PASS | Lockfile committed, CI installs frozen. This feature introduces no new GitHub Actions. |
 | **Account controls** | N/A | Local-only, no accounts. The constitution's deferred account section stays deferred. |
 
-**Constitution amendment required before merge**: this plan resolves `TODO(TECH_STACK)`.
-That is a **MINOR** amendment (v1.1.0 → v1.2.0) recording Python, FastAPI, ReportLab,
-Pillow, and pypdfium2 in the Asset Pipeline section. Per the constitution's own rule, that
-amendment PR must change nothing else. `TODO(ASSET_TARGET)` stays open — a local directory
-is this feature's answer, not the durable object store the constitution anticipates.
+**Constitution amendment: done.** This plan resolved `TODO(TECH_STACK)`, and the
+constitution was amended to **v1.2.0** in its own PR recording Python, FastAPI, ReportLab,
+Pillow, and pypdfium2 — with ReportLab's reproducible-output mode and pypdfium2's permissive
+licence noted as load-bearing rather than matters of taste. `TODO(ASSET_TARGET)` stays open:
+a local directory is this feature's answer, not the durable object store the constitution
+anticipates.
 
 ## Project Structure
 
@@ -87,7 +88,9 @@ specs/001-hero-deck-pdf-wizard/
 ├── contracts/           # Phase 1 output
 │   └── openapi.yaml
 ├── checklists/
-│   └── requirements.md
+│   ├── requirements.md  # Spec-quality gate from /speckit-specify
+│   ├── correctness.md   # Print, catalog, failure semantics — 38/38 resolved
+│   └── coherence.md     # Cross-artifact, UX flow, non-functional — 32/32 resolved
 └── tasks.md             # Created by /speckit-tasks, not here
 ```
 

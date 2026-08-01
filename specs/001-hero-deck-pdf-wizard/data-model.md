@@ -113,9 +113,10 @@ Not authored — the runtime view of a file, produced by the asset store.
 
 **Rules**: content-sniffed, never trusted by extension or declared MIME. Rejected if it
 exceeds the byte or pixel ceiling. Rejected if below the resolution FR-010 requires at final
-print size (**750 × 1050 px** at 63.5 × 88.9 mm and 300 DPI). Aspect ratio departing from
-the standard card is fitted without distortion and reported, never silently cropped
-(FR-014). Read-only — the application never writes to this directory (FR-019c).
+print size (**750 × 1050 px** at 63.5 × 88.9 mm and 300 DPI), measured over the region
+actually printed. Aspect ratio departing from the slot is handled by the selected fit mode
+(FR-009b) — the normal case for these scans, not an exception. Read-only — the application
+never writes to this directory (FR-019c).
 
 ## Print Layout
 
