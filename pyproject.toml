@@ -21,6 +21,9 @@ dev = [
     "pypdf>=5.1",
     "ruff>=0.8",
     "httpx>=0.28",
+    # Reads contracts/openapi.yaml in the contract test. Dev-only on purpose: the service
+    # never parses YAML at runtime.
+    "pyyaml>=6.0",
 ]
 
 [build-system]

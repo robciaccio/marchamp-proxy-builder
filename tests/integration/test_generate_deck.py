@@ -62,8 +62,9 @@ def test_pdf_geometry_is_correct_for_every_mode(service, page_size, fit_mode):
     gen = _pdf(service, page_size=page_size, fit_mode=fit_mode)
     reader = PdfReader(__import__("io").BytesIO(gen.document))
     box = reader.pages[0].mediabox
-    assert float(box.width) == pytest.approx(page_size.value[0] * PT_PER_MM, abs=TOL_PT)
-    assert float(box.height) == pytest.approx(page_size.value[1] * PT_PER_MM, abs=TOL_PT)
+    w_mm, h_mm = page_size.dimensions_mm
+    assert float(box.width) == pytest.approx(w_mm * PT_PER_MM, abs=TOL_PT)
+    assert float(box.height) == pytest.approx(h_mm * PT_PER_MM, abs=TOL_PT)
     assert float(box.height) > float(box.width)  # portrait, FR-008b
 
 

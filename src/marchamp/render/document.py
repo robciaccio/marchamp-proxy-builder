@@ -8,6 +8,7 @@ byte-identical requirement a test that passes or fails rather than an aspiration
 from __future__ import annotations
 
 import io
+from collections.abc import Callable
 from pathlib import Path
 
 from PIL import Image
@@ -16,11 +17,17 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 from marchamp.layout.geometry import PageLayout, cut_guides, mm_to_pt, page_layout
-from marchamp.layout.paginate import Page
+from marchamp.layout.paginate import Page, PlacedFace
 from marchamp.render.images import FitMode, fit_rect
 
 GUIDE_COLOUR = Color(0.45, 0.45, 0.45)
 GUIDE_WIDTH_PT = 0.35
+
+# One decoded, fit-mode-cropped face and the slot it belongs in.
+Prepared = tuple[Image.Image, object, PlacedFace]
+
+#: Called with (page index, that page alone as a standalone PDF) as each page completes.
+OnPage = Callable[[int, bytes], None]
 
 
 def _prepare(path: Path, fit: FitMode, slot_w: float, slot_h: float) -> tuple[Image.Image, object]:
@@ -56,14 +63,7 @@ def _draw_guides(c: canvas.Canvas, layout: PageLayout) -> None:
         c.line(mm_to_pt(x1), mm_to_pt(y1), mm_to_pt(x2), mm_to_pt(y2))
 
 
-def compose(
-    pages: list[Page],
-    page_size,
-    fit_mode: FitMode,
-    image_dir: Path,
-) -> bytes:
-    layout = page_layout(page_size)
-    buf = io.BytesIO()
+def _new_canvas(buf: io.BytesIO, layout: PageLayout) -> canvas.Canvas:
     c = canvas.Canvas(
         buf,
         pagesize=(mm_to_pt(layout.page_w_mm), mm_to_pt(layout.page_h_mm)),
@@ -71,25 +71,72 @@ def compose(
         pageCompression=1,
     )
     c.setTitle("Marchamp proxy sheet")
+    return c
+
+
+def _draw_page(c: canvas.Canvas, layout: PageLayout, prepared: list[Prepared]) -> None:
+    for img, rect, placed in prepared:
+        # PDF origin is bottom-left; slots are indexed from the top.
+        x_mm = placed.slot.x_mm + rect.offset_x_mm
+        y_from_top = placed.slot.y_mm + rect.offset_y_mm
+        y_mm = layout.page_h_mm - y_from_top - rect.draw_h_mm
+        c.drawImage(
+            ImageReader(img),
+            mm_to_pt(x_mm),
+            mm_to_pt(y_mm),
+            width=mm_to_pt(rect.draw_w_mm),
+            height=mm_to_pt(rect.draw_h_mm),
+        )
+    _draw_guides(c, layout)
+
+
+def _single_page_document(layout: PageLayout, prepared: list[Prepared]) -> bytes:
+    """One page as a standalone PDF, drawn by the same code as the full document.
+
+    This is what lets a preview page appear before the rest of the deck has finished
+    (FR-016b). It reuses the already-decoded images, so it costs an encode rather than a
+    second decode — and, because `_draw_page` is the only placement code either path uses,
+    it cannot disagree with the corresponding page of the full document.
+    """
+    buf = io.BytesIO()
+    c = _new_canvas(buf, layout)
+    _draw_page(c, layout, prepared)
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+def compose(
+    pages: list[Page],
+    page_size,
+    fit_mode: FitMode,
+    image_dir: Path,
+    on_page: OnPage | None = None,
+) -> bytes:
+    """Compose the whole document.
+
+    `on_page` is optional and purely additive: with it omitted, nothing extra is computed
+    and the bytes are identical to a run without it, which is what keeps SC-006's
+    byte-identical guarantee independent of whether anyone is watching a preview.
+    """
+    layout = page_layout(page_size)
+    buf = io.BytesIO()
+    c = _new_canvas(buf, layout)
 
     slot_w, slot_h = layout.slot_size_mm
     for page in pages:
+        prepared: list[Prepared] = []
         for placed in page.placed:
             img, rect = _prepare(image_dir / placed.face.image_ref, fit_mode, slot_w, slot_h)
-            # PDF origin is bottom-left; slots are indexed from the top.
-            x_mm = placed.slot.x_mm + rect.offset_x_mm
-            y_from_top = placed.slot.y_mm + rect.offset_y_mm
-            y_mm = layout.page_h_mm - y_from_top - rect.draw_h_mm
-            c.drawImage(
-                ImageReader(img),
-                mm_to_pt(x_mm),
-                mm_to_pt(y_mm),
-                width=mm_to_pt(rect.draw_w_mm),
-                height=mm_to_pt(rect.draw_h_mm),
-            )
-            img.close()
-        _draw_guides(c, layout)
+            prepared.append((img, rect, placed))
+
+        _draw_page(c, layout, prepared)
         c.showPage()
+
+        if on_page is not None:
+            on_page(page.index, _single_page_document(layout, prepared))
+        for img, _, _ in prepared:
+            img.close()
 
     c.save()
     return buf.getvalue()
