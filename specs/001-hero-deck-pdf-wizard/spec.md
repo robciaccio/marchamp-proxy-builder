@@ -15,6 +15,7 @@
 - Q: Once this site is live, who will be able to reach it and generate PDFs? → A: Local only — runs on the operator's own machine, never hosted. No authentication needed, because there is no remote access to authenticate.
 - Q: How should the application get at the card images — read from a folder on disk, or call Google Drive directly? → A: A local folder on disk. The user syncs or downloads the Drive folder themselves; the application holds no credentials and makes no outbound calls for assets.
 - Q: How should the application work out which image file belongs to which card? → A: A metadata catalog names each card's image file explicitly. Card identity is independent of filename, so the image folder can be renamed or reorganised without breaking decks.
+- Q: Source scans are 2.7% taller in proportion than a standard card. How should the image fill the card? → A: Offer all three fit modes (crop / fit / stretch) as a user-selectable option, so the choice can be made from real printed evidence rather than on screen. Default is crop.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -110,8 +111,9 @@ Value delivered when a mis-scaled printer is detected before the real print run.
   or a partially written file → the user sees an error distinguishing "cannot read this
   file right now" from "this card does not exist".
 - A deck lists the same card multiple times → each copy is printed, in the listed quantity.
-- A source image has a different aspect ratio than a standard card → it is fitted without
-  distortion and the discrepancy is reported rather than silently cropped.
+- A source image has a different aspect ratio than a standard card → it is handled by the
+  selected fit mode (FR-009b). This is the normal case for the current scans, not an
+  exception, so it is not reported per-card; the mode is stated once for the generation.
 - A source image is below the resolution needed for 300 DPI at final size → generation
   fails or warns explicitly; it is never silently upscaled.
 - A deck is large enough to span many pages → pagination continues correctly with no
@@ -190,12 +192,26 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 **Print output**
 
 - **FR-008**: System MUST produce a single PDF containing every card in the resolved deck.
-- **FR-009**: System MUST render every card at **63.5 × 88.9 mm** (2.5 × 3.5 in) — full
-  standard Marvel Champions card size, 100% scale — measured on the printed page, within
-  ±0.5 mm on both axes.
+- **FR-009**: System MUST lay out every card in a slot of **63.5 × 88.9 mm** (2.5 × 3.5 in)
+  — full standard Marvel Champions card size, 100% scale — measured on the printed page,
+  within ±0.5 mm on both axes. A printed card face MUST NOT exceed the slot; it may be
+  smaller only in the `fit` mode described in FR-009b.
 - **FR-009a**: The target card size MUST be expressed as a single configurable value rather
   than distributed through the layout logic, so that changing it is a one-place change when
   beta printing shows an adjustment is needed.
+- **FR-009b**: Because source scans do not share the standard card's proportions, the user
+  MUST be able to choose how a card image fills its slot, per generation:
+  - **`crop`** (default) — fill the slot completely, trimming the overflowing edges
+    symmetrically. Prints at exactly 63.5 × 88.9 mm with no backing card visible.
+  - **`fit`** — scale to fit entirely inside the slot, preserving proportions. Nothing is
+    cropped; the printed face may be narrower or shorter than the slot.
+  - **`stretch`** — scale each axis independently to fill the slot exactly. Nothing is
+    cropped, but the image is distorted.
+- **FR-009c**: The interface MUST state, at the point of choice, what each mode costs —
+  that `crop` discards edges, and that `stretch` distorts the image. A user MUST NOT be able
+  to select distortion without being told it is distortion.
+- **FR-009d**: The chosen mode MUST be recorded with the generation and MUST be reflected in
+  the preview, so that comparing printed results to settings is unambiguous.
 - **FR-010**: System MUST render card faces at an effective resolution of at least 300 DPI
   at final print size, and MUST NOT upscale a source image to reach it.
 - **FR-011**: System MUST lay out cards in a fixed grid that fits both US Letter and A4
@@ -204,8 +220,10 @@ Value delivered when a mis-scaled printer is detected before the real print run.
   pairing, because the physical card behind the proxy supplies the back.
 - **FR-013**: System MUST include cut guides that allow accurate trimming and that do not
   overlap any card face.
-- **FR-014**: System MUST preserve card aspect ratio, never stretching or distorting a card
-  face to fill its slot.
+- **FR-014**: System MUST preserve card aspect ratio in the `crop` and `fit` modes. The
+  `stretch` mode of FR-009b is the sole exception: it MUST be explicitly selected by the
+  user, MUST NOT be the default, and MUST be labelled as distorting wherever it is offered.
+  Distortion MUST NOT occur in any other circumstance.
 - **FR-015**: System MUST produce byte-identical output for the same deck against the same
   content and asset revisions.
 
@@ -286,6 +304,8 @@ Value delivered when a mis-scaled printer is detected before the real print run.
   no failure surfaces as a generic error and none produces a partial PDF.
 - **SC-009**: A new hero deck becomes selectable without rebuilding or reinstalling the
   application — adding it to the catalog and restarting is sufficient.
+- **SC-009a**: The same deck can be generated in all three fit modes and the printed results
+  compared side by side, with each printed sheet identifiable as to which mode produced it.
 - **SC-010**: 100% of catalog problems — a missing image file, an unknown card reference, a
   malformed entry — are caught by validation and reported together with the offending card
   or deck named, before any generation begins.
@@ -320,9 +340,14 @@ Value delivered when a mis-scaled printer is detected before the real print run.
   guessing a reduction up front. The known risk is that a proxy the same size as the card
   behind it fits the sleeve tightly; User Story 3 exists to surface this cheaply, and
   FR-009a keeps the adjustment to a one-place change.
-- A user-selectable or per-deck card size is **out of scope** for this feature and is a
-  candidate follow-up if beta printing shows one size does not suit every sleeve and
-  printer combination.
+- A user-selectable or per-deck card **size** remains out of scope; only the **fit mode**
+  (FR-009b) is selectable.
+- The fit-mode choice exists to settle an open question with printed evidence, not as a
+  permanent preference. Source scans are 2.7% taller in proportion than a standard card, and
+  which compromise looks right cannot be judged on screen. **Once a winner is established
+  it should become the default and the other modes should be reconsidered for removal** —
+  this is a deliberate, time-limited exception to the project's preference for one correct
+  default over a toggle.
 - "Penny sleeve" means a standard trading-card sleeve sized for that card. The printed
   proxy sits in front of a full-size card inside that sleeve.
 - Users print at 100% scale with scaling disabled. The calibration page (User Story 3)

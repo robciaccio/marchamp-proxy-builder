@@ -257,6 +257,24 @@ components:
       default: LETTER
       description: Emitted at the user's real paper size so no printer rescaling is needed.
 
+    FitMode:
+      type: string
+      enum: [CROP, FIT, STRETCH]
+      default: CROP
+      description: |
+        How a card image fills its 63.5 x 88.9 mm slot. Source scans are 2.7% taller in
+        proportion than a standard card, so this is the normal case, not an edge case.
+
+          CROP    - fill the slot, trim ~1.16 mm symmetrically from top and bottom.
+                    Prints at exact standard size with no backing card visible.
+          FIT     - scale to fit inside, preserving proportions. Nothing trimmed;
+                    the printed face is 61.8 x 88.9 mm, narrower than the slot.
+          STRETCH - scale axes independently to fill exactly. Nothing trimmed, but
+                    the image is distorted by 2.7% vertically.
+
+        STRETCH is the only mode permitted to distort, must be explicitly chosen, and is
+        never the default (FR-014). Clients offering it MUST label it as distorting.
+
     Health:
       type: object
       required: [status, catalog_valid]
@@ -331,14 +349,16 @@ components:
       properties:
         deck_id: { type: string }
         page_size: { $ref: "#/components/schemas/PageSize" }
+        fit_mode: { $ref: "#/components/schemas/FitMode" }
 
     Generation:
       type: object
-      required: [id, deck_id, page_size, status, catalog_revision]
+      required: [id, deck_id, page_size, fit_mode, status, catalog_revision]
       properties:
         id: { type: string }
         deck_id: { type: string }
         page_size: { $ref: "#/components/schemas/PageSize" }
+        fit_mode: { $ref: "#/components/schemas/FitMode" }
         catalog_revision: { type: string }
         status:
           type: string

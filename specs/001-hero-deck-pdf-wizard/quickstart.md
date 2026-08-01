@@ -90,6 +90,33 @@ grid; no cut guide overlaps a card face.
 Then the physical check that no test can perform — print page 1 at **100% scale with page
 scaling off** and measure a card with a ruler.
 
+### V4b — Compare fit modes on paper (FR-009b, SC-009a)
+
+The scans are 2.7% taller in proportion than a standard card, and which compromise looks
+right cannot be judged on screen. Generate all three and print one page of each:
+
+```bash
+for MODE in CROP FIT STRETCH; do
+  ID=$(curl -s -X POST http://127.0.0.1:8765/api/generations \
+        -H 'content-type: application/json' \
+        -d "{\"deck_id\":\"captain-america\",\"fit_mode\":\"$MODE\"}" | jq -r .id)
+  curl -s -o "deck-$MODE.pdf" "http://127.0.0.1:8765/api/generations/$ID/document"
+  echo "$MODE -> deck-$MODE.pdf"
+done
+```
+
+**Expect**, measuring page 1 of each after printing at 100%:
+
+| Mode | Card face | Look for |
+|---|---|---|
+| `CROP` | 63.5 × 88.9 mm | Is anything important lost at the top or bottom edge? |
+| `FIT` | 61.8 × 88.9 mm | Does the backing card showing at the sides bother you? |
+| `STRETCH` | 63.5 × 88.9 mm | Can you actually see the 2.7% squash? |
+
+Sleeve one card from each in front of a real card before deciding. **When a winner emerges,
+make it the default and reconsider removing the others** — this toggle exists to answer a
+question, not to persist.
+
 ### V5 — Preview matches the PDF exactly (FR-017, SC-005)
 
 ```bash

@@ -90,6 +90,19 @@ constitution requires these values be asserted, not inspected.
 | `grid` | (int, int) | Fixed `(3, 3)` — nine per page for both page sizes (FR-011). |
 | `margins_mm` | derived | Centred: Letter 12.70 × 6.35, A4 9.75 × 15.15. |
 | `cut_guides` | derived | Marks in the margin only; never overlapping a card face (FR-013). |
+| `fit_mode` | enum | `CROP` (default), `FIT`, or `STRETCH` (FR-009b). Per-generation parameter. |
+
+**Fit-mode geometry.** Source scans are 1.4378 (h/w) against the slot's 1.4000, so all three
+modes are exercised by real data — none is a theoretical branch:
+
+| Mode | Scale | Printed face at 63.5 × 88.9 mm slot | Ratio preserved |
+|---|---|---|---|
+| `CROP` | `max(sw/iw, sh/ih)` | 63.5 × 88.9 mm, ~1.16 mm trimmed from top and bottom | Yes |
+| `FIT` | `min(sw/iw, sh/ih)` | 61.8 × 88.9 mm, nothing trimmed | Yes |
+| `STRETCH` | axes independently | 63.5 × 88.9 mm, 2.7% vertical compression | **No** |
+
+`CROP` trims symmetrically — half the overflow from each edge, never all from one side.
+`STRETCH` is the only path permitted to distort, and only when explicitly selected (FR-014).
 
 ## Page and Slot
 
@@ -107,6 +120,7 @@ The addressable resource Principle II requires, rather than a side effect of a p
 | `id` | string | Server-assigned. |
 | `deck_id` | string | Required, must exist. |
 | `page_size` | enum | Defaults to `LETTER`. |
+| `fit_mode` | enum | Defaults to `CROP`. Recorded with the generation so a printed sheet can be traced to the mode that produced it (FR-009d). |
 | `catalog_revision` | string | Captured at creation. Fixes the generation to one consistent catalog state even if the file is edited mid-run. |
 | `status` | enum | See below. |
 | `page_count`, `card_count` | integer | Available before download (FR-018). |

@@ -139,6 +139,7 @@ that matters at this scale.
 |-----------|------------|-------------------------------------|
 | Worker-process isolation for image decode | The constitution mandates isolated parsing under hard limits, and image decoders are the most CVE-dense dependency here. The TIFFs are third-party files, not the user's own work. | Decoding inline in the request process was rejected: a malformed TIFF takes down the app, and a decompression bomb exhausts the machine, with no memory ceiling available in-process. |
 | Rasterising the actual PDF for preview | FR-017 requires the preview to match the PDF exactly, and SC-005 sets that at 100%. | Rendering the preview from the layout model was rejected: it creates a second rendering path that can silently disagree with the PDF, which is exactly the defect the requirement exists to prevent. |
+| Three selectable fit modes (FR-009b) instead of one default | Source scans are 2.7% taller in proportion than a standard card. Each candidate policy breaks a different requirement, and which looks acceptable is a physical question answerable only from printed output. This is a live experiment, not speculative configurability. | Picking one policy up front was rejected because there is no evidence to pick on — the decision would be a guess that costs a full print run to discover was wrong. **This exception is time-limited:** once printed evidence names a winner it becomes the default and the others are reconsidered for removal. |
 
 ## Post-Design Constitution Re-Check
 
@@ -157,19 +158,51 @@ from "satisfied by intent" to "satisfied by structure", which is the stronger po
 Complexity Tracking still lists exactly two justified items. Nothing in Phase 1 added a
 dependency, service, cache, or abstraction beyond them.
 
-## Open Risk Carried Into Implementation
+## Source Asset Findings
 
-**Source image resolution is unverified.** FR-010 requires ≥300 DPI at final print size,
-which at 63.5 × 88.9 mm means **at least 750 × 1050 pixels** per card face. The Drive
-folder is not available locally yet, so this has not been checked against real files. If
-the scans fall short, FR-010 fails immediately, and either the DPI floor or the card size
-has to change — a spec question that implementation cannot paper over.
+Measured against a real Captain America hero pack sample on 2026-07-31 (26 files).
 
-Check it as soon as the download completes:
+### RESOLVED — resolution comfortably clears the bar
 
-```bash
-sips -g pixelWidth -g pixelHeight -g dpiWidth "/path/to/a/card.tif"
-```
+Scans are **~1446 × 2079 px** at 600 DPI metadata. FR-010 needs ≥750 × 1050 px, so there is
+**1.93× linear headroom** — roughly 578 × 594 effective DPI at final print size. No
+upscaling will ever be needed, and the DPI floor is not at risk. This risk is closed.
 
-Treat "a representative sample of cards is ≥750 × 1050 px" as a prerequisite to starting
-the render module.
+It also means downscaling is the norm, so the resampling filter must be pinned explicitly
+(R7) — a library default change would silently alter output bytes.
+
+### OPEN — source aspect ratio does not match a standard card
+
+Every scan is **1.4378** (h/w) against a standard card's **1.4000**: about **2.7% taller in
+proportion**. Visual inspection confirms the scans are **full-bleed, edge to edge** — no
+white border and no trim margin, so the excess is not bleed that can simply be discarded.
+
+This makes the spec's "different aspect ratio → fit without distortion and report the
+discrepancy" edge case fire on **100% of cards**, which turns a signal into noise. A
+standing policy is required instead, and each candidate breaks a different requirement:
+
+| Policy | Result | Cost |
+|---|---|---|
+| Fit width, crop height | Exactly 63.5 × 88.9 mm | Discards 1.16 mm from top and bottom edges |
+| Fit inside, preserve ratio | 61.8 × 88.9 mm | Narrower than standard — breaks FR-009 as written |
+| Scale non-uniformly | Exactly 63.5 × 88.9 mm | 2.7% vertical squash — breaks FR-014 |
+
+**Resolved 2026-07-31**: all three become user-selectable per generation (FR-009b), default
+`crop`, so the choice is settled from printed evidence rather than guessed. `stretch` is
+labelled as distorting wherever offered and can never be the default. See Complexity
+Tracking for why this configurability is justified and why it should expire.
+
+### Structure observations
+
+- Nemesis and obligation cards (26–30) live in a `Captain America Nemesis/` subfolder,
+  which lines up cleanly with FR-006 placing them out of scope.
+- A `Captain America Decklist.tif` sits alongside the cards. It is not a card face and must
+  not be printed — a good example of why the catalog maps files explicitly (FR-005a) rather
+  than treating every file in a folder as a card.
+- Filenames follow `{Set}_{CardName}_{Type}_{Number}` but underscores also appear *inside*
+  names (`Steve_s Apartament`, `Captain America_s Shield`), and the source contains typos
+  (`Stength in Numbers`). Deriving identity by parsing filenames would be fragile in exactly
+  the way FR-005b anticipates.
+- The sample is **incomplete**: player cards 16, 18, 20–23 are absent. Catalog validation
+  (FR-005c) will catch this as `missing_image_file`, which is the correct behaviour — but it
+  means no end-to-end deck generation is possible until the download finishes.
