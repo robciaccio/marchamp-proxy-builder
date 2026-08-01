@@ -366,10 +366,13 @@ components:
           description: No `partial` state — a failure yields no document at all.
         page_count: { type: [integer, "null"] }
         card_count: { type: [integer, "null"] }
-        failure:
-          oneOf:
-            - $ref: "#/components/schemas/Failure"
-            - type: "null"
+        failures:
+          type: array
+          description: |
+            Empty unless status is `failed`. Carries EVERY failing card, not just the first
+            (FR-020a) — fixing one problem per attempt across repeated runs is the failure
+            mode this exists to prevent.
+          items: { $ref: "#/components/schemas/Failure" }
 
     Failure:
       type: object

@@ -124,7 +124,7 @@ The addressable resource Principle II requires, rather than a side effect of a p
 | `catalog_revision` | string | Captured at creation. Fixes the generation to one consistent catalog state even if the file is edited mid-run. |
 | `status` | enum | See below. |
 | `page_count`, `card_count` | integer | Available before download (FR-018). |
-| `failure` | Failure? | Present only when `status = failed`. |
+| `failures` | Failure[] | Empty unless `status = failed`. Carries **every** failing card, not just the first (FR-020a). |
 
 **State transitions**:
 

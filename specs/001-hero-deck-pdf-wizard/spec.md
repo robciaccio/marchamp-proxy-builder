@@ -38,8 +38,10 @@ face is legible at arm's length.
 
 1. **Given** the hero list is displayed, **When** the user selects a hero and confirms,
    **Then** a PDF containing every card in that hero's deck is produced for download.
-2. **Given** a generated PDF, **When** it is printed at 100% scale on Letter or A4,
-   **Then** every card measures the target print size within ±0.5 mm on both axes.
+2. **Given** a generated PDF, **When** it is printed at 100% scale on the page size it was
+   generated for, **Then** every card *slot* measures 63.5 × 88.9 mm within ±0.5 mm on both
+   axes, and the printed face fills that slot exactly in `crop` and `stretch` mode, or
+   measures 61.8 × 88.9 mm within ±0.5 mm in `fit` mode.
 3. **Given** a generated PDF, **When** any card face is examined at final print size,
    **Then** its effective resolution is at least 300 DPI and no image has been upscaled
    beyond its source resolution.
@@ -115,21 +117,32 @@ Value delivered when a mis-scaled printer is detected before the real print run.
   selected fit mode (FR-009b). This is the normal case for the current scans, not an
   exception, so it is not reported per-card; the mode is stated once for the generation.
 - A source image is below the resolution needed for 300 DPI at final size → generation
-  fails or warns explicitly; it is never silently upscaled.
+  **fails**, naming the card. It is never upscaled and never printed at reduced quality.
+- Several cards fail in the same generation → all failures are reported together, not one
+  per attempt.
+- A deck resolves to zero printable cards → this is a catalog validation error, not an empty
+  PDF.
+- The catalog is valid but defines no decks → the selection step says so plainly rather than
+  presenting an empty list that looks like a loading failure.
+- Source images differ slightly in proportion from one another → each is fitted on its own
+  measurements; no single ratio is assumed for the whole deck.
+- A file in the image directory is a format other than TIFF → it is accepted if the decoder
+  supports it, identified by content rather than extension.
 - A deck is large enough to span many pages → pagination continues correctly with no
   duplicated or dropped cards.
 - The catalog is edited while the application is running → a generation uses one consistent
   catalog revision throughout, never a mixture of old and new.
-- A user's browser cancels a slow download → no partially written PDF is presented as
-  complete.
+- A download is interrupted part-way → the generated document remains retrievable and can be
+  requested again without regenerating it.
 - The application is started while another program already holds its port → it reports the
   conflict clearly instead of failing silently or falling back to a public interface.
 - The configured image directory is missing, unreadable, empty, or points at the wrong
   place → the user gets an actionable message naming the problem, not a generic failure.
 - The catalog names an image file that is not present in the directory → validation fails
   naming the card and the expected filename, before any generation is attempted.
-- Two different cards map to the same image file → this is reported, since it is far more
-  often a copy-paste mistake than a deliberate choice.
+- Two different cards map to the same image file → reported as a **warning, not an error**.
+  It is usually a copy-paste mistake, but it is legitimate often enough that it must not
+  block generation.
 - The directory contains image files no catalog entry references → these are ignored
   without error; an unreferenced file is not a fault.
 - The catalog is malformed or unparseable → the application reports where, and refuses to
@@ -153,9 +166,17 @@ Value delivered when a mis-scaled printer is detected before the real print run.
   stay private.
 - **FR-0A3**: System MUST NOT include authentication, accounts, or sessions. The sole user
   is the person running it, and the trust boundary is the machine itself.
-- **FR-0A4**: System MUST bound the cost of a single generation with explicit limits on
-  decode time, memory, and total work, so that a malformed or oversized source image cannot
-  exhaust the machine. This protects against bad data, not against a hostile user.
+- **FR-0A4**: System MUST bound the cost of a single generation with these explicit limits,
+  so that a malformed or oversized source image cannot exhaust the machine. This protects
+  against bad data, not against a hostile user.
+  - **Per image**: decode completes within **10 seconds** and **512 MB** of memory, and the
+    image is rejected above **80 megapixels** before decode is attempted.
+  - **Per generation**: **200 card faces** maximum, and **120 seconds** total wall clock.
+  - Exceeding any limit MUST fail the generation naming the limit and, where applicable, the
+    card that hit it — never a silent truncation or a partial document.
+  - These figures are starting values chosen to sit far above real decks (~41 cards, ~3 MP
+    scans) and far below anything that would destabilise a laptop. They are expected to be
+    tuned from observed behaviour.
 
 **Selection**
 
@@ -177,9 +198,23 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 - **FR-005b**: Card identity MUST be stable and independent of filename, so that renaming a
   file or substituting a better scan of the same card does not change the card's identity
   or invalidate any deck referencing it.
+- **FR-005b1**: Card identifiers MUST be assigned by the catalog, treated as opaque by the
+  application, and unique within a catalog. The application MUST NOT parse meaning out of an
+  identifier or require it to follow any particular format.
 - **FR-005c**: System MUST validate the catalog before use, checking that it parses, that
-  every card a deck references exists, that every card maps to an image file, and that
-  every mapped file is present in the configured directory.
+  its declared format version is one the application recognises, that every card identifier
+  is unique, that every card a deck references exists, that every card maps to an image
+  file, that every mapped file is present in the configured directory, that every quantity
+  is at least 1, and that no mapped path escapes the configured directory.
+- **FR-005c1**: The catalog MUST declare a format version. An unrecognised version MUST be
+  refused outright rather than parsed on a best-effort basis.
+- **FR-005c2**: System MUST derive a **catalog revision** from the catalog's content, such
+  that any change to cards, decks, or image mappings yields a different revision and an
+  unchanged catalog yields the same one. The revision MUST NOT depend on file timestamps or
+  on where the catalog is stored.
+- **FR-005c3**: The catalog's location MUST be user-configurable. When it is unset,
+  unreadable, or absent, the system MUST say which of those is the case and what to do about
+  it, rather than presenting an empty deck list as though the catalog were valid.
 - **FR-005d**: System MUST report all catalog validation failures together, naming each
   offending card or deck, rather than stopping at the first error.
 - **FR-006**: System MUST include, for a selected hero, the full published pre-built player
@@ -192,6 +227,10 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 **Print output**
 
 - **FR-008**: System MUST produce a single PDF containing every card in the resolved deck.
+- **FR-008a**: The user MUST be able to choose the page size the PDF is generated for — US
+  Letter or A4 — and the PDF MUST be emitted at that size so the print needs no rescaling.
+  Letter is the default.
+- **FR-008b**: Pages MUST be portrait.
 - **FR-009**: System MUST lay out every card in a slot of **63.5 × 88.9 mm** (2.5 × 3.5 in)
   — full standard Marvel Champions card size, 100% scale — measured on the printed page,
   within ±0.5 mm on both axes. A printed card face MUST NOT exceed the slot; it may be
@@ -207,25 +246,44 @@ Value delivered when a mis-scaled printer is detected before the real print run.
     cropped; the printed face may be narrower or shorter than the slot.
   - **`stretch`** — scale each axis independently to fill the slot exactly. Nothing is
     cropped, but the image is distorted.
+
+  Each mode's printed result MUST be independently verifiable: `crop` and `stretch` produce
+  a face of 63.5 × 88.9 mm ±0.5 mm; `fit` produces a face that touches the slot on its
+  constraining axis and is smaller on the other, with neither dimension exceeding the slot.
+- **FR-009b1**: In `fit` mode, the unused area of the slot MUST be left blank — no frame,
+  border, fill, or shadow. Cut guides continue to mark the slot, not the smaller face, so
+  that every card is cut to the same size regardless of mode.
+- **FR-009b2**: The fit mode MUST be applied to each card independently. Source images vary
+  slightly in proportion from one another, and each is fitted on its own measurements rather
+  than against a single ratio assumed for the whole deck.
 - **FR-009c**: The interface MUST state, at the point of choice, what each mode costs —
-  that `crop` discards edges, and that `stretch` distorts the image. A user MUST NOT be able
-  to select distortion without being told it is distortion.
-- **FR-009d**: The chosen mode MUST be recorded with the generation and MUST be reflected in
-  the preview, so that comparing printed results to settings is unambiguous.
+  naming that `crop` discards part of the image's edges, that `fit` leaves the card smaller
+  than a standard card, and that `stretch` distorts the image. A user MUST NOT be able to
+  select distortion without being told it is distortion.
+- **FR-009d**: The chosen mode MUST be recorded with the generation, reflected in the
+  preview, and identifiable from the generated document itself — so a printed sheet can be
+  matched to the mode that produced it without relying on memory.
 - **FR-010**: System MUST render card faces at an effective resolution of at least 300 DPI
-  at final print size, and MUST NOT upscale a source image to reach it.
-- **FR-011**: System MUST lay out cards in a fixed grid that fits both US Letter and A4
-  without scaling, and MUST NOT depend on printer "fit to page" behavior.
+  at final print size, and MUST NOT upscale a source image to reach it. The measurement MUST
+  be taken over the region actually printed: in `crop` mode, the cropped portion, since
+  discarded pixels do not contribute to the printed result.
+- **FR-011**: System MUST lay out cards in a fixed 3 × 3 grid, identical for both supported
+  page sizes, centred with equal margins, and MUST NOT depend on printer "fit to page"
+  behavior.
 - **FR-012**: System MUST produce card faces only, with no card backs and no duplex
   pairing, because the physical card behind the proxy supplies the back.
-- **FR-013**: System MUST include cut guides that allow accurate trimming and that do not
-  overlap any card face.
+- **FR-013**: System MUST include cut guides marking every slot boundary, as short marks
+  positioned outside the slot in the surrounding margin or gutter. A guide MUST NOT enter
+  any slot, and therefore MUST NOT overlap a card face. Guides MUST be fine enough not to
+  survive a cut made along them, and dark enough to be visible on a consumer printer.
 - **FR-014**: System MUST preserve card aspect ratio in the `crop` and `fit` modes. The
   `stretch` mode of FR-009b is the sole exception: it MUST be explicitly selected by the
   user, MUST NOT be the default, and MUST be labelled as distorting wherever it is offered.
   Distortion MUST NOT occur in any other circumstance.
-- **FR-015**: System MUST produce byte-identical output for the same deck against the same
-  content and asset revisions.
+- **FR-015**: System MUST produce byte-identical output for the same deck at the same
+  catalog revision, the same asset files, the same fit mode, and the same page size. Those
+  five inputs together define the output; changing any of them may change the bytes, and
+  changing none of them MUST NOT.
 
 **Preview**
 
@@ -243,15 +301,39 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 - **FR-019b**: System MUST report a clear, actionable error when the configured image
   directory is missing, unreadable, or empty, distinguishing "not configured yet" from
   "configured but wrong".
+- **FR-019b1**: Every user-facing error MUST name the specific thing that failed — the card,
+  the deck, the file, or the limit — and state what the user can do about it. A message that
+  states only that something went wrong does not satisfy any requirement in this spec.
+- **FR-019d**: System MUST accept any image format its decoder supports, identified by
+  inspecting file contents rather than by file extension or declared type. TIFF is what the
+  current source uses; it MUST NOT be assumed to be the only format.
 - **FR-019c**: System MUST NOT write to, move, rename, or delete anything in the configured
   image directory. It is read-only source material.
 - **FR-020**: System MUST fail generation with a message naming the specific card when an
   image is missing, unreadable, or below the required resolution, and MUST NOT substitute a
-  placeholder or silently omit the card.
+  placeholder or silently omit the card. A resolution shortfall is a **failure, not a
+  warning** — proceeding would either upscale, which FR-010 forbids, or print a face that
+  cannot be read at play distance.
+- **FR-020a**: When several cards fail, the system MUST report all of them together, in the
+  same way FR-005d requires for catalog validation. Fixing one problem at a time across
+  repeated attempts is a failure of this requirement.
+- **FR-020b**: A failed generation MUST leave no downloadable document. There is no partial
+  output.
 - **FR-021**: System MUST distinguish, in user-facing errors, between a temporary retryable
-  failure and a permanent one such as a card that does not exist.
+  failure and a permanent one. The failure conditions are: **catalog invalid**, **image file
+  missing**, **image unreadable**, **image below required resolution**, **a cost limit
+  exceeded**, and **an unexpected internal error**. Of these, only *image unreadable* — a
+  lock, a permission problem, or a cloud-sync placeholder not yet materialised — is
+  retryable.
+- **FR-021a**: System MUST NOT retry automatically. Retrying is the user's action, and
+  re-requesting the same deck MUST be sufficient to retry; no cache invalidation or restart
+  may be required.
+- **FR-021b**: Generated documents MUST remain retrievable for as long as the application
+  keeps running, and MUST NOT be expected to survive a restart. Nothing in this feature
+  requires generated output to be durable.
 - **FR-022**: System MUST record, for each generation, the deck requested, the card
-  identifiers used, the content revision in effect, and the outcome.
+  identifiers used, the catalog revision in effect, the fit mode, the page size, and the
+  outcome.
 
 **Calibration** *(supports User Story 3)*
 
@@ -274,8 +356,9 @@ Value delivered when a mis-scaled printer is detected before the real print run.
   and never stored in this project.
 - **Print Layout**: The rules turning an ordered card list into pages — target card size,
   grid arrangement, margins, and cut guides. The same layout drives both preview and PDF.
-- **Generation Request**: One user request to produce a PDF. Has a selected deck, a content
-  revision, an outcome, and a resulting document or a named failure.
+- **Generation Request**: One user request to produce a PDF. Has a selected deck, a fit
+  mode, a page size, the catalog revision captured at creation, an outcome, and a resulting
+  document or one or more named failures.
 
 ## Success Criteria *(mandatory)*
 
@@ -291,8 +374,9 @@ Value delivered when a mis-scaled printer is detected before the real print run.
   printer models and the outcome recorded. Success is either that it seats without forcing
   or bending, or that a specific size reduction is identified for FR-009. An untested
   assumption about fit is a failure of this criterion.
-- **SC-003**: Printed card dimensions measure within ±0.5 mm of target on both axes on
-  100% of test prints made at 100% scale.
+- **SC-003**: Printed card dimensions measure within ±0.5 mm of the target for the selected
+  fit mode, on both axes, for **all nine cards on at least one full page from each of the
+  three fit modes**, printed at 100% scale.
 - **SC-004**: Every card face is legible enough that a player can identify the card by name
   and read its rules text at normal play distance, confirmed by at least 3 testers.
 - **SC-005**: The preview matches the downloaded PDF in page count, card order, and card
@@ -305,7 +389,11 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 - **SC-009**: A new hero deck becomes selectable without rebuilding or reinstalling the
   application — adding it to the catalog and restarting is sufficient.
 - **SC-009a**: The same deck can be generated in all three fit modes and the printed results
-  compared side by side, with each printed sheet identifiable as to which mode produced it.
+  compared side by side, with each printed sheet identifiable as to which mode produced it
+  from the sheet alone, without consulting the application (FR-009d).
+- **SC-011**: Every failure condition named in FR-021 can be deliberately provoked and
+  produces its own distinct, correctly-classified message — no condition falls through to
+  the generic internal error.
 - **SC-010**: 100% of catalog problems — a missing image file, an unknown card reference, a
   malformed entry — are caught by validation and reported together with the offending card
   or deck named, before any generation begins.
@@ -372,11 +460,23 @@ Value delivered when a mis-scaled printer is detected before the real print run.
 - Because assets involve no outbound calls, this feature exercises none of the
   egress-allowlist surface the constitution requires. Reintroducing remote asset fetching
   would bring that requirement back into play.
-- Source images are assumed to be complete, correctly oriented card faces at sufficient
-  resolution for 300 DPI at final size. Where they are not, FR-020 governs.
+- Source images are assumed to be complete, correctly oriented card faces. **Resolution is
+  no longer assumed:** a real Captain America pack sample measured ~1446 × 2079 px at 600
+  DPI on 2026-07-31, against the 750 × 1050 the 300 DPI floor requires — 1.93× linear
+  headroom. Where a future scan falls short, FR-020 governs.
+- Source scans are assumed to be **full-bleed**, with card art running to all four edges and
+  no trim margin. This is why the aspect-ratio difference cannot simply be discarded and
+  requires the fit modes of FR-009b.
+- The application does **not** detect whether the image directory is stale relative to its
+  upstream source. Keeping it current is the user's responsibility; a file that has not
+  synced yet surfaces as a retryable unreadable-asset failure, not as a sync warning.
+- The user is assumed to have authored a catalog before first use. Until one is configured,
+  the application is expected to explain what is missing rather than appear broken
+  (FR-005c3).
 - Deck composition, card metadata, and the card-to-filename mapping all live in the content
   catalog — authored data outside the application, editable without rebuilding or
-  redeploying it.
+  redeploying it. **Restarting the application to pick up catalog changes is acceptable**;
+  live reload is not required by FR-004 or SC-009.
 - Authoring and maintaining that catalog is the user's responsibility. Producing it from
   the existing Drive folder, whether by hand or with a one-off helper, is outside this
   feature's scope.
