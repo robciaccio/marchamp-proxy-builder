@@ -109,6 +109,24 @@ insert it into a sleeved standard card. Succeeds when the card fits and the face
 ### Tests for User Story 1 ⚠️ Write first, observe failing
 
 - [ ] T035 [P] [US1] Contract test asserting the live OpenAPI matches `contracts/openapi.yaml` in `tests/contract/test_openapi_matches.py` (Principle II, merge gate)
+
+  > **Known drift, measured 2026-08-01.** The implementation and the contract disagree; both
+  > need reconciling before this test can pass, and the choice of which to change is a real
+  > decision rather than a mechanical fix.
+  >
+  > | Area | Contract says | Implementation does |
+  > |---|---|---|
+  > | Path params | `{deckId}`, `{generationId}`, `{pageNumber}` (camelCase) | `{deck_id}`, `{generation_id}` (snake_case) |
+  > | Preview endpoint | `/api/generations/{id}/pages/{n}` defined | not implemented — belongs to US2 (T054) |
+  > | `Generation.progress` / `pages_ready` | defined | not implemented — US2 (T055) |
+  > | `/api/health` | no `problems` field | returns `problems[]` describing unset/missing config |
+  > | Response schemas | named components (`Generation`, `DeckDetail`, `Substitution`, `Failure`, `ValidationReport`, `Health`, `Problem`) | routes return bare `dict[str, Any]`, so FastAPI generates no component schemas |
+  >
+  > Recommended resolution: adopt snake_case in the contract (it matches the JSON body
+  > fields, which are already snake_case, so camelCase paths were the inconsistency);
+  > add `problems` to the contract; introduce Pydantic response models in
+  > `src/marchamp/api/routes.py` so the named schemas actually generate; and leave the
+  > preview endpoint in the contract, since T054 implements it.
 - [X] T036 [P] [US1] Integration test generating a full deck end to end from the fixture catalog, and that a deck added to the catalog becomes selectable after restart with no rebuild, in `tests/integration/test_generate_deck.py` (FR-004, FR-006, SC-009)
 - [X] T037 [P] [US1] Integration test asserting PDF geometry — MediaBox, slot size, 3×3 grid, guides outside slots — for all three fit modes in `tests/integration/test_print_geometry.py` (SC-003)
 - [X] T038 [P] [US1] Integration test that regeneration is byte-identical across 20 attempts including one in a separate process in `tests/integration/test_determinism.py` (FR-015, SC-006)
