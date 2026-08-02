@@ -117,6 +117,10 @@ def test_a_page_is_viewable_before_the_rest_of_the_deck_is_rendered(service, ste
     assert composed.acquire(timeout=TIMEOUT_S)
     assert gen.status == "running"
     assert gen.pages_ready == 1
+    # Known before the run ends, so an interface can say how many pages are still coming
+    # rather than counting up from nothing.
+    assert gen.page_count == PAGES
+    assert gen.card_count == 27
     assert gen.preview_document(1) is not None, "page 1 must be viewable already"
     assert gen.preview_document(2) is None, "page 2 has not been composed yet"
     assert gen.document is None, "no document exists until the run succeeds (FR-020b)"

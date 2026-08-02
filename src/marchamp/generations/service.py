@@ -219,6 +219,11 @@ class GenerationService:
             return self._fail(gen, failures, started)
 
         pages = paginate(catalog, gen.deck_id, gen.page_size, self.image_dir)
+        # Published as soon as pagination is known rather than at the end, so an interface
+        # watching a run can say "page 1 of 5" instead of counting up from nothing — how
+        # much is left is the part of advancement a bare percentage does not convey.
+        gen.page_count = len(pages)
+        gen.card_count = face_count(catalog, gen.deck_id)
 
         def on_page(index: int, page_document: bytes) -> None:
             nonlocal done_units
@@ -241,8 +246,6 @@ class GenerationService:
                 gen, [GenerationFailure(FailureKind.LIMIT_EXCEEDED, str(exc))], started
             )
 
-        gen.page_count = len(pages)
-        gen.card_count = face_count(catalog, gen.deck_id)
         gen.page_face_counts = [[f.card_id for f in p.faces] for p in pages]
         gen.progress = 1.0
         gen.status = "succeeded"

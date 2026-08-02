@@ -145,7 +145,7 @@ insert it into a sleeved standard card. Succeeds when the card fits and the face
 - [X] T047 [US1] Implement `GET /api/health` and `GET /api/catalog/validation` in `src/marchamp/api/routes.py` (FR-003c, FR-005d)
 - [X] T048 [US1] Set the download `Content-Disposition` filename to deck, fit mode, and page size in `src/marchamp/api/routes.py`, so the mode is identifiable from the document itself (FR-008c, FR-009d)
 - [X] T049 [US1] Emit the structured generation record on every terminal outcome in `src/marchamp/generations/service.py` (FR-022)
-- [ ] T050 [US1] Build the minimal wizard — deck list, fit mode and page size selection with their stated costs, generate, download — in `src/marchamp/web/` (FR-002, FR-003, FR-009c)
+- [X] T050 [US1] Build the minimal wizard — deck list, fit mode and page size selection with their stated costs, generate, download — in `src/marchamp/web/` (FR-002, FR-003, FR-009c)
 
 **Checkpoint**: A deck downloads as a correct, printable PDF. MVP complete.
 
@@ -160,16 +160,16 @@ card order, and card position must agree exactly.
 
 ### Tests for User Story 2 ⚠️ Write first, observe failing
 
-- [ ] T051 [P] [US2] Integration test that the preview matches the PDF page for page and card for card in `tests/integration/test_preview_matches.py` (FR-017, SC-005)
-- [ ] T052 [P] [US2] Integration test that pages become viewable progressively and progress advances during a run in `tests/integration/test_progress.py` (FR-016a, FR-016b)
+- [X] T051 [P] [US2] Integration test that the preview matches the PDF page for page and card for card in `tests/integration/test_preview_matches.py` (FR-017, SC-005)
+- [X] T052 [P] [US2] Integration test that pages become viewable progressively and progress advances during a run in `tests/integration/test_progress.py` (FR-016a, FR-016b)
 
 ### Implementation for User Story 2
 
-- [ ] T053 [US2] Implement `src/marchamp/render/preview.py` — rasterise the generated PDF with pypdfium2, never re-draw from the layout model (FR-017)
-- [ ] T054 [US2] Implement `GET /api/generations/{id}/pages/{pageNumber}` with a bounded width parameter in `src/marchamp/api/routes.py` (FR-016d)
-- [ ] T055 [US2] Report `progress` and `pages_ready` on the generation resource in `src/marchamp/generations/service.py` (FR-016a, FR-016b)
-- [ ] T056 [US2] Add the preview pane in `src/marchamp/web/`, invalidating a preview whenever fit mode or page size changes, and allowing the user to move back a step while a generation runs without blocking the interface or needing a cancel control (FR-003a, FR-003b, FR-016, FR-016c)
-- [ ] T057 [US2] Show the substitution list and total face count alongside the preview, before download, in `src/marchamp/web/` (FR-005h, FR-018, FR-018a)
+- [X] T053 [US2] Implement `src/marchamp/render/preview.py` — rasterise the generated PDF with pypdfium2, never re-draw from the layout model (FR-017)
+- [X] T054 [US2] Implement `GET /api/generations/{id}/pages/{pageNumber}` with a bounded width parameter in `src/marchamp/api/routes.py` (FR-016d)
+- [X] T055 [US2] Report `progress` and `pages_ready` on the generation resource in `src/marchamp/generations/service.py` (FR-016a, FR-016b)
+- [X] T056 [US2] Add the preview pane in `src/marchamp/web/`, invalidating a preview whenever fit mode or page size changes, and allowing the user to move back a step while a generation runs without blocking the interface or needing a cancel control (FR-003a, FR-003b, FR-016, FR-016c)
+- [X] T057 [US2] Show the substitution list and total face count alongside the preview, before download, in `src/marchamp/web/` (FR-005h, FR-018, FR-018a)
 
 **Checkpoint**: US1 and US2 both work independently.
 
