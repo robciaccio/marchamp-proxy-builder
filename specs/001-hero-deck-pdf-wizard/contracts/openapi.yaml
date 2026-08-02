@@ -55,6 +55,13 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ValidationReport" }
+        "503":
+          description: |
+            Not configured yet — there is no catalog or image directory to report on. This
+            is distinct from a catalog that exists and is invalid, which is a 200 (FR-019b).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
 
   /api/decks:
     get:
@@ -80,7 +87,7 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
 
-  /api/decks/{deckId}:
+  /api/decks/{deck_id}:
     get:
       tags: [decks]
       summary: Resolved deck contents
@@ -96,6 +103,11 @@ paths:
               schema: { $ref: "#/components/schemas/DeckDetail" }
         "404":
           description: No such deck.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "503":
+          description: Not configured, or the catalog is invalid.
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -129,13 +141,13 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
-        "422":
-          description: Request understood but unusable — e.g. an unsupported page size.
+        "503":
+          description: Not configured, or the catalog is invalid.
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
 
-  /api/generations/{generationId}:
+  /api/generations/{generation_id}:
     get:
       tags: [generations]
       summary: Generation status
@@ -156,7 +168,7 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
 
-  /api/generations/{generationId}/document:
+  /api/generations/{generation_id}/document:
     get:
       tags: [generations]
       summary: Download the PDF
@@ -190,7 +202,7 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
 
-  /api/generations/{generationId}/pages/{pageNumber}:
+  /api/generations/{generation_id}/pages/{page_number}:
     get:
       tags: [generations]
       summary: Preview image of one page
@@ -200,7 +212,7 @@ paths:
       operationId: getGenerationPage
       parameters:
         - $ref: "#/components/parameters/GenerationId"
-        - name: pageNumber
+        - name: page_number
           in: path
           required: true
           schema: { type: integer, minimum: 1 }
@@ -245,14 +257,17 @@ paths:
               schema: { type: string, format: binary }
 
 components:
+  # Path parameters are snake_case, matching the JSON body and response fields, which were
+  # snake_case from the start. The camelCase path names this document originally carried
+  # were the inconsistency, not the implementation.
   parameters:
     DeckId:
-      name: deckId
+      name: deck_id
       in: path
       required: true
       schema: { type: string }
     GenerationId:
-      name: generationId
+      name: generation_id
       in: path
       required: true
       schema: { type: string }
@@ -284,12 +299,30 @@ components:
 
     Health:
       type: object
-      required: [status, catalog_valid]
+      required: [status, catalog_valid, image_directory_configured, problems]
       properties:
         status: { type: string, enum: [ok] }
         catalog_valid: { type: boolean }
         catalog_revision: { type: [string, "null"] }
         image_directory_configured: { type: boolean }
+        problems:
+          type: array
+          description: |
+            Configuration problems, empty when the service is fully configured. Separates
+            "not configured yet" from "configured but pointing somewhere wrong" (FR-019b),
+            which are different user actions and must not present as the same message.
+          items: { $ref: "#/components/schemas/ConfigProblem" }
+
+    ConfigProblem:
+      type: object
+      required: [kind, detail]
+      properties:
+        kind:
+          type: string
+          enum: [image_dir_unset, image_dir_missing, catalog_unset, catalog_missing]
+        detail:
+          type: string
+          description: Sentence naming the setting to change, not an internal error string.
 
     ValidationReport:
       type: object
@@ -311,11 +344,17 @@ components:
       properties:
         kind:
           type: string
+          # The ten checks in data-model.md, plus `schema_invalid` for a catalog that fails
+          # to parse at all — the one problem found before any check can run.
           enum:
             - schema_invalid
             - duplicate_card_id
+            - duplicate_printing_id
             - unknown_card_reference
+            - printing_card_mismatch
             - missing_image_file
+            - missing_back_image
+            - unexpected_back_image
             - invalid_quantity
             - shared_image_file
             - unsafe_image_path
@@ -346,7 +385,15 @@ components:
               type: array
               items:
                 type: object
-                required: [card_id, name, quantity, preferred_printing_id, double_sided]
+                required:
+                  [
+                    card_id,
+                    name,
+                    quantity,
+                    double_sided,
+                    preferred_printing_id,
+                    preferred_printing_available,
+                  ]
                 properties:
                   card_id: { type: string }
                   name: { type: string }
@@ -472,4 +519,8 @@ components:
         type: { type: string }
         title: { type: string }
         status: { type: integer }
-        detail: { type: string }
+        detail:
+          type: [string, "null"]
+          description: |
+            What went wrong, in a sentence a user can act on. Never a stack trace, a query,
+            or an internal hostname — the constitution's fail-closed clause forbids it.

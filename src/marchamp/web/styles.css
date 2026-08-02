@@ -1,0 +1,385 @@
+/* Marchamp Proxy Builder — the whole stylesheet.
+   No build step and no framework: the plan's structure decision is one deployable serving
+   both the API and these files, and a bundler would add tooling without adding separation
+   that matters at this scale. */
+
+:root {
+  --ink: #16181d;
+  --ink-soft: #5c6270;
+  --line: #d8dce4;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --accent: #8a1c1c;
+  --accent-ink: #ffffff;
+  --warn: #8a4b00;
+  --warn-bg: #fff5e6;
+  --bad: #7d1128;
+  --bad-bg: #fdeff2;
+  --radius: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e8eaee;
+    --ink-soft: #a2a9b8;
+    --line: #333844;
+    --bg: #14161b;
+    --panel: #1c1f26;
+    --accent: #d24b4b;
+    --accent-ink: #14161b;
+    --warn: #f0b46a;
+    --warn-bg: #33270f;
+    --bad: #f2889b;
+    --bad-bg: #331319;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0 1.25rem 4rem;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+main,
+.masthead,
+.steps {
+  max-width: 60rem;
+  margin: 0 auto;
+}
+
+/* -------------------------------------------------------------------- masthead */
+
+.masthead {
+  padding: 2rem 0 1rem;
+}
+
+.masthead h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  letter-spacing: -0.01em;
+}
+
+.masthead__sub {
+  margin: 0.25rem 0 0;
+  color: var(--ink-soft);
+}
+
+/* ----------------------------------------------------------------------- steps */
+
+.steps ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.steps__link {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.steps__link[aria-current="step"] {
+  border-color: var(--accent);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.steps__link[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ----------------------------------------------------------------------- steps */
+
+.step {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+}
+
+.step h2 {
+  margin: 0 0 1rem;
+  font-size: 1.15rem;
+}
+
+.muted {
+  color: var(--ink-soft);
+}
+
+/* ----------------------------------------------------------------------- decks */
+
+.decks {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+}
+
+.deck {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.deck:hover {
+  border-color: var(--accent);
+}
+
+.deck[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.deck__name {
+  font-weight: 600;
+}
+
+.deck__meta {
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+}
+
+/* --------------------------------------------------------------------- choices */
+
+.choices {
+  margin: 0 0 1.25rem;
+  padding: 0;
+  border: 0;
+}
+
+.choices legend {
+  padding: 0;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.choice {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  padding: 0.7rem 0.85rem;
+  margin-bottom: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.choice:has(input:checked) {
+  border-color: var(--accent);
+}
+
+.choice:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.choice input {
+  margin-top: 0.3rem;
+}
+
+.choice__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.choice__name {
+  font-weight: 600;
+}
+
+.choice__cost {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.choice__cost--warn {
+  color: var(--warn);
+}
+
+/* --------------------------------------------------------------------- actions */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1.5rem;
+}
+
+.btn {
+  display: inline-block;
+  padding: 0.55rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.btn--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ------------------------------------------------------------- run and results */
+
+.run {
+  margin-bottom: 1.25rem;
+}
+
+.run__line {
+  margin: 0 0 0.4rem;
+}
+
+progress {
+  width: 100%;
+  height: 0.6rem;
+}
+
+.tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.75rem;
+  margin: 0 0 1.25rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.tally div {
+  display: flex;
+  flex-direction: column;
+}
+
+.tally dt {
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tally dd {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.subs,
+.failures {
+  margin-bottom: 1.25rem;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius);
+}
+
+.subs {
+  border: 1px solid var(--line);
+  background: var(--warn-bg);
+}
+
+.failures {
+  border: 1px solid var(--bad);
+  background: var(--bad-bg);
+}
+
+.subs h3,
+.failures h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.subs ul,
+.failures ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.subs li,
+.failures li {
+  margin-bottom: 0.2rem;
+}
+
+.banner {
+  margin-bottom: 1.25rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--bad);
+  border-radius: var(--radius);
+  background: var(--bad-bg);
+}
+
+.banner ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+}
+
+/* --------------------------------------------------------------------- preview */
+
+.pages {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+}
+
+.page {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.page__label {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+}
+
+.page img {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* Sheets are white; on a dark background an unbordered page would look like a hole. */
+  background: #fff;
+}
+
+.page__pending {
+  display: grid;
+  place-items: center;
+  /* Letter portrait, so a page that has not arrived does not resize the grid when it does. */
+  aspect-ratio: 216 / 279;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
