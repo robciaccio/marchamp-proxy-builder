@@ -108,25 +108,26 @@ insert it into a sleeved standard card. Succeeds when the card fits and the face
 
 ### Tests for User Story 1 ⚠️ Write first, observe failing
 
-- [ ] T035 [P] [US1] Contract test asserting the live OpenAPI matches `contracts/openapi.yaml` in `tests/contract/test_openapi_matches.py` (Principle II, merge gate)
+- [X] T035 [P] [US1] Contract test asserting the live OpenAPI matches `contracts/openapi.yaml` in `tests/contract/test_openapi_matches.py` (Principle II, merge gate)
 
-  > **Known drift, measured 2026-08-01.** The implementation and the contract disagree; both
-  > need reconciling before this test can pass, and the choice of which to change is a real
-  > decision rather than a mechanical fix.
+  > **Drift measured 2026-08-01, reconciled the same day.** Resolved as recommended below,
+  > plus two disagreements the original survey did not catch.
   >
-  > | Area | Contract says | Implementation does |
-  > |---|---|---|
-  > | Path params | `{deckId}`, `{generationId}`, `{pageNumber}` (camelCase) | `{deck_id}`, `{generation_id}` (snake_case) |
-  > | Preview endpoint | `/api/generations/{id}/pages/{n}` defined | not implemented — belongs to US2 (T054) |
-  > | `Generation.progress` / `pages_ready` | defined | not implemented — US2 (T055) |
-  > | `/api/health` | no `problems` field | returns `problems[]` describing unset/missing config |
-  > | Response schemas | named components (`Generation`, `DeckDetail`, `Substitution`, `Failure`, `ValidationReport`, `Health`, `Problem`) | routes return bare `dict[str, Any]`, so FastAPI generates no component schemas |
+  > | Area | Resolution |
+  > |---|---|
+  > | Path params | Contract adopted snake_case (`{deck_id}`, `{generation_id}`, `{page_number}`). The JSON bodies were already snake_case, so the camelCase paths were the inconsistency |
+  > | Preview endpoint | Kept in the contract; implemented by T054 |
+  > | `Generation.progress` / `pages_ready` | Implemented by T055 |
+  > | `/api/health` `problems` | Added to the contract, with a named `ConfigProblem` schema |
+  > | Response schemas | Named Pydantic models added in `src/marchamp/api/schemas.py`; every route declares one, so the advertised components now actually generate |
+  > | **`page_size` was unusable** — not in the original survey | `PageSize` was an `Enum` whose *values* were millimetre pairs, so the API asked clients to POST `[215.9, 279.4]` rather than `"LETTER"`. Now a `StrEnum` with a `dimensions_mm` property, which also leaves one place where the name and the geometry can disagree instead of two |
+  > | **Errors were not RFC 9457** — not in the original survey | The contract promised `application/problem+json`; the service returned FastAPI's `{"detail": …}` as `application/json`. Exception handlers in `api/app.py` now give every error one shape |
   >
-  > Recommended resolution: adopt snake_case in the contract (it matches the JSON body
-  > fields, which are already snake_case, so camelCase paths were the inconsistency);
-  > add `problems` to the contract; introduce Pydantic response models in
-  > `src/marchamp/api/routes.py` so the named schemas actually generate; and leave the
-  > preview endpoint in the contract, since T054 implements it.
+  > The test compares the interface *surface* — paths, methods, parameters, bodies,
+  > statuses, media types, and response-schema shapes — rather than doing byte equality,
+  > because `openapi.yaml` carries the design reasoning and that prose is the reason to keep
+  > it hand-authored. Its one deliberate blind spot is FastAPI's automatic `422`, which is
+  > framework behaviour rather than designed interface.
 - [X] T036 [P] [US1] Integration test generating a full deck end to end from the fixture catalog, and that a deck added to the catalog becomes selectable after restart with no rebuild, in `tests/integration/test_generate_deck.py` (FR-004, FR-006, SC-009)
 - [X] T037 [P] [US1] Integration test asserting PDF geometry — MediaBox, slot size, 3×3 grid, guides outside slots — for all three fit modes in `tests/integration/test_print_geometry.py` (SC-003)
 - [X] T038 [P] [US1] Integration test that regeneration is byte-identical across 20 attempts including one in a separate process in `tests/integration/test_determinism.py` (FR-015, SC-006)
