@@ -37,14 +37,36 @@ def test_serve_refuses_and_explains_when_nothing_is_configured(monkeypatch, caps
 
 
 def test_serve_distinguishes_a_wrong_path_from_an_unset_one(monkeypatch, capsys, tmp_path):
-    # The two mistakes have different fixes, so they must not read the same.
+    # The two mistakes have different fixes, so they must not read the same — including in
+    # the headline. Telling someone who mistyped a path that they have configured nothing
+    # sends them to fix the wrong thing.
     monkeypatch.setenv("MARCHAMP_IMAGE_DIR", str(tmp_path / "nowhere"))
     monkeypatch.setenv("MARCHAMP_CATALOG", str(tmp_path / "absent.json"))
 
     assert cli.main(["serve"]) == 1
     err = capsys.readouterr().err
+    assert "points at something that is not there" in err
+    assert "not configured yet" not in err
     assert "does not exist" in err
     assert "No card image directory configured" not in err
+    # Nothing is unset, so the "export these" hint would be misleading advice.
+    assert "export MARCHAMP_IMAGE_DIR" not in err
+
+
+def test_serve_names_the_one_setting_that_is_missing(monkeypatch, capsys, image_dir, tmp_path):
+    # One set correctly, one pointing nowhere: the report must not flatten to either
+    # extreme, and must still name both the good news and the bad.
+    monkeypatch.setenv("MARCHAMP_IMAGE_DIR", str(image_dir))
+    monkeypatch.delenv("MARCHAMP_CATALOG", raising=False)
+
+    assert cli.main(["serve"]) == 1
+    err = capsys.readouterr().err
+    assert "not configured yet" in err
+    # Exactly one problem is reported: the catalog. The image directory is fine and must
+    # not be listed as though it were also wrong.
+    assert [line for line in err.splitlines() if line.startswith("  •")] == [
+        "  • No catalog configured. Set MARCHAMP_CATALOG to your catalog file."
+    ]
 
 
 def test_serve_starts_the_app_when_configured(monkeypatch, image_dir, catalog_path):

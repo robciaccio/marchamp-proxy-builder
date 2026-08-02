@@ -20,15 +20,29 @@ def _report(settings: Settings, stream) -> bool:
     problems = settings.problems()
     if not problems:
         return True
-    print("Cannot start — the application is not configured yet:\n", file=stream)
+
+    # FR-019b's distinction, kept in the headline and not only in the bullets: "you have
+    # not set this yet" and "you set it to somewhere that is not there" are different
+    # mistakes, and telling someone who mistyped a path that they have not configured
+    # anything sends them to fix the wrong thing.
+    unset = [p for p in problems if p.kind.endswith("_unset")]
+    if len(unset) == len(problems):
+        headline = "Cannot start — the application is not configured yet:"
+    elif not unset:
+        headline = "Cannot start — the configuration points at something that is not there:"
+    else:
+        headline = "Cannot start — the configuration is incomplete:"
+
+    print(f"{headline}\n", file=stream)
     for problem in problems:
         print(f"  • {problem.detail}", file=stream)
-    print(
-        "\nSet both, then run again:\n"
-        '  export MARCHAMP_IMAGE_DIR="/path/to/card-images"\n'
-        '  export MARCHAMP_CATALOG="/path/to/catalog.json"',
-        file=stream,
-    )
+    if unset:
+        print(
+            "\nSet both, then run again:\n"
+            '  export MARCHAMP_IMAGE_DIR="/path/to/card-images"\n'
+            '  export MARCHAMP_CATALOG="/path/to/catalog.json"',
+            file=stream,
+        )
     return False
 
 

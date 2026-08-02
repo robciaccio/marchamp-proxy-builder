@@ -201,7 +201,7 @@ card order, and card position must agree exactly.
 - [ ] T063 [P] Implement the distinguishable empty states — no catalog, no decks, deck with no cards — in `src/marchamp/web/` (FR-003d)
 - [ ] T064 [P] Make the validation report readable when it lists many problems, grouped by deck or card, in `src/marchamp/web/` (FR-003e)
 - [ ] T065 [P] Verify and fix keyboard operability across the whole flow in `src/marchamp/web/` (FR-003g)
-- [ ] T066 [P] Add `README.md` covering setup, configuration, and catalog authoring
+- [X] T066 [P] Add `README.md` covering setup, configuration, and catalog authoring
 - [ ] T067 Measure SC-007 and SC-007a on a real ~41-card deck and record the numbers in `specs/001-hero-deck-pdf-wizard/quickstart.md`
 - [ ] T068 Add `ci` to the required status checks on the `main` branch ruleset so merge gate 1 is actually enforced
 - [ ] T069 Run every scenario in [quickstart.md](./quickstart.md) against a real catalog and record the results
