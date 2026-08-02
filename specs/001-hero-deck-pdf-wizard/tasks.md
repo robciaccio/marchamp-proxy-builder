@@ -108,25 +108,26 @@ insert it into a sleeved standard card. Succeeds when the card fits and the face
 
 ### Tests for User Story 1 ⚠️ Write first, observe failing
 
-- [ ] T035 [P] [US1] Contract test asserting the live OpenAPI matches `contracts/openapi.yaml` in `tests/contract/test_openapi_matches.py` (Principle II, merge gate)
+- [X] T035 [P] [US1] Contract test asserting the live OpenAPI matches `contracts/openapi.yaml` in `tests/contract/test_openapi_matches.py` (Principle II, merge gate)
 
-  > **Known drift, measured 2026-08-01.** The implementation and the contract disagree; both
-  > need reconciling before this test can pass, and the choice of which to change is a real
-  > decision rather than a mechanical fix.
+  > **Drift measured 2026-08-01, reconciled the same day.** Resolved as recommended below,
+  > plus two disagreements the original survey did not catch.
   >
-  > | Area | Contract says | Implementation does |
-  > |---|---|---|
-  > | Path params | `{deckId}`, `{generationId}`, `{pageNumber}` (camelCase) | `{deck_id}`, `{generation_id}` (snake_case) |
-  > | Preview endpoint | `/api/generations/{id}/pages/{n}` defined | not implemented — belongs to US2 (T054) |
-  > | `Generation.progress` / `pages_ready` | defined | not implemented — US2 (T055) |
-  > | `/api/health` | no `problems` field | returns `problems[]` describing unset/missing config |
-  > | Response schemas | named components (`Generation`, `DeckDetail`, `Substitution`, `Failure`, `ValidationReport`, `Health`, `Problem`) | routes return bare `dict[str, Any]`, so FastAPI generates no component schemas |
+  > | Area | Resolution |
+  > |---|---|
+  > | Path params | Contract adopted snake_case (`{deck_id}`, `{generation_id}`, `{page_number}`). The JSON bodies were already snake_case, so the camelCase paths were the inconsistency |
+  > | Preview endpoint | Kept in the contract; implemented by T054 |
+  > | `Generation.progress` / `pages_ready` | Implemented by T055 |
+  > | `/api/health` `problems` | Added to the contract, with a named `ConfigProblem` schema |
+  > | Response schemas | Named Pydantic models added in `src/marchamp/api/schemas.py`; every route declares one, so the advertised components now actually generate |
+  > | **`page_size` was unusable** — not in the original survey | `PageSize` was an `Enum` whose *values* were millimetre pairs, so the API asked clients to POST `[215.9, 279.4]` rather than `"LETTER"`. Now a `StrEnum` with a `dimensions_mm` property, which also leaves one place where the name and the geometry can disagree instead of two |
+  > | **Errors were not RFC 9457** — not in the original survey | The contract promised `application/problem+json`; the service returned FastAPI's `{"detail": …}` as `application/json`. Exception handlers in `api/app.py` now give every error one shape |
   >
-  > Recommended resolution: adopt snake_case in the contract (it matches the JSON body
-  > fields, which are already snake_case, so camelCase paths were the inconsistency);
-  > add `problems` to the contract; introduce Pydantic response models in
-  > `src/marchamp/api/routes.py` so the named schemas actually generate; and leave the
-  > preview endpoint in the contract, since T054 implements it.
+  > The test compares the interface *surface* — paths, methods, parameters, bodies,
+  > statuses, media types, and response-schema shapes — rather than doing byte equality,
+  > because `openapi.yaml` carries the design reasoning and that prose is the reason to keep
+  > it hand-authored. Its one deliberate blind spot is FastAPI's automatic `422`, which is
+  > framework behaviour rather than designed interface.
 - [X] T036 [P] [US1] Integration test generating a full deck end to end from the fixture catalog, and that a deck added to the catalog becomes selectable after restart with no rebuild, in `tests/integration/test_generate_deck.py` (FR-004, FR-006, SC-009)
 - [X] T037 [P] [US1] Integration test asserting PDF geometry — MediaBox, slot size, 3×3 grid, guides outside slots — for all three fit modes in `tests/integration/test_print_geometry.py` (SC-003)
 - [X] T038 [P] [US1] Integration test that regeneration is byte-identical across 20 attempts including one in a separate process in `tests/integration/test_determinism.py` (FR-015, SC-006)
@@ -144,7 +145,7 @@ insert it into a sleeved standard card. Succeeds when the card fits and the face
 - [X] T047 [US1] Implement `GET /api/health` and `GET /api/catalog/validation` in `src/marchamp/api/routes.py` (FR-003c, FR-005d)
 - [X] T048 [US1] Set the download `Content-Disposition` filename to deck, fit mode, and page size in `src/marchamp/api/routes.py`, so the mode is identifiable from the document itself (FR-008c, FR-009d)
 - [X] T049 [US1] Emit the structured generation record on every terminal outcome in `src/marchamp/generations/service.py` (FR-022)
-- [ ] T050 [US1] Build the minimal wizard — deck list, fit mode and page size selection with their stated costs, generate, download — in `src/marchamp/web/` (FR-002, FR-003, FR-009c)
+- [X] T050 [US1] Build the minimal wizard — deck list, fit mode and page size selection with their stated costs, generate, download — in `src/marchamp/web/` (FR-002, FR-003, FR-009c)
 
 **Checkpoint**: A deck downloads as a correct, printable PDF. MVP complete.
 
@@ -159,16 +160,16 @@ card order, and card position must agree exactly.
 
 ### Tests for User Story 2 ⚠️ Write first, observe failing
 
-- [ ] T051 [P] [US2] Integration test that the preview matches the PDF page for page and card for card in `tests/integration/test_preview_matches.py` (FR-017, SC-005)
-- [ ] T052 [P] [US2] Integration test that pages become viewable progressively and progress advances during a run in `tests/integration/test_progress.py` (FR-016a, FR-016b)
+- [X] T051 [P] [US2] Integration test that the preview matches the PDF page for page and card for card in `tests/integration/test_preview_matches.py` (FR-017, SC-005)
+- [X] T052 [P] [US2] Integration test that pages become viewable progressively and progress advances during a run in `tests/integration/test_progress.py` (FR-016a, FR-016b)
 
 ### Implementation for User Story 2
 
-- [ ] T053 [US2] Implement `src/marchamp/render/preview.py` — rasterise the generated PDF with pypdfium2, never re-draw from the layout model (FR-017)
-- [ ] T054 [US2] Implement `GET /api/generations/{id}/pages/{pageNumber}` with a bounded width parameter in `src/marchamp/api/routes.py` (FR-016d)
-- [ ] T055 [US2] Report `progress` and `pages_ready` on the generation resource in `src/marchamp/generations/service.py` (FR-016a, FR-016b)
-- [ ] T056 [US2] Add the preview pane in `src/marchamp/web/`, invalidating a preview whenever fit mode or page size changes, and allowing the user to move back a step while a generation runs without blocking the interface or needing a cancel control (FR-003a, FR-003b, FR-016, FR-016c)
-- [ ] T057 [US2] Show the substitution list and total face count alongside the preview, before download, in `src/marchamp/web/` (FR-005h, FR-018, FR-018a)
+- [X] T053 [US2] Implement `src/marchamp/render/preview.py` — rasterise the generated PDF with pypdfium2, never re-draw from the layout model (FR-017)
+- [X] T054 [US2] Implement `GET /api/generations/{id}/pages/{pageNumber}` with a bounded width parameter in `src/marchamp/api/routes.py` (FR-016d)
+- [X] T055 [US2] Report `progress` and `pages_ready` on the generation resource in `src/marchamp/generations/service.py` (FR-016a, FR-016b)
+- [X] T056 [US2] Add the preview pane in `src/marchamp/web/`, invalidating a preview whenever fit mode or page size changes, and allowing the user to move back a step while a generation runs without blocking the interface or needing a cancel control (FR-003a, FR-003b, FR-016, FR-016c)
+- [X] T057 [US2] Show the substitution list and total face count alongside the preview, before download, in `src/marchamp/web/` (FR-005h, FR-018, FR-018a)
 
 **Checkpoint**: US1 and US2 both work independently.
 
@@ -200,7 +201,7 @@ card order, and card position must agree exactly.
 - [ ] T063 [P] Implement the distinguishable empty states — no catalog, no decks, deck with no cards — in `src/marchamp/web/` (FR-003d)
 - [ ] T064 [P] Make the validation report readable when it lists many problems, grouped by deck or card, in `src/marchamp/web/` (FR-003e)
 - [ ] T065 [P] Verify and fix keyboard operability across the whole flow in `src/marchamp/web/` (FR-003g)
-- [ ] T066 [P] Add `README.md` covering setup, configuration, and catalog authoring
+- [X] T066 [P] Add `README.md` covering setup, configuration, and catalog authoring
 - [ ] T067 Measure SC-007 and SC-007a on a real ~41-card deck and record the numbers in `specs/001-hero-deck-pdf-wizard/quickstart.md`
 - [ ] T068 Add `ci` to the required status checks on the `main` branch ruleset so merge gate 1 is actually enforced
 - [ ] T069 Run every scenario in [quickstart.md](./quickstart.md) against a real catalog and record the results

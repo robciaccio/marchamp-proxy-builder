@@ -18,7 +18,7 @@ RULER_MM = 100
 
 
 def calibration_pdf(page_size: PageSize = PageSize.LETTER) -> bytes:
-    page_w, page_h = page_size.value
+    page_w, page_h = page_size.dimensions_mm
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=(mm_to_pt(page_w), mm_to_pt(page_h)), invariant=1)
     c.setTitle("Marchamp print calibration")

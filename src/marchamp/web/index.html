@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Marchamp Proxy Builder</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="masthead">
+      <h1>Marchamp Proxy Builder</h1>
+      <p class="masthead__sub">Print-ready proxy sheets at exact card size.</p>
+    </header>
+
+    <!--
+      An ordered sequence the user can walk back through without losing what they picked
+      (FR-003). Every step is present in the document and hidden with [hidden] rather than
+      rebuilt, so returning to one restores it as it was rather than re-fetching it.
+    -->
+    <nav class="steps" aria-label="Progress">
+      <ol>
+        <li><button type="button" class="steps__link" data-goto="1">1. Deck</button></li>
+        <li><button type="button" class="steps__link" data-goto="2">2. Options</button></li>
+        <li><button type="button" class="steps__link" data-goto="3">3. Preview</button></li>
+      </ol>
+    </nav>
+
+    <main>
+      <!-- Configuration and catalog problems, shown wherever the user is. -->
+      <div id="banner" class="banner" hidden role="status"></div>
+
+      <!-- ------------------------------------------------------- step 1: deck -->
+      <section id="step-1" class="step" aria-labelledby="step-1-title">
+        <h2 id="step-1-title">Choose a hero deck</h2>
+        <p id="deck-status" class="muted">Loading decks…</p>
+        <ul id="deck-list" class="decks"></ul>
+      </section>
+
+      <!-- ---------------------------------------------------- step 2: options -->
+      <section id="step-2" class="step" aria-labelledby="step-2-title" hidden>
+        <h2 id="step-2-title">Choose how it prints</h2>
+        <p class="muted">
+          Printing <strong id="options-deck-name">—</strong>,
+          <strong id="options-face-count">—</strong> printed faces.
+        </p>
+
+        <fieldset class="choices">
+          <legend>Paper size</legend>
+          <label class="choice">
+            <input type="radio" name="page_size" value="LETTER" checked />
+            <span class="choice__body">
+              <span class="choice__name">Letter</span>
+              <span class="choice__cost">216 × 279 mm. Nine cards per sheet.</span>
+            </span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="page_size" value="A4" />
+            <span class="choice__body">
+              <span class="choice__name">A4</span>
+              <span class="choice__cost">210 × 297 mm. Nine cards per sheet.</span>
+            </span>
+          </label>
+        </fieldset>
+
+        <!--
+          FR-009c: every mode's cost is stated at the point of choice. Source scans are
+          about 2.7% taller in proportion than a standard card, so one of these three
+          compromises is unavoidable — the interface's job is to say which one is being
+          made, not to hide it. `stretch` in particular must never be selectable without
+          the word "distorts" next to it (FR-014).
+        -->
+        <fieldset class="choices">
+          <legend>Fitting the art to a standard card</legend>
+          <label class="choice">
+            <input type="radio" name="fit_mode" value="CROP" checked />
+            <span class="choice__body">
+              <span class="choice__name">Crop</span>
+              <span class="choice__cost">
+                Trims about 1.2 mm from the top and bottom of the art. Prints at exact
+                standard size, with nothing showing behind it in a sleeve.
+              </span>
+            </span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="fit_mode" value="FIT" />
+            <span class="choice__body">
+              <span class="choice__name">Fit</span>
+              <span class="choice__cost">
+                Keeps the whole image. The printed face is 61.8 mm wide instead of 63.5 mm,
+                so it is narrower than a real card and the backing card shows at the edges.
+              </span>
+            </span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="fit_mode" value="STRETCH" />
+            <span class="choice__body">
+              <span class="choice__name">Stretch</span>
+              <span class="choice__cost choice__cost--warn">
+                Distorts the art, squashing it about 2.7% vertically. Nothing is trimmed
+                and the size is exact, but the picture is no longer the right shape.
+              </span>
+            </span>
+          </label>
+        </fieldset>
+
+        <div class="actions">
+          <button type="button" class="btn" data-goto="1">Back</button>
+          <button type="button" class="btn btn--primary" id="generate">Generate</button>
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------- step 3: preview -->
+      <section id="step-3" class="step" aria-labelledby="step-3-title" hidden>
+        <h2 id="step-3-title">Check it before you print</h2>
+
+        <div id="run-status" class="run" role="status" aria-live="polite">
+          <p class="run__line"><span id="run-text">Starting…</span></p>
+          <progress id="run-progress" max="100" value="0"></progress>
+        </div>
+
+        <!-- FR-018: page count and total faces, before the download is offered. -->
+        <dl id="tally" class="tally" hidden>
+          <div><dt>Pages</dt><dd id="tally-pages">—</dd></div>
+          <div><dt>Printed faces</dt><dd id="tally-faces">—</dd></div>
+          <div><dt>Paper</dt><dd id="tally-paper">—</dd></div>
+          <div><dt>Fitting</dt><dd id="tally-fit">—</dd></div>
+        </dl>
+
+        <!-- FR-005h / FR-018a: stand-in art is named before paper is committed. -->
+        <section id="subs" class="subs" hidden aria-labelledby="subs-title">
+          <h3 id="subs-title">Art substitutions</h3>
+          <p class="muted">
+            These cards are correct, but printed with art from another pack because this
+            deck's own art was not on disk.
+          </p>
+          <ul id="subs-list"></ul>
+        </section>
+
+        <section id="failures" class="failures" hidden aria-labelledby="failures-title">
+          <h3 id="failures-title">This deck could not be generated</h3>
+          <ul id="failures-list"></ul>
+          <p class="muted">
+            Nothing retries on its own — fix the cause and generate again.
+          </p>
+        </section>
+
+        <div id="pages" class="pages" aria-live="polite"></div>
+
+        <div class="actions">
+          <button type="button" class="btn" data-goto="2">Back to options</button>
+          <a id="download" class="btn btn--primary" hidden download>Download PDF</a>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

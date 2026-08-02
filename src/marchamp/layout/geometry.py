@@ -7,7 +7,7 @@ boundary below, so a rounding mistake cannot quietly change what prints.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 # FR-009a: the one place card size is defined. Changing it is a one-line change.
 SLOT_SIZE_MM: tuple[float, float] = (63.5, 88.9)
@@ -19,9 +19,26 @@ _MM_PER_INCH = 25.4
 _PT_PER_INCH = 72.0
 
 
-class PageSize(Enum):
-    LETTER = (215.9, 279.4)
-    A4 = (210.0, 297.0)
+class PageSize(StrEnum):
+    """Paper the document is emitted at.
+
+    The member value is the *name*, not the dimensions, so the enum survives a round trip
+    through JSON unchanged — a page size is chosen by name over the API (`"LETTER"`), and a
+    pair of millimetre floats is an implementation detail of the geometry, not an interface.
+    """
+
+    LETTER = "LETTER"
+    A4 = "A4"
+
+    @property
+    def dimensions_mm(self) -> tuple[float, float]:
+        return _DIMENSIONS_MM[self]
+
+
+_DIMENSIONS_MM: dict[PageSize, tuple[float, float]] = {
+    PageSize.LETTER: (215.9, 279.4),
+    PageSize.A4: (210.0, 297.0),
+}
 
 
 def mm_to_pt(mm: float) -> float:
@@ -51,7 +68,7 @@ class PageLayout:
 
 def page_layout(page_size: PageSize) -> PageLayout:
     """A fixed 3x3 grid, centred, identical for both page sizes (FR-011)."""
-    page_w, page_h = page_size.value
+    page_w, page_h = page_size.dimensions_mm
     slot_w, slot_h = SLOT_SIZE_MM
     grid_w = GRID_COLS * slot_w
     grid_h = GRID_ROWS * slot_h
