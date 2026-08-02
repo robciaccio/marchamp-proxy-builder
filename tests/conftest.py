@@ -143,3 +143,19 @@ def catalog_path(tmp_path: Path) -> Path:
 @pytest.fixture
 def catalog_dict() -> dict:
     return _catalog_dict()
+
+
+@pytest.fixture
+def multipage_catalog_path(tmp_path: Path) -> Path:
+    """The same deck at 27 faces, so it paginates to three pages.
+
+    Preview and progress are only meaningful across more than one page: a single-page deck
+    cannot show a page arriving before the run has finished, which is the whole of FR-016b.
+    """
+    data = _catalog_dict()
+    for entry in data["decks"][0]["entries"]:
+        if entry["card_id"].startswith("sig"):
+            entry["quantity"] = 6
+    p = tmp_path / "multipage-catalog.json"
+    p.write_text(json.dumps(data, indent=2))
+    return p

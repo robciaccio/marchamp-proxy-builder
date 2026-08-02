@@ -19,8 +19,9 @@ def test_single_page_at_the_requested_size(page_size):
     reader = PdfReader(io.BytesIO(calibration_pdf(page_size)))
     assert len(reader.pages) == 1
     box = reader.pages[0].mediabox
-    assert float(box.width) == pytest.approx(page_size.value[0] * PT_PER_MM, abs=TOL_PT)
-    assert float(box.height) == pytest.approx(page_size.value[1] * PT_PER_MM, abs=TOL_PT)
+    w_mm, h_mm = page_size.dimensions_mm
+    assert float(box.width) == pytest.approx(w_mm * PT_PER_MM, abs=TOL_PT)
+    assert float(box.height) == pytest.approx(h_mm * PT_PER_MM, abs=TOL_PT)
 
 
 def _text() -> str:

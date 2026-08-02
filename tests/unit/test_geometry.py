@@ -6,6 +6,8 @@ is asserted here in millimetres; the generated PDF is asserted separately in int
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from marchamp.layout.geometry import (
@@ -98,3 +100,16 @@ def test_slot_size_is_a_single_configurable_value():
     from marchamp.layout import geometry
 
     assert geometry.SLOT_SIZE_MM is geometry.page_layout(PageSize.LETTER).slot_size_mm
+
+
+@pytest.mark.parametrize("page", list(PageSize))
+def test_page_size_is_named_over_the_wire(page):
+    """A page size is chosen by name, never by its millimetre pair.
+
+    The enum value used to *be* the dimensions, which made the API ask clients to POST
+    `[215.9, 279.4]` instead of `"LETTER"`. Encoding the name is what keeps the contract's
+    `enum: [LETTER, A4]` honest.
+    """
+    assert json.loads(json.dumps(page)) == page.name
+    assert PageSize(page.name) is page
+    assert len(page.dimensions_mm) == 2

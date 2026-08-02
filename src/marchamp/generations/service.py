@@ -1,4 +1,12 @@
-"""Generation orchestration (FR-018, FR-018a, FR-020a, FR-020b, FR-021a, FR-022)."""
+"""Generation orchestration (FR-016a, FR-016b, FR-018, FR-018a, FR-020a, FR-020b, FR-021a,
+FR-022, FR-0A4).
+
+Split into `begin` and `run` on purpose. `begin` creates the resource and pins the catalog
+revision; `run` does the work and may take up to two minutes. Keeping them apart is what
+lets the HTTP layer answer the POST immediately and report advancement while the work
+happens (FR-016a) — an interface that looks frozen for two minutes is indistinguishable
+from one that has failed.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +20,7 @@ from marchamp.catalog.loader import CatalogError, load_catalog_file
 from marchamp.catalog.models import Catalog, HeroDeck
 from marchamp.catalog.printings import ResolutionOutcome, Substitution
 from marchamp.catalog.validation import validate
+from marchamp.config import Limits
 from marchamp.layout.geometry import PageSize
 from marchamp.layout.paginate import expand_faces, face_count, paginate
 from marchamp.observability.logging import GenerationRecord, write_record
@@ -26,6 +35,10 @@ _ISSUE_TO_FAILURE = {
 }
 
 
+class _LimitExceeded(Exception):
+    """A FR-0A4 ceiling was reached mid-run. Unwinds out of the compose callback."""
+
+
 @dataclass
 class Generation:
     id: str
@@ -34,6 +47,8 @@ class Generation:
     fit_mode: FitMode
     catalog_revision: str
     status: str = "pending"
+    progress: float | None = None
+    pages_ready: int = 0
     page_count: int | None = None
     card_count: int | None = None
     document: bytes | None = None
@@ -41,14 +56,39 @@ class Generation:
     failures: list[GenerationFailure] = field(default_factory=list)
     page_face_counts: list[list[str]] = field(default_factory=list)
     duration_ms: int | None = None
+    # Pages already composed, each as a standalone PDF, so a preview can be shown while the
+    # rest of the deck is still rendering (FR-016b).
+    page_documents: list[bytes] = field(default_factory=list, repr=False)
+    # The catalog as it stood when this generation was created. Held, rather than re-read,
+    # so editing the catalog mid-run cannot yield a document mixing two revisions.
+    catalog: Catalog | None = field(default=None, repr=False)
+
+    @property
+    def terminal(self) -> bool:
+        return self.status in ("succeeded", "failed")
+
+    def preview_document(self, page_number: int) -> bytes | None:
+        """The bytes to rasterise for a 1-based page, or None if it is not ready yet.
+
+        Once the run has succeeded this serves slices of the finished document itself, so a
+        preview and a download can never disagree about a page that exists in both.
+        """
+        if page_number < 1:
+            return None
+        if self.status == "succeeded" and self.document is not None:
+            return self.document if page_number <= (self.page_count or 0) else None
+        if page_number <= len(self.page_documents):
+            return self.page_documents[page_number - 1]
+        return None
 
 
 class GenerationService:
     """Resolve -> validate -> compose. Never retries on its own (FR-021a)."""
 
-    def __init__(self, catalog_path: Path, image_dir: Path) -> None:
+    def __init__(self, catalog_path: Path, image_dir: Path, limits: Limits | None = None) -> None:
         self.catalog_path = Path(catalog_path)
         self.image_dir = Path(image_dir)
+        self.limits = limits or Limits()
 
     def load(self) -> Catalog:
         return load_catalog_file(self.catalog_path)
@@ -56,8 +96,34 @@ class GenerationService:
     def decks(self) -> list[HeroDeck]:
         return list(self.load().decks)
 
-    def _compose(self, pages, page_size, fit_mode) -> bytes:
-        return compose(pages, page_size, fit_mode, self.image_dir)
+    def _compose(self, pages, page_size, fit_mode, on_page=None) -> bytes:
+        return compose(pages, page_size, fit_mode, self.image_dir, on_page=on_page)
+
+    # ------------------------------------------------------------------ lifecycle
+
+    def begin(
+        self,
+        deck_id: str,
+        page_size: PageSize = PageSize.LETTER,
+        fit_mode: FitMode = FitMode.CROP,
+    ) -> Generation:
+        """Create the resource and pin the catalog revision. Does no rendering."""
+        gen = Generation(
+            id=uuid.uuid4().hex,
+            deck_id=deck_id,
+            page_size=page_size,
+            fit_mode=fit_mode,
+            catalog_revision="",
+            progress=0.0,
+        )
+        try:
+            gen.catalog = self.load()
+        except CatalogError as exc:
+            return self._fail(
+                gen, [GenerationFailure(FailureKind.CATALOG_INVALID, str(exc))], time.monotonic()
+            )
+        gen.catalog_revision = gen.catalog.revision
+        return gen
 
     def generate(
         self,
@@ -65,22 +131,16 @@ class GenerationService:
         page_size: PageSize = PageSize.LETTER,
         fit_mode: FitMode = FitMode.CROP,
     ) -> Generation:
-        started = time.monotonic()
-        gen = Generation(
-            id=uuid.uuid4().hex,
-            deck_id=deck_id,
-            page_size=page_size,
-            fit_mode=fit_mode,
-            catalog_revision="",
-        )
+        """Begin and run to completion. The synchronous path, for callers with no UI."""
+        return self.run(self.begin(deck_id, page_size=page_size, fit_mode=fit_mode))
 
-        try:
-            catalog = self.load()
-        except CatalogError as exc:
-            return self._fail(
-                gen, [GenerationFailure(FailureKind.CATALOG_INVALID, str(exc))], started
-            )
-        gen.catalog_revision = catalog.revision
+    def run(self, gen: Generation) -> Generation:
+        """Do the work, advancing `gen` in place so a reader can watch it (FR-016a)."""
+        started = time.monotonic()
+        if gen.terminal or gen.catalog is None:  # begin() already settled it
+            return gen
+        catalog = gen.catalog
+        gen.status = "running"
 
         report = validate(catalog, self.image_dir)
         if not report.valid:
@@ -101,7 +161,25 @@ class GenerationService:
                 started,
             )
 
-        faces, resolutions = expand_faces(catalog, deck_id, self.image_dir)
+        faces, resolutions = expand_faces(catalog, gen.deck_id, self.image_dir)
+
+        if len(faces) > self.limits.max_faces_per_generation:
+            return self._fail(
+                gen,
+                [
+                    GenerationFailure(
+                        FailureKind.LIMIT_EXCEEDED,
+                        f"deck expands to {len(faces)} faces, above the "
+                        f"{self.limits.max_faces_per_generation}-face ceiling",
+                    )
+                ],
+                started,
+            )
+
+        # Two units of work per face — checking its source, then drawing it — so progress
+        # tracks the work actually remaining rather than jumping at phase boundaries.
+        total_units = max(1, len(faces) * 2)
+        done_units = 0
 
         # Collect every problem before giving up (FR-020a).
         failures: list[GenerationFailure] = []
@@ -121,7 +199,7 @@ class GenerationService:
         slot_w, slot_h = (63.5, 88.9)
         for face in faces:
             try:
-                validate_source(self.image_dir / face.image_ref, slot_w, slot_h, fit_mode)
+                validate_source(self.image_dir / face.image_ref, slot_w, slot_h, gen.fit_mode)
             except ImageTooSmall as exc:
                 failures.append(
                     GenerationFailure(
@@ -134,15 +212,42 @@ class GenerationService:
                         FailureKind.ASSET_UNREADABLE, str(exc), face.card_id, face.card_name
                     )
                 )
+            done_units += 1
+            gen.progress = done_units / total_units
 
         if failures:
             return self._fail(gen, failures, started)
 
-        pages = paginate(catalog, deck_id, page_size, self.image_dir)
-        gen.document = self._compose(pages, page_size, fit_mode)
+        pages = paginate(catalog, gen.deck_id, gen.page_size, self.image_dir)
+        # Published as soon as pagination is known rather than at the end, so an interface
+        # watching a run can say "page 1 of 5" instead of counting up from nothing — how
+        # much is left is the part of advancement a bare percentage does not convey.
         gen.page_count = len(pages)
-        gen.card_count = face_count(catalog, deck_id)
+        gen.card_count = face_count(catalog, gen.deck_id)
+
+        def on_page(index: int, page_document: bytes) -> None:
+            nonlocal done_units
+            gen.page_documents.append(page_document)
+            gen.pages_ready = len(gen.page_documents)
+            done_units += len(pages[index].faces)
+            gen.progress = min(1.0, done_units / total_units)
+            elapsed = time.monotonic() - started
+            if elapsed > self.limits.generation_wall_clock_s:
+                # FR-003b: an abandoned generation must not hold resources indefinitely.
+                raise _LimitExceeded(
+                    f"generation exceeded the {self.limits.generation_wall_clock_s}s ceiling "
+                    f"after {elapsed:.0f}s"
+                )
+
+        try:
+            gen.document = self._compose(pages, gen.page_size, gen.fit_mode, on_page)
+        except _LimitExceeded as exc:
+            return self._fail(
+                gen, [GenerationFailure(FailureKind.LIMIT_EXCEEDED, str(exc))], started
+            )
+
         gen.page_face_counts = [[f.card_id for f in p.faces] for p in pages]
+        gen.progress = 1.0
         gen.status = "succeeded"
         gen.duration_ms = int((time.monotonic() - started) * 1000)
         self._record(gen, faces)
@@ -154,6 +259,8 @@ class GenerationService:
         gen.status = "failed"
         gen.failures = failures
         gen.document = None  # FR-020b: no partial output, ever
+        gen.page_documents.clear()  # nor a partial preview of one
+        gen.pages_ready = 0
         gen.duration_ms = int((time.monotonic() - started) * 1000)
         self._record(gen, [])
         return gen
