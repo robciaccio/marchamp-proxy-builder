@@ -202,15 +202,21 @@ card order, and card position must agree exactly.
 - [ ] T064 [P] Make the validation report readable when it lists many problems, grouped by deck or card, in `src/marchamp/web/` (FR-003e)
 - [ ] T065 [P] Verify and fix keyboard operability across the whole flow in `src/marchamp/web/` (FR-003g)
 - [X] T066 [P] Add `README.md` covering setup, configuration, and catalog authoring
-- [ ] T067 Measure SC-007 and SC-007a on a real ~41-card deck and record the numbers in `specs/001-hero-deck-pdf-wizard/quickstart.md`
-- [ ] T068 Add `ci` to the required status checks on the `main` branch ruleset so merge gate 1 is actually enforced
+- [X] T067 Measure SC-007 and SC-007a on a real ~41-card deck and record the numbers in `specs/001-hero-deck-pdf-wizard/quickstart.md` — measured and recorded in quickstart V12. Both targets are **missed** (48.9 s against 30 s, 10.5 s against 5 s) and both were reviewed and accepted; see V12 for why this is a trade-off rather than a defect
+- [X] T068 Add `ci` to the required status checks on the `main` branch ruleset so merge gate 1 is actually enforced
 - [ ] T069 Run every scenario in [quickstart.md](./quickstart.md) against a real catalog and record the results
 
 ### Physical validation — cannot be automated
 
-- [ ] T070 Print the calibration page at 100%, confirm the ruler measures true within ±0.5 mm, and record the result in `specs/001-hero-deck-pdf-wizard/quickstart.md` (SC-003)
-- [ ] T071 Print one page in each of the three fit modes, sleeve one card from each in front of a real card, and record which is acceptable in `specs/001-hero-deck-pdf-wizard/quickstart.md` (SC-002, SC-009a)
+Run these against the protocol in
+[physical-uat.md](./physical-uat.md), which orders them and gives the tables to record into.
+Sessions B–D are invalid unless Session A (T070) passes first.
+
+- [ ] T070 Print the calibration page at 100%, confirm the ruler measures true within ±0.5 mm, and record the result in [physical-uat.md](./physical-uat.md) Session A (SC-003)
+- [ ] T071 Print one page in each of the three fit modes, sleeve one card from each in front of a real card, and record which is acceptable in [physical-uat.md](./physical-uat.md) Session B (SC-002, SC-009a)
 - [ ] T072 Set the winning fit mode as the default in `src/marchamp/config.py`, and record in `specs/001-hero-deck-pdf-wizard/spec.md` whether the other modes are kept or removed — the toggle exists to answer this question, not to persist (spec Assumptions, plan Complexity Tracking)
+- [ ] T073 Cut a printed sheet at normal pace, measure the worst per-edge cutting error across all nine cards, and measure the printer's real non-printable margin — [physical-uat.md](./physical-uat.md) Session C. **Blocks the FR-011 / FR-013 gutter amendment**: the measured error sizes the gutter, and the non-printable margin decides whether US Letter can afford one between rows at all
+- [ ] T074 Sleeve a printed proxy in front of a real card across at least 3 printer models and record whether it seats at 100% — [physical-uat.md](./physical-uat.md) Session D (SC-002). A size reduction here also frees vertical slack, which feeds back into T073's gutter arithmetic
 
 ---
 
@@ -221,7 +227,9 @@ card order, and card position must agree exactly.
 - **Setup (Phase 1)**: no dependencies
 - **Foundational (Phase 2)**: depends on Setup — **blocks all user stories**
 - **User Stories (Phases 3–5)**: all depend on Foundational; independent of each other afterwards
-- **Polish (Phase 6)**: depends on the stories it touches; T070–T072 depend on US1 and US3
+- **Polish (Phase 6)**: depends on the stories it touches; T070–T074 depend on US1 and US3.
+  Within them T070 gates T071–T074 — an unverified print scale invalidates every millimetre
+  measured afterwards
 
 ### User Story Dependencies
 
@@ -284,3 +292,7 @@ Foundation → US1 (MVP, printable decks) → US2 (stop wasting paper on mistake
   artifact it touches moves in the same commit
 - **T071 and T072 are the point of the whole fit-mode experiment.** Until they are done, the
   three modes are an open question, not a feature
+- **T073 blocks a spec amendment, not just a task.** The FR-011 / FR-013 change to spread
+  cards apart with gutters cannot be settled on argument: US Letter has only 12.7 mm of
+  total vertical slack, so whether a gutter fits between rows depends on a measured cutting
+  error and a measured non-printable margin. Run T073 before re-opening that clarification

@@ -125,6 +125,10 @@ Sleeve one card from each in front of a real card before deciding. **When a winn
 make it the default and reconsider removing the others** — this toggle exists to answer a
 question, not to persist.
 
+> The step-by-step protocol for actually doing this on paper — what to measure, what each
+> mode costs in millimetres, and where to record the answer — is
+> [physical-uat.md](./physical-uat.md), Session B.
+
 ### V4c — Pack art preferred, stand-ins reported (FR-005f–j, SC-012)
 
 The Captain America pack folder is missing six cards that exist in the Core Set under
@@ -220,6 +224,10 @@ curl -s -o calibration.pdf http://127.0.0.1:8765/api/calibration
 Champions card laid over the outline matches within ±0.5 mm on all four sides. Print this
 *before* a full deck.
 
+> This is Session A of [physical-uat.md](./physical-uat.md), and it gates every other
+> physical measurement — if the scale is wrong, every millimetre measured later is wrong by
+> the same factor.
+
 ### V11 — Live API matches the contract (Principle II)
 
 ```bash
@@ -229,6 +237,34 @@ uv run pytest tests/contract/ -v
 **Expect**: the running service's generated OpenAPI matches
 [contracts/openapi.yaml](./contracts/openapi.yaml). This test failing means the contract
 drifted and one of the two must be corrected — it is a required merge gate.
+
+### V12 — Measured generation performance (SC-007, SC-007a)
+
+Measured on a real ~41-card hero deck on the development laptop, default fit mode, Letter.
+
+| Measure | Target | Measured | Verdict |
+|---|---|---|---|
+| First preview page viewable (SC-007a) | 5 s | **10.5 s** | missed, 2.1× |
+| Whole deck generated (SC-007) | 30 s | **48.9 s** | missed, 1.6× |
+| Peak resident memory for the run | *(no target)* | **202 MB** | within FR-0A4's 512 MB per-image ceiling |
+
+**Both targets are missed, and both misses were reviewed and accepted.** This is recorded
+as a known trade-off rather than left open as a defect, on this reasoning:
+
+- The tool is **local-only** (FR-0A1). The wait is one person's own machine doing one
+  person's own job, once per deck — not a shared service where queuing costs compound
+  across users.
+- The generation stays well inside FR-0A4's hard ceilings — 48.9 s against the 120 s
+  cutoff, 202 MB against the 512 MB per-image limit — so nothing here risks destabilising
+  the machine or truncating output. SC-007 is a target for typical work; FR-0A4 is the
+  limit that actually fails a generation, and it is not close.
+- The work being paid for is real: full-resolution decode of ~42 source faces at 600 DPI,
+  which is what FR-010's 300 DPI floor and the no-upscaling rule require.
+
+**Do not optimise this unprompted.** Reopening it means re-running this measurement and
+changing this table, not treating the numbers as a bug report. If a future change makes a
+generation *slower* than the figures above, that is a regression worth raising; matching
+them is the expected result.
 
 ## Full gate before opening a PR
 
