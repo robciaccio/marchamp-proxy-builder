@@ -1,6 +1,6 @@
 # Feature Specification: Starter Deck Assembly from a Scan Library
 
-**Feature Branch**: `002-catalog-scaffold`
+**Feature Branch**: `002-starter-deck-assembly`
 
 **Created**: 2026-08-01
 
