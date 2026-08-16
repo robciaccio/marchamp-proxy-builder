@@ -31,10 +31,16 @@ folder and everything else under `Aspects/`.
 So the two halves fit together. The library says *which cards*; MarvelCDB says *what they
 are and how many*. Neither alone is enough, and the user should not have to supply either.
 
-The check that makes this safe is arithmetic. A Marvel Champions deck is exactly 40 cards.
-A reconstruction that totals 40 is almost certainly right; one that does not has failed, and
-can say precisely which cards it could not place. That turns the whole feature's correctness
-into a number the tool can verify on every run.
+What makes this safe is that the tool can check its own work — but not, as an earlier draft
+of this spec claimed, by requiring the deck to total 40. The deckbuilding rules permit 40 to
+50 cards, and while every pre-built deck examined so far contains exactly 40, that has been
+observed rather than proven across the whole card pool.
+
+So the check is completeness, not arithmetic: every card the tool decides belongs in the deck
+must resolve to an image, and a card that does not fails the run by name. The total is
+reported alongside, and a total other than 40 is flagged as a strong signal that something
+did not resolve — because in every case measured so far, it was. That is a warning the user
+can judge, not a gate that would refuse a legitimately larger deck.
 
 ## Clarifications
 
@@ -53,6 +59,19 @@ into a number the tool can verify on every run.
   A: From the printing being assembled, never from the printing the image came from.
 - **Q: Does the application download card art from MarvelCDB?**
   A: No. MarvelCDB supplies metadata only; every image comes from the user's library.
+- **Q: Is a pre-built starter deck always 40 cards?**
+  A: Not established. The rules permit 40 to 50. All five official starter decklists on
+  MarvelCDB are 40, and all eight hero folders reconstructed to 40, but that is thirteen
+  observations against roughly sixty released packs. The spec therefore treats 40 as an
+  expectation to report against, never as a gate (FR-012, FR-012a).
+- **Q: Can Hall of Heroes supply official pre-built contents instead?**
+  A: No. It publishes each pack's starter deck as a photograph of the decklist card
+  (`capamericadeck-1.jpg`), so using it would require the same optical recognition the
+  library's own scanned decklist photos would. Investigated 2026-08-16 and rejected on that
+  basis, not on quality.
+- **Q: How does the user say which library to read?**
+  A: By naming a folder when they ask for a deck. No environment variable, no pre-configured
+  root (FR-033).
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -71,8 +90,9 @@ six sourced from the Core Set.
 
 **Acceptance Scenarios**:
 
-1. **Given** a hero folder and no catalog, **When** the user assembles, **Then** a deck of
-   exactly 40 cards is produced, each card appearing as many times as the pack contains it.
+1. **Given** a hero folder and no catalog, **When** the user assembles, **Then** a deck is
+   produced in which every card resolved to an image and each card appears as many times as
+   the pack contains it, and the deck's total is reported.
 2. **Given** a card the scanner omitted because it is a Core Set reprint, **When** the user
    assembles, **Then** its image is taken from the Core Set and it appears in the deck.
 3. **Given** a card whose copies number more than one, **When** the user assembles, **Then**
@@ -82,13 +102,17 @@ six sourced from the Core Set.
    image came from.
 5. **Given** a completed assembly, **When** the user opens the report, **Then** every card is
    accounted for and every borrowed image is named alongside the printing it came from.
+6. **Given** no library configured anywhere and no environment variable set, **When** the user
+   names a folder and asks for a deck, **Then** the deck is assembled from that folder.
+7. **Given** a second request naming a different folder, **When** the user assembles, **Then**
+   it reads that folder, with no restart and no reconfiguration.
 
 ---
 
 ### User Story 2 - Be told exactly what could not be resolved (Priority: P1)
 
-An assembly that cannot reach 40 cards says which cards are missing and where it looked,
-rather than producing a deck that is quietly short.
+An assembly that cannot resolve every card says which are missing and where it looked, rather
+than producing a deck that is quietly short.
 
 **Why this priority**: Shares P1 with User Story 1 because it is not a separate feature but
 the other half of the same one. A deck that is silently 37 cards is worse than no deck: the
@@ -102,7 +126,8 @@ no other printing. It succeeds when the run fails, names that card, and prints n
 1. **Given** a card with no image anywhere in the library, **When** the user assembles,
    **Then** the run fails naming that card, and no PDF is written.
 2. **Given** a reconstruction that does not total 40, **When** the user assembles, **Then**
-   the count is reported against the expected 40 and every unplaced card is named.
+   the total is reported against that expectation as a warning, and every unplaced card is
+   named — but the count alone does not refuse the run.
 3. **Given** a file the naming convention cannot parse, **When** the user assembles, **Then**
    that file is named in the report rather than silently ignored.
 4. **Given** two files in one folder claiming the same position, **When** the user assembles,
@@ -158,6 +183,12 @@ succeeds when the card is found and the deck reaches 40.
   against a wrongly guessed pack.
 - **A pack identified with low confidence.** Reported and refused. A wrong pack produces a
   deck that is entirely plausible and entirely wrong.
+- **A named folder that does not exist, is a file, or cannot be read.** Refused when named,
+  naming the folder and the reason — never surfacing later as a missing card.
+- **A named folder containing no card images at all.** Reported as empty rather than
+  identified as some pack on no evidence.
+- **A deck totalling more than 40.** Permitted by the rules, so reported and printed rather
+  than refused. Only a card that resolves to no image stops a run.
 
 ## Requirements *(mandatory)*
 
@@ -173,6 +204,23 @@ succeeds when the card is found and the deck reaches 40.
   credentials are required and none MUST be requested.
 - **FR-004**: All library reads MUST go through the existing asset adapter (constitution
   principle III). Assembly logic MUST NOT learn where a binary lives.
+
+### Naming the library
+
+- **FR-033**: The user MUST be able to name any readable folder on their machine when asking
+  for a deck. The application MUST NOT require a library location to be configured in advance,
+  and MUST NOT refuse to start because one is unset.
+- **FR-034**: The named folder MUST be validated when it is named — that it exists, is a
+  directory, and is readable — and MUST fail immediately and specifically when it is not,
+  rather than surfacing as a missing card later.
+- **FR-035**: For the duration of a run, the named folder MUST be the containment boundary:
+  every asset reference MUST resolve inside it, and a reference that escapes it MUST be
+  refused. Feature 001's containment guarantee is preserved; what changes is that the boundary
+  is chosen per run rather than fixed at startup.
+- **FR-036**: The named folder MUST NOT be written to, moved, renamed, or deleted from, which
+  is FR-001 restated for a boundary the user picks each time.
+- **FR-037**: Diagnostic and log records MUST NOT carry absolute filesystem paths from outside
+  the named folder, preserving feature 001's FR-022b under per-run boundaries.
 
 ### Identifying the pack
 
@@ -195,10 +243,16 @@ succeeds when the card is found and the deck reaches 40.
   MUST be excluded from the player deck. They MAY be offered as a separate output.
 - **FR-011**: The number of copies of a card MUST come from the printing being assembled,
   never from the printing an image was borrowed from.
-- **FR-012**: An assembled player deck MUST contain exactly 40 cards. A reconstruction that
-  does not MUST fail, MUST report the total against the expected 40, and MUST name every card
-  it could not place.
-- **FR-013**: The tool MUST NOT invent a card, a quantity, or a substitution to reach 40.
+- **FR-012**: Every card the tool places in the deck MUST resolve to an image. A card that
+  does not MUST fail the run by name. Completeness of resolution, not the card total, is what
+  the tool verifies.
+- **FR-012a**: The tool MUST report the assembled deck's total. A total other than 40 MUST be
+  reported as a warning, because a pre-built deck is expected to be 40 and every shortfall
+  measured so far was an unresolved card. A total outside the legal 40-to-50 range MUST be
+  reported more strongly still. Neither MUST refuse the run on the count alone — the rules
+  permit up to 50, and no exhaustive check of released packs has been made.
+- **FR-013**: The tool MUST NOT invent a card, a quantity, or a substitution to reach any
+  particular total.
 
 ### Resolving images
 
@@ -264,7 +318,7 @@ succeeds when the card is found and the deck reaches 40.
   substitution is auditable.
 - **Assembly report**: What a run produced — the pack identified, cards placed, images
   borrowed, files unused or uninterpretable, conflicts, low-resolution warnings, and the
-  card total against the expected 40.
+  card total with a warning when it is not the expected 40.
 
 ## Success Criteria *(mandatory)*
 
@@ -272,18 +326,23 @@ succeeds when the card is found and the deck reaches 40.
 
 - **SC-001**: A user with a scan library and no catalog can produce a printable starter deck
   in under five minutes, against the half-day it takes to author a catalog by hand.
-- **SC-002**: Captain America, Star-Lord, Wasp, and Hulk each assemble to exactly 40 cards
-  with no manual intervention. These four were measured to reconstruct cleanly and are the
-  acceptance set.
-- **SC-003**: Thor, Black Widow, Ant-Man, and Ms. Marvel each assemble to exactly 40 cards.
-  These four require whole-library search and name fallback, and are the harder acceptance
-  set.
+- **SC-002**: Captain America, Star-Lord, Wasp, and Hulk each assemble with every card
+  resolved and no manual intervention, and each totals 40. These four were measured to
+  reconstruct cleanly and are the acceptance set.
+- **SC-003**: Thor, Black Widow, Ant-Man, and Ms. Marvel each assemble with every card
+  resolved, and each totals 40. These four require whole-library search and name fallback, and
+  are the harder acceptance set. Their totals were 37, 39, 36, and 37 with a resolver confined
+  to the hero folder.
+- **SC-003a**: The user MUST be able to assemble a deck by naming a folder, with no
+  environment variable set and no library configured in advance.
 - **SC-004**: 100% of files in the folders consulted are either used or named in the report.
   Zero are silently ignored.
 - **SC-005**: 100% of images resolved by anything other than an exact positional match are
   reported as such. No substitution is silent.
-- **SC-006**: A deck that cannot reach 40 cards fails 100% of the time. No combination of
-  inputs yields a short deck that prints.
+- **SC-006**: A deck containing a card that resolves to no image fails 100% of the time. No
+  combination of inputs yields a deck that prints with a card missing.
+- **SC-006a**: A deck whose total is not 40 is reported as such 100% of the time, whether or
+  not the run succeeds.
 - **SC-007**: Assembling twice from the same library and snapshot produces a byte-identical
   PDF.
 - **SC-008**: A user whose library is missing a card can tell which card, and where the tool
@@ -300,13 +359,24 @@ succeeds when the card is found and the deck reaches 40.
 - **The trailing number in a filename is MarvelCDB's `position`.** Verified 18/18 for the
   Captain America pack and across eight hero folders. Files not matching are reported, not
   guessed at (FR-021).
-- **A starter deck is exactly 40 cards.** A game rule, and the feature's correctness check.
+- **A pre-built starter deck is expected to be 40 cards, but this is not assumed.** The
+  deckbuilding rules permit 40 to 50. Thirteen observations support 40 — the five official
+  starter decklists published on MarvelCDB, and eight hero folders that each reconstruct to
+  40 — against roughly sixty released packs, so it is an expectation the tool reports against
+  (FR-012a) rather than a rule it enforces. If a pack ships a larger pre-built deck, the tool
+  warns and proceeds; it does not refuse.
 - **MarvelCDB's public card endpoints are available and stable.** This feature uses only the
   documented card and pack endpoints; it does not depend on the undocumented decklist
   endpoints, and does not require an account.
-- **The library is a local directory.** The user's Google Drive folder is mounted locally, so
-  no Drive-specific client is needed. A remote backend remains out of scope here, as it is in
-  feature 001, and would arrive through the existing adapter.
+- **The library is a local directory the user names at the time they ask.** Their Google Drive
+  folder is mounted locally, so no Drive-specific client is needed. A remote backend remains
+  out of scope here, as it is in feature 001, and would arrive through the existing adapter.
+- **Naming a folder per run widens what the application will read, deliberately.** It will
+  open any directory the user names, where before it read one directory fixed at startup.
+  This is judged acceptable because the service is loopback-only by design (feature 001's
+  FR-0A2) and the person naming the folder is the person running the process, so it grants
+  them nothing they did not already have. The containment guarantee is preserved in kind
+  rather than dropped: it now binds to the folder named for that run (FR-035).
 - **Depends on feature 001** for the catalog structures, the validation rules, the resolution
   floor, and PDF generation. This feature introduces no new output format and relaxes none of
   those rules.

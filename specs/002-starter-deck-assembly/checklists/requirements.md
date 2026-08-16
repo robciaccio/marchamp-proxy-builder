@@ -54,10 +54,10 @@ Both are consequential — FR-017 in particular, since too strict a rule leaves 
 deferred to the plan below, and that deferral is what makes these boxes fail. If either
 becomes user-visible, it belongs back in the spec.
 
-**C. Acceptance coverage is partial.** 12 acceptance scenarios against 32 functional
-requirements. The scenarios cover deck composition, quantities, borrowing, and the failure
-paths — the correctness-critical parts. The reporting block (FR-020 to FR-026) and the
-upstream-data block (FR-027 to FR-030) have none. Those need scenarios before planning
+**C. Acceptance coverage is partial.** 14 acceptance scenarios against 38 functional
+requirements. The scenarios cover deck composition, quantities, borrowing, folder selection,
+and the failure paths — the correctness-critical parts. The reporting block (FR-020 to FR-026)
+and the upstream-data block (FR-027 to FR-030) have none. Those need scenarios before planning
 closes, or they will be implemented against prose alone.
 
 ## Notes
@@ -80,6 +80,23 @@ library on 2026-08-16, not reasoned about:
 - Copy counts differ between printings of the same card (Energy is ×1 in `cap`, ×4 in
   `core`), which is why FR-011 exists.
 - The library holds 4,447 images and every card probed exists somewhere in it.
+
+### Corrected after review
+
+**Deck size was overstated.** An earlier revision of this spec asserted that a Marvel
+Champions deck is exactly 40 cards and built the feature's correctness check on it. The
+deckbuilding rules permit 40 to 50. The evidence for 40 is real but partial — five official
+starter decklists and eight reconstructed hero folders, thirteen observations against roughly
+sixty released packs — and none of it establishes a universal.
+
+The verification mechanism moved accordingly: from "does the deck total 40" to "did every card
+resolve to an image" (FR-012), with the total reported and a deviation from 40 raised as a
+warning (FR-012a). This is the stronger check regardless, since it is what actually
+distinguishes a correct deck from a quietly short one.
+
+**Hall of Heroes was investigated as a source of official pre-built contents and rejected.**
+It publishes each pack's starter deck as a photograph of the decklist card, so it would need
+the same optical recognition the library's own scanned decklist photos would.
 
 ### Deliberately left to the plan
 
