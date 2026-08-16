@@ -7,15 +7,15 @@
 
 ## Content Quality
 
-- [x] No implementation details (languages, frameworks, APIs)
+- [ ] No implementation details (languages, frameworks, APIs) — **fails as worded**, see A
 - [x] Focused on user value and business needs
 - [x] Written for non-technical stakeholders
-- [x] All mandatory sections completed
+- [x] All mandatory sections completed — User Scenarios, Requirements, Success Criteria
 
 ## Requirement Completeness
 
-- [x] No [NEEDS CLARIFICATION] markers remain
-- [x] Requirements are testable and unambiguous
+- [x] No [NEEDS CLARIFICATION] markers remain — verified, zero occurrences
+- [ ] Requirements are testable and unambiguous — **two are not**, see B
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
 - [x] All acceptance scenarios are defined
@@ -25,10 +25,40 @@
 
 ## Feature Readiness
 
-- [x] All functional requirements have clear acceptance criteria
+- [ ] All functional requirements have clear acceptance criteria — **12 scenarios for 32
+      requirements**, see C
 - [x] User scenarios cover primary flows
-- [x] Feature meets measurable outcomes defined in Success Criteria
-- [x] No implementation details leak into specification
+- [ ] Feature meets measurable outcomes defined in Success Criteria — not assessable before
+      implementation; carry to the plan
+- [ ] No implementation details leak into specification — same finding as A
+
+## Failing items
+
+**A. The spec names an external API.** MarvelCDB appears 22 times, four of them inside
+requirements (FR-002, FR-003, FR-027, FR-029). The item as worded is not satisfied.
+
+This is deliberate, not an oversight: *which* upstream supplies card identity and quantities
+is a product decision — the feature does not exist without it — and naming it is what makes
+FR-002 (metadata only, no art) and FR-029 (refuse rather than guess when unreachable)
+enforceable. Endpoint paths, response schemas, and the HTTP client stay out and belong in the
+plan. Recorded as failing rather than quietly reinterpreted, so a reviewer can disagree.
+
+**B. Two requirements are not unambiguous.**
+
+- **FR-006** requires refusing a pack identification when agreement is "too weak to be
+  confident" without saying what weak means.
+- **FR-017** bounds *when* a name match is permitted but not how much misspelling to tolerate.
+
+Both are consequential — FR-017 in particular, since too strict a rule leaves Thor's
+`Invulnerability` unresolvable and too loose a rule pairs a card with the wrong file. Both are
+deferred to the plan below, and that deferral is what makes these boxes fail. If either
+becomes user-visible, it belongs back in the spec.
+
+**C. Acceptance coverage is partial.** 12 acceptance scenarios against 32 functional
+requirements. The scenarios cover deck composition, quantities, borrowing, and the failure
+paths — the correctness-critical parts. The reporting block (FR-020 to FR-026) and the
+upstream-data block (FR-027 to FR-030) have none. Those need scenarios before planning
+closes, or they will be implemented against prose alone.
 
 ## Notes
 
