@@ -1,7 +1,8 @@
-# Specification Quality Checklist: Catalog Scaffolding from a Card Image Directory
+# Specification Quality Checklist: Starter Deck Assembly from a Scan Library
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-08-01
+**Last revised**: 2026-08-16
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality
@@ -31,31 +32,49 @@
 
 ## Notes
 
-All items passed on review. Two things were deliberately kept out of the spec while
-drafting, and are worth recording so they are not read as omissions:
+This spec replaces an earlier draft of the same feature. The earlier one proposed generating
+a catalog from filenames and having the user type in every quantity by hand, on the stated
+premise that quantities were unrecoverable. That premise was wrong, and the revision follows
+from disproving it rather than from a change of mind about scope.
 
-**The mechanism for "unfinished means invalid".** There is an obvious way to satisfy FR-012
-using a sentinel quantity the existing validator already rejects. That is a plan decision,
-not a spec one, so the spec states only the required outcome — unfinished and invalid are
-the same state — and leaves the how open.
+### Evidence behind the rewrite
 
-**The output's concrete shape.** The catalog format already exists in feature 001 and this
-feature adds nothing to it, so the spec references it rather than restating it. The one
-mention of JSON is in the motivation, describing what a user writes by hand today.
+Every claim the spec rests on was measured against the live MarvelCDB API and the user's
+library on 2026-08-16, not reasoned about:
 
-No [NEEDS CLARIFICATION] markers were needed. Three questions came up during drafting and
-were settled against existing evidence rather than by asking:
+- The trailing number in a filename is MarvelCDB's `position` — 18/18 for pack `cap`, and
+  pack identification then succeeded for all eight hero folders tested.
+- Deck composition is *not* derivable from pack contents: hero set + main aspect + basic
+  totals 43, 43, 43, 43, 40, 43, 43, 43, 43, 43, 42, 37 across twelve packs.
+- Official starter decklists exist on MarvelCDB for the five Core Set heroes only.
+- Copy counts differ between printings of the same card (Energy is ×1 in `cap`, ×4 in
+  `core`), which is why FR-011 exists.
+- The library holds 4,447 images and every card probed exists somewhere in it.
 
-1. *Whole-library or per-pack scaffolding?* Both. Cards are gathered across the whole
-   directory so a card published in several packs becomes one card with several printings
-   (FR-008), while deck proposals are per pack folder (Assumptions). Recorded rather than
-   asked because the reference library already demonstrates both needs.
-2. *What if the output already exists?* Refuse by default, merge when asked (FR-004,
-   FR-022). The destructive default is the one that makes a tool unusable twice.
-3. *Should quantities default to 1?* No, and this is the load-bearing decision of the whole
-   feature. A default of 1 would produce a deck that is wrong and validates cleanly. FR-011
-   and FR-012 exist to make that outcome unreachable.
+### Deliberately left to the plan
 
-One point deserves attention at planning time: FR-023 (preserving user edits to identifiers
-across a re-run) needs a way to recognise a card whose identifier the user has changed. That
-is a real design problem, not a detail, and the plan should address it explicitly.
+**The pack-identification confidence threshold (FR-006).** The spec requires that weak
+agreement be refused but does not say what counts as weak, because the number depends on the
+matching approach chosen. If the threshold ever becomes visible to the user — a prompt, a
+flag — it belongs back in the spec.
+
+**Name-matching tolerance (FR-017).** The spec bounds *when* a name match is permitted, which
+is the safety-critical part. How much misspelling to tolerate is a plan decision, and a
+consequential one: the library contains "Stength in Numbers" and "Steve_s Apartament", so
+exact matching is too strict, while loose matching can pair a card with the wrong file. The
+plan must state the rule and test it against both.
+
+**Whether nemesis and encounter cards get their own output (FR-010).** Stated as MAY. They
+are excluded from the 40 either way, which is the part that affects correctness.
+
+### Open risk worth naming
+
+**SC-003 is asserted, not yet demonstrated.** Thor, Black Widow, Ant-Man, and Ms. Marvel
+currently reconstruct to 37, 39, 36, and 37 with a positional resolver limited to the hero
+folder. Every card responsible was located elsewhere in the library, so 40 is believed
+reachable through FR-015 and FR-017 — but no resolver has yet been built that reaches it.
+If planning shows one of these four cannot be resolved without guessing, the honest response
+is to narrow SC-003 and report the gap, not to loosen FR-013.
+
+No [NEEDS CLARIFICATION] markers were needed. Questions that came up during drafting were
+settled against measurement, and are recorded in the spec's Clarifications section.
