@@ -1,0 +1,1 @@
+- add an mcp server to this just for fun
