@@ -16,6 +16,7 @@ from typing import Annotated, Any
 from fastapi import FastAPI, HTTPException, Path, Query, Response
 
 from marchamp.api import schemas
+from marchamp.assets.local_dir import LocalDirectoryStore
 from marchamp.catalog.loader import CatalogError
 from marchamp.catalog.validation import validate
 from marchamp.generations.registry import GenerationRegistry
@@ -75,6 +76,15 @@ def register_routes(app: FastAPI) -> None:
     )
     app.state.generation_workers = workers
 
+    def image_store() -> LocalDirectoryStore:
+        """Feature 001's configured directory, behind the adapter (FR-004, research R8).
+
+        Feature 002's runs use `assets.OverlayStore` instead, built per run over the library
+        root that run named plus its own upload directory — which is why nothing here can be
+        a module-level singleton.
+        """
+        return LocalDirectoryStore(settings.image_dir)
+
     def service() -> GenerationService:
         if settings.image_dir is None or settings.catalog_path is None:
             raise HTTPException(
@@ -83,7 +93,10 @@ def register_routes(app: FastAPI) -> None:
             )
         return GenerationService(
             catalog_path=settings.catalog_path,
-            image_dir=settings.image_dir,
+            # Feature 001's decks come from one configured directory, so its store is the
+            # plain one. Feature 002's runs overlay a per-run upload directory on top of a
+            # per-run library root, which is `assets.OverlayStore` and is built per run.
+            store=image_store(),
             limits=settings.limits,
         )
 
@@ -103,7 +116,7 @@ def register_routes(app: FastAPI) -> None:
             try:
                 cat = service().load()
                 revision = cat.revision
-                valid = validate(cat, settings.image_dir).valid
+                valid = validate(cat, image_store()).valid
             except CatalogError:
                 valid = False
         return schemas.Health(
@@ -130,7 +143,7 @@ def register_routes(app: FastAPI) -> None:
                 errors=[schemas.ValidationIssue(kind="schema_invalid", detail=str(exc))],
                 warnings=[],
             )
-        report = validate(cat, settings.image_dir)
+        report = validate(cat, image_store())
 
         def as_issue(i) -> schemas.ValidationIssue:
             return schemas.ValidationIssue(
@@ -190,7 +203,7 @@ def register_routes(app: FastAPI) -> None:
                     preferred_printing_available=bool(
                         card
                         and (p := card.printing(e.preferred_printing_id))
-                        and (settings.image_dir / p.image).is_file()
+                        and image_store().exists(p.image)
                     ),
                 )
             )

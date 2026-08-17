@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from pypdf import PdfReader
 
 from marchamp.api.app import create_app
+from marchamp.assets.local_dir import LocalDirectoryStore
 from marchamp.config import Settings
 from marchamp.generations.service import GenerationService
 from marchamp.render import preview
@@ -50,7 +51,9 @@ def _generate(client: TestClient) -> tuple[str, dict]:
 
 @pytest.fixture
 def service(image_dir, multipage_catalog_path) -> GenerationService:
-    return GenerationService(catalog_path=multipage_catalog_path, image_dir=image_dir)
+    return GenerationService(
+        catalog_path=multipage_catalog_path, store=LocalDirectoryStore(image_dir)
+    )
 
 
 @pytest.fixture

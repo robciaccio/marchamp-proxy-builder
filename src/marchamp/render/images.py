@@ -5,10 +5,10 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 
+from marchamp.assets.store import AssetError, Store
 from marchamp.config import Limits
 
 # Set deliberately rather than disabled. The common workaround (MAX_IMAGE_PIXELS = None)
@@ -38,7 +38,10 @@ class ImageUnreadable(Exception):
 
 @dataclass(frozen=True)
 class SourceInfo:
-    path: Path
+    #: The opaque asset ref, not a path. Feature 002 reads faces from two roots and a
+    #: finished run must render with the library unmounted (SC-006h), so nothing downstream
+    #: may assume a source image has a location on this filesystem.
+    ref: str
     width_px: int
     height_px: int
 
@@ -116,13 +119,20 @@ def fit_rect(src_w: int, src_h: int, slot_w_mm: float, slot_h_mm: float, mode: F
 
 
 def validate_source(
-    path: Path, slot_w_mm: float, slot_h_mm: float, mode: FitMode, dpi: int = MIN_DPI
+    store: Store, ref: str, slot_w_mm: float, slot_h_mm: float, mode: FitMode, dpi: int = MIN_DPI
 ) -> SourceInfo:
-    """Reject anything that cannot print at the required resolution (FR-010, FR-020)."""
+    """Reject anything that cannot print at the required resolution (FR-010, FR-020).
+
+    Reads through the adapter rather than joining a directory and a ref (FR-004, research
+    R8). That is what lets an uploaded file (FR-026e), which lives in the run's own
+    directory rather than in the named library, be validated by exactly this code — FR-028's
+    "manual choice bypasses discovery, never validation", satisfied by calling what already
+    existed rather than by writing a second check.
+    """
     try:
-        with Image.open(path) as img:
+        with store.open(ref) as handle, Image.open(handle) as img:
             w, h = img.size
-    except (UnidentifiedImageError, OSError) as exc:
+    except (UnidentifiedImageError, OSError, AssetError) as exc:
         raise ImageUnreadable(str(exc)) from exc
 
     rect = fit_rect(w, h, slot_w_mm, slot_h_mm, mode)
@@ -132,4 +142,4 @@ def validate_source(
             f"{w}x{h}px gives {rect.effective_dpi_x:.0f}x{rect.effective_dpi_y:.0f} DPI at "
             f"final size; at least {need_w}x{need_h}px is required for {dpi} DPI"
         )
-    return SourceInfo(path=Path(path), width_px=w, height_px=h)
+    return SourceInfo(ref=ref, width_px=w, height_px=h)

@@ -65,6 +65,22 @@ def image_dir(tmp_path: Path) -> Path:
     return root
 
 
+@pytest.fixture
+def image_store(image_dir: Path):
+    """Feature 001's image directory, behind the adapter it now reads through.
+
+    Feature 002 made `assets.Store` load-bearing rather than decorative: `compose`,
+    `paginate`, `validate`, and `validate_source` take a store instead of computing
+    `image_dir / ref`, because a run's faces come from the library *and* from its own
+    uploads (research R8). These tests changed only in how they hand over the same
+    directory; every assertion in them is untouched, which is what makes them the evidence
+    that the refactor preserved behaviour.
+    """
+    from marchamp.assets.local_dir import LocalDirectoryStore
+
+    return LocalDirectoryStore(image_dir)
+
+
 def _catalog_dict() -> dict:
     """Deck of 8 faces: hero (double-sided, 2 faces) + 4 sig (6 copies total)."""
     return {

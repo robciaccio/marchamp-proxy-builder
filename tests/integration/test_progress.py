@@ -16,6 +16,7 @@ import time
 
 import pytest
 
+from marchamp.assets.local_dir import LocalDirectoryStore
 from marchamp.generations import service as service_module
 from marchamp.generations.service import GenerationService
 from marchamp.render import document as document_module
@@ -26,7 +27,9 @@ TIMEOUT_S = 30
 
 @pytest.fixture
 def service(image_dir, multipage_catalog_path) -> GenerationService:
-    return GenerationService(catalog_path=multipage_catalog_path, image_dir=image_dir)
+    return GenerationService(
+        catalog_path=multipage_catalog_path, store=LocalDirectoryStore(image_dir)
+    )
 
 
 @pytest.fixture
@@ -147,9 +150,9 @@ def test_a_failed_generation_leaves_no_partial_preview(image_dir, multipage_cata
     card["printings"][0]["image"] = "Heros/Test Hero_Testman/gone.tiff"
     multipage_catalog_path.write_text(json.dumps(data))
 
-    gen = GenerationService(catalog_path=multipage_catalog_path, image_dir=image_dir).generate(
-        "testman-deck"
-    )
+    gen = GenerationService(
+        catalog_path=multipage_catalog_path, store=LocalDirectoryStore(image_dir)
+    ).generate("testman-deck")
 
     assert gen.status == "failed"
     assert gen.document is None

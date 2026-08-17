@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from marchamp.assets.store import Store
 from marchamp.catalog.models import Catalog
 
 
@@ -37,9 +38,11 @@ def _unsafe(ref: str) -> bool:
     return p.is_absolute() or ".." in p.parts
 
 
-def validate(catalog: Catalog, image_dir: Path) -> ValidationReport:
+def validate(catalog: Catalog, store: Store) -> ValidationReport:
+    # Presence is asked of the adapter, never computed from a directory and a ref (FR-004).
+    # `_unsafe` stays a path check because it guards the *ref* the catalog authored, which
+    # is a different question from where the adapter would put it.
     report = ValidationReport()
-    image_dir = Path(image_dir)
 
     seen_cards: set[str] = set()
     seen_printings: set[str] = set()
@@ -86,10 +89,10 @@ def validate(catalog: Catalog, image_dir: Path) -> ValidationReport:
                     )
                     continue
                 image_owners.setdefault(ref, []).append(pr.id)
-                if not (image_dir / ref).is_file():
+                if not store.exists(ref):
                     continue
 
-            front_ok = not _unsafe(pr.image) and (image_dir / pr.image).is_file()
+            front_ok = not _unsafe(pr.image) and store.exists(pr.image)
             back_ok = True
             if card.double_sided:
                 if not pr.image_back:
@@ -103,7 +106,7 @@ def validate(catalog: Catalog, image_dir: Path) -> ValidationReport:
                     )
                     back_ok = False
                 else:
-                    back_ok = not _unsafe(pr.image_back) and (image_dir / pr.image_back).is_file()
+                    back_ok = not _unsafe(pr.image_back) and store.exists(pr.image_back)
             elif pr.image_back:
                 report.errors.append(
                     Issue(
