@@ -30,7 +30,7 @@ Where the features actually stand:
 | Feature | State |
 |---|---|
 | [`specs/001-hero-deck-pdf-wizard/`](specs/001-hero-deck-pdf-wizard/) | Implemented and shipped. `tasks.md` still has open items: UI polish (T061–T065), an architecture test (T062), and physical print validation (T069–T072) that needs a printer and a ruler. |
-| [`specs/002-starter-deck-assembly/`](specs/002-starter-deck-assembly/) | Specified only. No plan, no tasks, no code. Respecified 2026-08-16 — it was `002-catalog-scaffold`, and the earlier premise that card quantities must be typed in by hand is disproved in that spec's Clarifications. |
+| [`specs/002-starter-deck-assembly/`](specs/002-starter-deck-assembly/) | Planned, not built. Spec, plan, research, data model, contract, quickstart, and a 119-task `tasks.md` all exist; **no code yet**. Respecified 2026-08-16 — it was `002-catalog-scaffold`, and the earlier premise that card quantities must be typed in by hand is disproved in that spec's Clarifications. The storage decision is [ADR 0001](docs/adr/0001-durable-run-state-on-the-filesystem.md). |
 
 For either one, `tasks.md` is the live work list and `spec.md` holds the FR/SC identifiers
 that source comments cite.
