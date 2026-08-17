@@ -1,7 +1,34 @@
 <!--
 Sync Impact Report
 ==================
-Version change: 1.1.0 → 1.2.0
+Version change: 1.2.0 → 1.3.0
+Rationale: MINOR. Materially expands two clauses in Version Control & Change Flow. No
+principle is removed or redefined, and both changes are relaxations — nothing that was
+compliant under 1.2.0 becomes non-compliant.
+
+Changed in 1.3.0:
+  Branching — a feature branch MAY now carry a numeric suffix counting from 2
+    (`NNN-short-name-2`), with the part before the suffix still equal to the `specs/`
+    directory exactly. Written because feature 002 took five branches to refine one spec and
+    the one-branch-per-feature assumption forced each to invent a descriptive name that said
+    nothing about which feature it belonged to. Syntax lives in CONTRIBUTING.md.
+  Pull requests — "A PR that amends this constitution MUST change nothing else" is replaced
+    by a requirement that the amendment be its own commit and be called out in the PR
+    description. The protection being kept is that an amendment is seen and reviewed as one;
+    the separate-PR mechanism was judged to cost more than it returned, because it lands the
+    amendment apart from the work that motivates it and neither then explains the other.
+    Requested by the maintainer, who identified the separation requirement as process
+    overhead that would drag the project down. The size limit is untouched.
+
+  Note: this amendment is itself bundled with feature 002's planning artifacts, which 1.2.0
+  prohibited. Recorded here rather than glossed — it is the maintainer's decision, taken
+  knowingly, and it is the last amendment to which the old rule would have applied.
+
+Prior entries (1.2.0 technology stack; 1.1.0 security baseline; 1.0.0 initial ratification)
+retained below.
+
+1.2.0
+-----
 Rationale: MINOR. Records the technology stack, resolving TODO(TECH_STACK), and materially
 expands the Technology paragraph with the constraints two of those choices carry. No
 principle is removed or redefined; no previously compliant work becomes non-compliant.
@@ -11,8 +38,6 @@ Resolved: TODO(TECH_STACK) — Python 3.13, FastAPI, ReportLab, Pillow, pypdfium
   rather than preference; see that document for alternatives considered.
 Still open: TODO(ASSET_TARGET) — the durable object store remains unchosen. Feature 001
   reads from a local directory, which is that feature's answer, not this one's.
-
-Prior entries (1.1.0 security baseline; 1.0.0 initial ratification) retained below.
 
 Modified principles:
   [PRINCIPLE_1_NAME] → I. Test-First (NON-NEGOTIABLE)
@@ -371,9 +396,15 @@ which are the authoritative source for exact syntax.
 - All work happens on a branch. Direct commits to `main` are prohibited, with a single
   exception: the repository bootstrap commit, which has no base to branch from and no
   remote to open a pull request against.
-- Feature branches MUST be named for the Spec Kit feature they implement, matching the
-  generated `specs/<feature>/` directory exactly (`NNN-short-name`). The tooling
-  computes this name; it MUST NOT be improvised.
+- Feature branches MUST be named for the Spec Kit feature they implement. The name is the
+  generated `specs/<feature>/` directory (`NNN-short-name`), optionally followed by a
+  numeric suffix counting from 2 (`NNN-short-name-2`) when an earlier branch for that
+  feature has already been opened. The part before the suffix MUST equal the directory
+  exactly; the tooling computes it and it MUST NOT be improvised. One feature legitimately
+  takes several branches — refining a spec is the usual reason — and the suffix is how those
+  stay traceable to the feature instead of acquiring invented descriptive names. Exact
+  syntax and the reason reusing a merged branch's name is prohibited are in
+  `CONTRIBUTING.md`.
 - Non-feature work MUST use a `type/short-name` branch, where `type` is drawn from the
   same vocabulary as commit types.
 - Branches are short-lived. A branch that cannot merge within a few days SHOULD be
@@ -399,7 +430,14 @@ which are the authoritative source for exact syntax.
   gates from *Development Workflow & Quality Gates* as an explicit checklist.
 - A PR MUST be small enough to review in one sitting. Size is a review concern in its
   own right, and "it is all related" is not a defense.
-- A PR that amends this constitution MUST change nothing else.
+- A PR that amends this constitution MUST carry the amendment as its own commit, and MUST
+  call it out explicitly in the PR description. It MAY also contain other changes. What this
+  rule protects is that an amendment is *seen* and reviewed as an amendment rather than
+  passing unnoticed inside a diff; requiring a separate PR was one way to get that and cost
+  more than it returned, because the amendment and the work that motivates it then land
+  apart and neither explains the other. The size limit above still applies, and an amendment
+  bundled into a PR too large to review in one sitting is a violation of that clause rather
+  than an exception to it.
 
 **History.**
 
@@ -438,4 +476,4 @@ MUST NOT be suspended for expedience — the correct response to a blocking
 NON-NEGOTIABLE principle is to amend this constitution deliberately, or to change the
 work.
 
-**Version**: 1.2.0 | **Ratified**: 2026-07-31 | **Last Amended**: 2026-07-31
+**Version**: 1.3.0 | **Ratified**: 2026-07-31 | **Last Amended**: 2026-08-17
