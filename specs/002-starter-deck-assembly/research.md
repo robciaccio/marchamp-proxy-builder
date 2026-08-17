@@ -12,6 +12,56 @@ state lives, and how to reuse feature 001's pipeline without a second rendering 
 original design — deriving which cards form the pre-built starter deck — and sent the spec to
 printing whole packs instead.
 
+**R0, R12, R13, and R14 were added on 2026-08-17** during the planning pass. R0 records a
+contradiction between four requirements that planning surfaced and the spec then absorbed; R12
+records a second measurement pass against the live API that changed two design details.
+
+---
+
+## R0 — The spec names one folder where the design needs two
+
+**Raised during planning; resolved in the spec on 2026-08-17** rather than left as a divergence.
+Four requirements could not all hold together.
+
+- **FR-005** — the user names a folder per run; nothing is configured in advance.
+- **FR-007** — "the named folder MUST be the containment boundary: every asset reference MUST
+  resolve inside it".
+- **FR-021** — when a positional match fails, "the tool MUST search the **whole library**".
+- **FR-031** — the report accounts for "every file in the folder named for the run" in full, and
+  explicitly says accounting for all 4,447 library files would be unreadable and untestable.
+- **User Story 1's independent test** points the tool at `Heros/Steve Rogers_Captain America/`.
+
+FR-031 settles that "the named folder" is the *hero folder*. But then FR-021's whole-library
+search reads files outside FR-007's containment boundary on every run — and User Story 3 exists
+entirely to require that (`Quincarrier` under Wasp, `Teamwork` under `Aspects/Leadership/`).
+Both cannot be true.
+
+**Decision**: a run names **two** paths, and neither is configured in advance, so FR-005 and
+SC-003a hold unchanged:
+
+| Input | Role |
+|---|---|
+| `library_root` | FR-007's containment boundary, and the extent of FR-021's search. The mounted Drive folder. |
+| `hero_folder` | A path **relative to** `library_root`. What FR-010 identifies the pack from, and the folder FR-031 accounts for file-by-file. |
+
+Every asset reference still resolves inside a boundary chosen per run — the boundary is the
+library root rather than the hero folder. Nothing widens what the application reads beyond what
+FR-021 already requires it to read, and the spec's own assumption that naming a folder per run
+"widens what the application will read, deliberately" covers it on the same grounds: the service
+is loopback-only, and the person naming the folder is the person running the process.
+
+**Carried into the spec on 2026-08-17.** FR-005, FR-006, FR-007, FR-008, FR-009, FR-013b,
+FR-013c, FR-026h, FR-027, FR-031, FR-032, SC-003a, and SC-004 were reworded to say which of the
+two they mean, and the Key Entities gained a **Library root**. This was a wording defect rather
+than a design disagreement — no requirement's intent was in question and no success criterion
+moved — but a spec/artifact divergence is a review failure by this repository's own rule, so it
+was not left standing.
+
+**Alternative rejected**: deriving the library root by walking up from the hero folder to the
+nearest ancestor containing `Heros/`. It is a guess about someone else's directory layout, it
+fails silently when wrong, and it would put a path the user never named into a containment
+decision.
+
 ---
 
 ## R1 — MarvelCDB: endpoints, caching, and the fields this feature needs
@@ -342,6 +392,102 @@ The generator reads the real library and writes fixtures; it is run by the user 
 machine and its **output** is committed, not the library. Committed snapshot fixtures carry
 `name` (needed for the name-match path) but no `text`, `flavor`, `traits`, or `imagesrc`.
 
+## R12 — Second measurement pass, 2026-08-17: two findings that change the design
+
+Re-measured against the live API while writing the plan. Both findings contradict something an
+implementer would otherwise reasonably assume.
+
+### `pack.total` disagrees with the summed quantity — do not cross-check it
+
+`GET /api/public/packs/` carries a `total` per pack, which looks like a free way to catch a
+truncated snapshot. Measured, it is not:
+
+| Pack | Records | Summed `quantity` | `pack.total` |
+|---|---:|---:|---:|
+| `cap` | 34 | **59** | 56 |
+| `vision` | 36 | **59** | 56 |
+| `ant` | 34 | **60** | 60 |
+
+Whatever `total` counts, it is not the sum of `quantity` over the pack's cards. Wiring it in as
+a completeness check would have fired a false alarm on two of the three packs checked — exactly
+what FR-018 and FR-019 prohibit. `total` is therefore **discarded on capture** along with
+`known`, `available`, `url`, and `position`; the pack index retains `code` and `name` only.
+
+This is a case where the spec's blanket prohibition on expected totals turns out to be
+protecting against a concrete defect rather than a hypothetical one.
+
+Truncated or malformed upstream data is caught instead by FR-047 validation at capture: every
+retained field present and well-typed, at least one `type_code: hero` record, and at least one
+`card_set_type_name_code: nemesis` record.
+
+### A face comes from one of **two** mechanisms, and R8 named only one
+
+R8 records that `double_sided` is `false` on every identity card and that the hero/alter-ego
+pair is expressed by `linked_to_code`. True, and incomplete. Measured:
+
+| Mechanism | Example | Shape |
+|---|---|---|
+| Linked codes | `cap` `03001a` → `linked_card` `03001b` | Two **codes**, one physical card, two faces. `double_sided` is `false`. |
+| `double_sided` flag | `vision` `26002` Intangible, `double_sided: true`, `backimagesrc: /bundles/cards/26002b.png` | One **code**, two faces. No linked card. |
+| Two records at one position | `ant` `12001a` (→ `12001b`) *and* `12001c`, both `position: 1`, both `type_code: hero` | Three faces across two records. |
+
+So face expansion is: for each code in a record's linked chain, one front plus one back if
+**that code** is `double_sided`. An implementation reading only the linked chain prints Vision's
+Intangible front-only — a proxy blank where the real card carries game text — and FR-017 reports
+the run clean. That is precisely the failure FR-015f was added to close, and it is invisible to
+every other check in this feature.
+
+Two consequences worth stating separately:
+
+- **`position` is not unique within a pack.** Ant-Man has two records at position 1. The
+  `(pack_code, position)` join of FR-020 is many-to-one and must be disambiguated by the
+  filename's code suffix, which matches MarvelCDB's `code` suffix rather than its `position`.
+- **A filename's `a`/`b` suffix is ambiguous between the two mechanisms.** Vision's `_2a`/`_2b`
+  are the two faces of the single code `26002`; Captain America's `_1a`/`_1b` are the two
+  distinct codes `03001a`/`03001b`. Which one a suffix means is decidable only from the card
+  data — FR-023 restated in concrete terms.
+
+### Confirmed, not changed
+
+`If-Modified-Since` against `cards/cap.json` returns **`304` with 0 bytes**, so R1's
+revalidation plan works as written. `cache-control: max-age=600, public` and `last-modified`
+are unchanged; there is still no `ETag`.
+
+## R13 — Library index: one scan per resolve, held in memory, never persisted
+
+**Decision**: build the whole-library index with `os.walk` over `library_root` at the start of
+each resolve pass and keep it for that pass only.
+
+**Rationale**: ~4,447 files. Persisting it would create a second source of truth that goes stale
+the moment the user adds a scan — and a resumed run (FR-026b) must see the library as it is
+*now*, since going away to find a missing file is the whole reason resuming exists. One pass of
+`os.scandir` entries is tens of milliseconds against a ~49 s render.
+
+Index shape: `(pack_hint, position, suffix) -> [entry]` and `normalised_name -> [entry]`, where
+`pack_hint` comes from the containing hero folder and is absent under `Aspects/` — positions
+there are meaningless without a pack, which is why the name index is not optional.
+
+**Operational note**: BSD `find` does not traverse this Drive mount; `os.walk` and `Path.rglob`
+do. Any diagnostic tooling written for this feature must use the latter.
+
+## R14 — The reuse key is a digest of resolved image **content**
+
+**Decision**: `image_identity = sha256` over the sorted list of
+`(card_code, face_side, sha256(file bytes))`. FR-026h's key is
+`(pack_code, snapshot_revision, image_identity)`.
+
+**Rationale**: FR-026h names the three components and rules out the folder path explicitly. A
+path-based key breaks reuse every time the Drive mount moves — SC-006h treats that as routine —
+and FR-009 forbids retaining such a path anyway. Content digests give SC-006k directly: a second
+library resolving even one card to different bytes produces a different key and rebuilds.
+
+An uploaded file participates by the same digest it is stored under (R9), so no separate rule is
+needed for a customized run.
+
+The stated cost, which FR-026h accepts in terms: a run must **resolve** before it can establish
+whether reuse applies, so reuse skips the render and not the resolve (SC-006i). Hashing ~40
+files of ~3 MB adds ~120 MB of reads to a pass that already opens all of them.
+
 ## Sources
 
 - [MarvelCDB API documentation](https://marvelcdb.com/api/doc) — endpoints and the request to honour HTTP caching
@@ -350,3 +496,5 @@ machine and its **output** is committed, not the library. Committed snapshot fix
 - [SQLite: How To Corrupt An SQLite Database File](https://www.sqlite.org/howtocorrupt.html) — network and synced filesystems
 - `fsync(2)` and `fcntl(2)` on Darwin — `F_FULLFSYNC` versus `fsync`
 - [Starlette / FastAPI request files](https://fastapi.tiangolo.com/tutorial/request-files/) — the `python-multipart` requirement
+- Live responses from `marvelcdb.com/api/public/{packs,cards}` — re-measured 2026-08-17 for R12
+  (`packs/`, and `cards/{cap,ant,vision}.json`), including a verified `304` on `If-Modified-Since`
