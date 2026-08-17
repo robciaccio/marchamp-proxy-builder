@@ -30,7 +30,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from marchamp.assembly.faces import DECKLIST_CODE, Face, Side
+from marchamp.assembly.faces import DECKLIST_CODE, Face, Group, Side
 from marchamp.library.index import LibraryIndex
 from marchamp.upstream.models import PackCard
 
@@ -121,6 +121,10 @@ class UnresolvedFace:
     card_code: str
     card_name: str
     side: Side
+    #: Which of FR-015's groups the missing card belongs to. Carried on the gap itself
+    #: because the user reads it to know what they are missing — "the nemesis set is short
+    #: one minion" is actionable in a way that a bare code is not (FR-015e, SC-008).
+    group: Group = Group.PLAYER
     #: Where the cascade looked, in the user's terms. A gap the user cannot act on is a
     #: failure report they have to guess at (FR-037, SC-008).
     searched: tuple[str, ...] = ()
@@ -132,6 +136,7 @@ class UnresolvedFace:
             "card_code": self.card_code,
             "card_name": self.card_name,
             "side": self.side.value,
+            "group": self.group.value,
             "searched": list(self.searched),
             "conflict": list(self.conflict),
         }
@@ -215,6 +220,7 @@ def _resolve_face(
                 face.card_code,
                 face.name,
                 face.side,
+                group=face.group,
                 searched=(*searched, f"position {card.position} in the hero folder"),
                 conflict=tuple(sorted(e.ref for e in candidates.entries)),
             )
@@ -243,7 +249,9 @@ def _resolve_face(
         )
         return _resolution(face, card, borrowed, library_root, Provenance.REPRINT, note=note)
 
-    return UnresolvedFace(face.card_code, face.name, face.side, searched=tuple(searched))
+    return UnresolvedFace(
+        face.card_code, face.name, face.side, group=face.group, searched=tuple(searched)
+    )
 
 
 def _borrowed_entry(index: LibraryIndex, other: PackCard) -> str | None:
@@ -340,6 +348,7 @@ def resolve_pack(
                     face.card_code,
                     face.name,
                     face.side,
+                    group=face.group,
                     searched=("no record for this face in the pack listing",),
                 )
             )

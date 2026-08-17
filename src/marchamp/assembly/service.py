@@ -60,6 +60,10 @@ from marchamp.store.runs import Outcome, RunRecord, RunState, RunStore
 from marchamp.upstream.models import PackCard
 from marchamp.upstream.snapshots import SnapshotStore
 
+#: Matches `snapshots.REVISION_LENGTH`, and required by `StateLayout`'s `DIGEST16_RE`:
+#: the identity is a path segment in the stored-PDF name, which *is* FR-026h's reuse key.
+IDENTITY_LENGTH = 16
+
 
 class AssemblyError(Exception):
     """A run cannot do what was asked of it. Carries a status so routes stay thin."""
@@ -121,7 +125,11 @@ def image_identity(resolutions: Sequence[Resolution]) -> str:
         hasher.update(
             f"{resolution.card_code}:{resolution.side.value}:{resolution.content_digest}\n".encode()
         )
-    return hasher.hexdigest()
+    # Truncated to 16 hex, matching `compute_revision`. This value becomes a path segment in
+    # `pdfs/standard/<pack>@<revision>@<identity>.pdf`, and `StateLayout` validates it as
+    # exactly 16 hex characters — a full digest is refused there, so every standard PDF
+    # would fail to store.
+    return hasher.hexdigest()[:IDENTITY_LENGTH]
 
 
 class AssemblyService:

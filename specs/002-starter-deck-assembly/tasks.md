@@ -180,7 +180,7 @@ with the identity card, the nemesis set, and the decklist card.
 - [X] T045 [US1] Write failing test that copy counts come from the pack being printed and never from the printing an image was borrowed from — `cap` `03016` Make the Call prints twice whatever the Core Set ships — in `tests/unit/test_resolve.py` (FR-016, US1 scenario 4)
 - [X] T046 [US1] Write failing test for the bridge to feature 001's structures: pack plus resolutions to an in-memory `Catalog` and one `HeroDeck`, entries ordered `(group, position, code)`, in `tests/unit/test_assembly_catalog.py` (FR-048)
 - [X] T047 [US1] Implement `src/marchamp/assembly/catalog.py`. The synthesised catalog is in memory only and is never written to disk
-- [ ] T048 [US1] Write failing test that the PDF carries the groups in order, packed into the fewest pages the card count allows, with **no page break between groups**, in `tests/integration/test_pack_pdf.py`. Four groups for a hero whose folder holds a decklist scan and three for Hulk or Phoenix, which hold none (FR-013c, FR-015d, SC-002a, SC-002b)
+- [X] T048 [US1] Write failing test that the PDF carries the groups in order, packed into the fewest pages the card count allows, with **no page break between groups**, in `tests/integration/test_pack_pdf.py`. Four groups for a hero whose folder holds a decklist scan and three for Hulk or Phoenix, which hold none (FR-013c, FR-015d, SC-002a, SC-002b)
 
 ### The decklist card
 
@@ -200,12 +200,12 @@ download-from-Hall-of-Heroes upload for folders that hold no scan.
 - [X] T051 [US1] Write failing contract tests for `POST /api/assemblies`, `GET /api/assemblies/{run_id}`, `GET /api/assemblies/{run_id}/packs`, `POST /api/assemblies/{run_id}/pack`, `POST /api/assemblies/{run_id}/confirmation`, and `GET /api/assemblies/{run_id}/document` in `tests/contract/test_assembly_contract.py`, including `If-Match` and the `409` on a stale version
 - [X] T052 [US1] Add the request and response models from contracts/openapi.yaml to `src/marchamp/api/schemas.py`
 - [X] T053 [US1] Implement those routes in `src/marchamp/api/routes.py`, with both named paths validated when named and refused specifically (FR-006), and T009 now green for them
-- [ ] T054 [US1] Write failing test that a user-selected pack is recorded as such and is **not** customization under FR-026i, in `tests/integration/test_pack_selection.py` (FR-012b, SC-009a)
+- [X] T054 [US1] Write failing test that a user-selected pack is recorded as such and is **not** customization under FR-026i, in `tests/integration/test_pack_selection.py` (FR-012b, SC-009a)
 
 ### Reuse
 
-- [ ] T055 [US1] Write failing tests for the FR-026h key — served when pack, snapshot revision, and resolved image identity all match; **rebuilt** when the snapshot is refreshed; **rebuilt** when one card resolves to different bytes; **still served** when the library folder has moved and every image resolves identically — in `tests/integration/test_reuse.py` (SC-006i, SC-006k, SC-006h)
-- [ ] T056 [US1] Implement `image_identity` in `src/marchamp/assembly/resolve.py` and the reuse decision in `src/marchamp/assembly/service.py` against `src/marchamp/store/pdfs.py`. A run resolves before it can decide: reuse skips the render, not the resolve
+- [X] T055 [US1] Write failing tests for the FR-026h key — served when pack, snapshot revision, and resolved image identity all match; **rebuilt** when the snapshot is refreshed; **rebuilt** when one card resolves to different bytes; **still served** when the library folder has moved and every image resolves identically — in `tests/integration/test_reuse.py` (SC-006i, SC-006k, SC-006h)
+- [X] T056 [US1] Implement `image_identity` in `src/marchamp/assembly/resolve.py` and the reuse decision in `src/marchamp/assembly/service.py` against `src/marchamp/store/pdfs.py`. A run resolves before it can decide: reuse skips the render, not the resolve
 
 ### Interface
 

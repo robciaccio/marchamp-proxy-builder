@@ -425,7 +425,19 @@ def register_routes(app: FastAPI) -> None:
             snapshot_revision=record.snapshot_revision,
             snapshot_stale=bool(report.get("snapshot_stale", False)),
             decklist_candidate=candidate,
-            unresolved=[schemas.UnresolvedCard(**u) for u in unresolved],
+            # Projected onto the contract's fields rather than splatted: the stored gap also
+            # carries both sides of an FR-033 conflict, which belongs in the report's
+            # `conflicts` section (Phase 4) and not on the card.
+            unresolved=[
+                schemas.UnresolvedCard(
+                    card_code=u["card_code"],
+                    card_name=u["card_name"],
+                    side=u["side"],
+                    group=u.get("group", "player"),
+                    searched=u.get("searched", []),
+                )
+                for u in unresolved
+            ],
             reused=record.reused,
             pdf_id=(record.pdf or {}).get("id"),
             report=schemas.AssemblyReport(**report) if report else None,
