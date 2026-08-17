@@ -1,0 +1,915 @@
+openapi: 3.1.0
+
+# Contract for the endpoints feature 002 adds to the local HTTP API.
+#
+# This file is a FRAGMENT. There is one live service and one generated OpenAPI document;
+# this document describes only 002's surface, and 001's contract describes only 001's. The
+# contract test in tests/contract/ must be changed to load both files, union their paths and
+# components, and compare that union against the live document — today it compares 001's file
+# alone with `set(live["paths"]) == set(contract["paths"])`, which every new route breaks.
+# Merging is the correct fix: extending 001's contract with 002's endpoints would put one
+# feature's interface in another feature's spec directory.
+#
+# Per constitution Principle II the contract is verified against the running service, never
+# hand-maintained in isolation. The prose here is the reason the file stays hand-authored: it
+# carries why the interface has this shape, which a generated document cannot.
+#
+# The organising idea: an ASSEMBLY RUN is a resource with a lifecycle, not a request that
+# returns a PDF. Confirming the pack, supplying a file for a card the library lacks, and
+# coming back tomorrow are steps against the same resource (FR-026a, FR-026b). That is what
+# makes the whole feature drivable without a browser, which Principle II requires.
+
+info:
+  title: Marchamp Proxy Builder — Local API (feature 002 surface)
+  version: 0.2.0
+  description: |
+    Local-only service, loopback-bound, no authentication (FR-0A1–FR-0A3).
+
+    Feature 002 gives the service its first outbound network access. It is limited to
+    MarvelCDB's public JSON API, for metadata only — card images are never downloaded
+    (FR-002, FR-003). No credentials are required and none are requested.
+
+    Two paths per run are named by the caller and neither is configured in advance
+    (FR-005, SC-003a): a `library_root`, which is the containment boundary (FR-007) and the
+    extent of the whole-library search (FR-021), and a `hero_folder` within it, which the pack
+    is identified from (FR-010) and which the report accounts for file-by-file (FR-031).
+
+servers:
+  - url: http://127.0.0.1:8765
+    description: Loopback only. Binding to 0.0.0.0 is a defect, not a configuration option.
+
+tags:
+  - name: assemblies
+    description: Assembly runs — the durable resource this feature is built around.
+  - name: packs
+    description: Pack identification, selection, and upstream snapshots.
+  - name: pdfs
+    description: Stored PDFs, standard and saved, and reclaiming their space.
+
+# ---------------------------------------------------------------- concurrency preamble
+#
+# Every mutating operation requires `If-Match` carrying the run's `version`. A stale value
+# is 409, never a silent overwrite. This is ADR 0001's optimistic-concurrency mechanism
+# reaching the wire: two browser tabs answering two different unresolved cards is the exact
+# lost-update the dissenting reviewers named, and the version field is the fix they named
+# for it. `If-Match` rather than a body field so JSON and multipart requests carry it the
+# same way.
+
+paths:
+  # ================================================================== assemblies
+
+  /api/assemblies:
+    post:
+      tags: [assemblies]
+      summary: Start an assembly run
+      description: |
+        Validates the named paths (FR-006), captures or reuses the pack snapshot, identifies
+        the pack, and returns with the run in `awaiting_pack` or `unidentified`.
+
+        **Nothing is resolved yet.** FR-012a makes confirmation unconditional: the failure it
+        guards against is an identification the tool is confident about and wrong about, which
+        yields a deck that is entirely plausible and entirely wrong.
+      operationId: createAssembly
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssemblyRequest" }
+      responses:
+        "202":
+          description: Accepted. Poll the resource; it will settle in `awaiting_pack` or `unidentified`.
+          headers:
+            Location:
+              schema: { type: string }
+              description: URL of the created run.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssemblyRun" }
+        "400":
+          $ref: "#/components/responses/Problem400Folder"
+        "503":
+          $ref: "#/components/responses/Problem503Upstream"
+    get:
+      tags: [assemblies]
+      summary: List runs
+      description: |
+        FR-026c: the user must be able to see which runs are finished and printable, which are
+        waiting on a card, and which are waiting for the pack to be confirmed — **without
+        remembering an identifier**. Summaries only; the report is on the detail resource,
+        because a list carrying ten reports is a list nobody loads.
+      operationId: listAssemblies
+      responses:
+        "200":
+          description: Every run, newest first.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssemblyList" }
+
+  /api/assemblies/{run_id}:
+    parameters:
+      - { name: run_id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [assemblies]
+      summary: Read a run, with its report
+      description: |
+        The report lives on the run record, so an incomplete pack stays legible as incomplete
+        on a later visit rather than only in the response that produced it (FR-030b).
+      operationId: getAssembly
+      responses:
+        "200":
+          description: The run.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssemblyRun" }
+        "404": { $ref: "#/components/responses/Problem404" }
+    delete:
+      tags: [assemblies]
+      summary: Delete a run
+      description: |
+        Reclaims **only what is private to this run** — its uploaded files and a *saved* PDF it
+        named. A standard PDF belongs to the pack, not to the run that happened to build it, and
+        survives (FR-026g1); delete it from `/api/pdfs` instead. The scan library is untouched
+        (FR-001).
+      operationId: deleteAssembly
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "204": { description: Deleted. }
+        "404": { $ref: "#/components/responses/Problem404" }
+        "409": { $ref: "#/components/responses/Problem409Version" }
+
+  /api/assemblies/{run_id}/packs:
+    parameters:
+      - { name: run_id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [packs]
+      summary: Candidate packs for this run, or a search across all packs
+      description: |
+        FR-012b. Without `q`, the candidates the tool ranked with their evidence. With `q`, a
+        name search across all packs. The same path serves an FR-011 refusal and an
+        unidentifiable folder, so neither leaves the user holding a good folder and no way to
+        print it.
+      operationId: listAssemblyPackCandidates
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema: { type: string }
+          description: Search all packs by name instead of returning the ranked candidates.
+      responses:
+        "200":
+          description: Ranked candidates, or search results.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PackCandidateList" }
+        "404": { $ref: "#/components/responses/Problem404" }
+
+  /api/assemblies/{run_id}/pack:
+    parameters:
+      - { name: run_id, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [packs]
+      summary: Confirm the identified pack, or select a different one
+      description: |
+        `confirm` accepts what the tool identified (FR-012a); `select` names a pack the user
+        chose (FR-012b), which is recorded as user-selected and stays distinguishable in the
+        report. Either way the run pins the pack's snapshot revision and moves to `resolving`.
+
+        Selecting a pack is **not** customization under FR-026i — what gets printed follows
+        from the pack and its snapshot — so a run that selected its pack and then resolved
+        everything automatically still produces that pack's standard PDF.
+      operationId: setAssemblyPack
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PackDecision" }
+      responses:
+        "202":
+          description: Accepted; the run is resolving.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssemblyRun" }
+        "404": { $ref: "#/components/responses/Problem404" }
+        "409": { $ref: "#/components/responses/Problem409State" }
+
+  /api/assemblies/{run_id}/cards/{card_code}/image:
+    parameters:
+      - { name: run_id, in: path, required: true, schema: { type: string } }
+      - { name: card_code, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [assemblies]
+      summary: Supply a file for one unresolved card
+      description: |
+        An upload, not a path (FR-026e). Typing a full filesystem path per missing card is
+        worse than picking one, and a run that owns its bytes stays resumable when the source
+        file moves and reprints identically afterwards (FR-045, US4 scenario 4).
+
+        The file may come from anywhere on the machine, including outside the library
+        (FR-027) — but only its **own filename** and the fact that the choice was manual are
+        recorded. No path from outside the named folder reaches the report or the log (FR-009).
+
+        Validated on upload as an image the application can decode at the required print
+        resolution, and rejected with a specific reason when it is not, leaving the card
+        unresolved (FR-028). Manual choice bypasses discovery, never validation.
+      operationId: uploadAssemblyCardImage
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/CardImageUpload" }
+      responses:
+        "200":
+          description: Accepted; the card is resolved as a manual choice.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssemblyRun" }
+        "400": { $ref: "#/components/responses/Problem400Image" }
+        "404": { $ref: "#/components/responses/Problem404" }
+        "409": { $ref: "#/components/responses/Problem409State" }
+
+  /api/assemblies/{run_id}/cards/{card_code}/omission:
+    parameters:
+      - { name: run_id, in: path, required: true, schema: { type: string } }
+      - { name: card_code, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [assemblies]
+      summary: Print without this card, explicitly
+      description: |
+        FR-030 and FR-030a. Proceeding with an incomplete pack is the user's decision to make
+        and the tool must not overrule it — but it requires an explicit act naming **this**
+        card. It cannot be granted in advance: a run that has not yet reported which cards are
+        unresolved returns `409`, because a decision taken before the gap is known is not an
+        informed one and a blanket permission is refused rather than honoured.
+
+        The omission is named in the report, counted against the pack listing's card count,
+        and written to the run's log (FR-030b, SC-006e).
+      operationId: omitAssemblyCard
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CardOmission" }
+      responses:
+        "200":
+          description: Recorded; the card will be omitted and named.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssemblyRun" }
+        "404": { $ref: "#/components/responses/Problem404" }
+        "409": { $ref: "#/components/responses/Problem409Premature" }
+
+  /api/assemblies/{run_id}/decklist:
+    parameters:
+      - { name: run_id, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [assemblies]
+      summary: Decide or supply the pack's decklist card
+      description: |
+        Two shapes on one path. A JSON `DecklistDecision` answers the candidate the tool found by
+        filename in the hero folder (FR-013d): `confirm` accepts it, `select` names a different
+        file inside the folder, `skip` prints without one. Confirming is not customization, so a
+        run that confirmed and otherwise resolved automatically still produces the pack's standard
+        PDF (FR-013e). A multipart `DecklistUpload` supplies an image the folder does not hold.
+
+        25 of 60 hero folders hold no decklist scan. The run names that gap and offers the
+        address at which Hall of Heroes publishes the pack's decklist photograph; **the
+        application never fetches it** (FR-013c), which is what keeps FR-002 intact and the
+        egress allowlist at a single host. The user downloads it and supplies it here.
+
+        A missing decklist never refuses the run — the rest of the pack still prints, reported
+        as printed without one (SC-006j). This endpoint is separate from the card upload
+        because the decklist card is not a MarvelCDB card and has no code.
+      operationId: decideAssemblyDecklist
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DecklistDecision" }
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/DecklistUpload" }
+      responses:
+        "200":
+          description: Accepted; the decklist card will be printed with the pack.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssemblyRun" }
+        "400": { $ref: "#/components/responses/Problem400Image" }
+        "404": { $ref: "#/components/responses/Problem404" }
+        "409": { $ref: "#/components/responses/Problem409State" }
+
+  /api/assemblies/{run_id}/confirmation:
+    parameters:
+      - { name: run_id, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [assemblies]
+      summary: Confirm and produce the PDF
+      description: |
+        The PDF is produced only here (FR-026a). Reaching `ready` with every card resolved does
+        not print by itself.
+
+        If the run was customized in any way — a file supplied for a card, an omission — it is
+        **not** the pack's standard PDF and `save_as` is required to name it for the saved-PDF
+        list (FR-026i). If it was not, `save_as` must be absent and the run produces the pack's
+        standard PDF (FR-026h).
+
+        Reuse is decided here, keyed on the pack, the snapshot revision, **and the identity of
+        the images this run actually resolved**. Because the third component is content, a run
+        must resolve before reuse can be established: what reuse skips is the ~49 s render, not
+        the resolve (SC-006i).
+      operationId: confirmAssembly
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssemblyConfirmation" }
+      responses:
+        "202":
+          description: Accepted. Poll the run; `reused` says whether a render was avoided.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssemblyRun" }
+        "404": { $ref: "#/components/responses/Problem404" }
+        "409": { $ref: "#/components/responses/Problem409State" }
+
+  /api/assemblies/{run_id}/document:
+    parameters:
+      - { name: run_id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [assemblies]
+      summary: Download the run's PDF
+      description: |
+        A finished run retains its PDF and depends on nothing outside itself: this succeeds
+        with the library folder moved, renamed, or unmounted (FR-026f, SC-006h).
+      operationId: getAssemblyDocument
+      responses:
+        "200":
+          description: The PDF.
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/Problem404" }
+        "409":
+          description: The run has not produced a document. No partial output, ever.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  # ======================================================================= packs
+
+  /api/packs/{pack_code}/snapshot:
+    parameters:
+      - { name: pack_code, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [packs]
+      summary: The stored snapshot's revision and freshness
+      operationId: getPackSnapshot
+      responses:
+        "200":
+          description: Snapshot status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PackSnapshot" }
+        "404": { $ref: "#/components/responses/Problem404" }
+    post:
+      tags: [packs]
+      summary: Refresh this pack's snapshot now
+      description: |
+        FR-044b. Refresh is normally automatic and governed by the cache headers MarvelCDB
+        sends (FR-039), but most packs are years old while a recently released one can pick up
+        corrections upstream — and a user who already knows that must not have to wait out a
+        600-second expiry to act on it.
+
+        An explicit refresh **never alters an existing run**, which keeps the revision it
+        started with (FR-045). Issues one conditional request; a 304 keeps the stored records
+        and the revision unchanged.
+      operationId: refreshPackSnapshot
+      responses:
+        "200":
+          description: Refreshed, or confirmed unchanged.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PackSnapshot" }
+        "404": { $ref: "#/components/responses/Problem404" }
+        "503": { $ref: "#/components/responses/Problem503Upstream" }
+
+  # ======================================================================== pdfs
+
+  /api/pdfs:
+    get:
+      tags: [pdfs]
+      summary: Stored PDFs, standard and saved
+      description: |
+        FR-026i's browsable list, and the only place a standard PDF can be deleted from
+        (FR-026g1). Retention under FR-026f is otherwise unbounded and 001 measured roughly
+        202 MB for one deck, so this list is how the user sees what they are keeping.
+      operationId: listStoredPdfs
+      responses:
+        "200":
+          description: Every stored PDF with its size.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoredPdfList" }
+
+  /api/pdfs/{pdf_id}:
+    parameters:
+      - { name: pdf_id, in: path, required: true, schema: { type: string } }
+    delete:
+      tags: [pdfs]
+      summary: Delete a stored PDF and reclaim its space
+      description: |
+        Deleting a standard PDF here is a different act from deleting the run that built it,
+        and the two stay separate on purpose (FR-026g1): otherwise the user could not predict
+        whether discarding a run frees 202 MB or nothing. The next assembly of that pack
+        rebuilds. The scan library is untouched (FR-001).
+      operationId: deleteStoredPdf
+      responses:
+        "204": { description: Deleted; the space is reclaimed. }
+        "404": { $ref: "#/components/responses/Problem404" }
+
+  /api/pdfs/{pdf_id}/document:
+    parameters:
+      - { name: pdf_id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [pdfs]
+      summary: Download a stored PDF
+      operationId: getStoredPdfDocument
+      responses:
+        "200":
+          description: The PDF.
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/Problem404" }
+
+# ================================================================== components
+
+components:
+  parameters:
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema: { type: string }
+      description: |
+        The run `version` the caller read. A stale value is 409 rather than a silent
+        overwrite — two tabs answering two different unresolved cards is the lost update
+        ADR 0001's dissenting reviewers named, and this is the mechanism they named for it.
+
+  responses:
+    Problem404:
+      description: No such resource.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Problem409Version:
+      description: The `If-Match` version is stale; re-read the run and retry.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Problem409State:
+      description: The run is not in a state where this is meaningful.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Problem409Premature:
+      description: |
+        Refused because the run has not yet reported which cards are unresolved (FR-030a).
+        Permission to print incomplete cannot be granted before the gap it authorises is known.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Problem400Folder:
+      description: |
+        The named paths are unusable — absent, not a directory, unreadable, escaping the
+        library root, or a folder holding no card images at all. Named and refused when named,
+        never surfacing later as a missing card (FR-006).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Problem400Image:
+      description: |
+        The uploaded file is not a decodable image, or is below the resolution required at
+        print size. Rejected with the specific reason; the card remains unresolved (FR-028).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Problem503Upstream:
+      description: |
+        MarvelCDB is unreachable and no snapshot exists for this pack. Refused, saying which is
+        missing (FR-046). Snapshots are per pack, so other packs still assemble from their own
+        stored snapshots.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    Problem:
+      description: RFC 9457. Feature 001's shape, unchanged.
+      type: object
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+      required: [title, status]
+
+    AssemblyRequest:
+      type: object
+      properties:
+        library_root:
+          type: string
+          description: |
+            An absolute path to a readable directory. The containment boundary for this run
+            (FR-007) and the extent of the whole-library search (FR-021). Retained on the run so
+            a resumed run knows which library it was reading and can name it if the mount has
+            gone (FR-026b). The **reuse key** never depends on it (FR-026h, SC-006h).
+        hero_folder:
+          type: string
+          description: |
+            A path relative to `library_root`, which it must resolve inside. What the pack is
+            identified from (FR-010) and the folder the report accounts for file-by-file (FR-031).
+        page_size: { type: string, enum: [LETTER, A4] }
+        fit_mode: { type: string, enum: [crop, fit, stretch] }
+      required: [library_root, hero_folder]
+
+    AssemblyState:
+      type: string
+      description: |
+        `awaiting_pack`, `unidentified`, and `awaiting_cards` are **not failures** — FR-036
+        requires a run that has not reached an outcome to be distinguishable as such.
+      enum:
+        [identifying, unidentified, awaiting_pack, resolving, awaiting_cards, ready, rendering, complete, failed]
+
+    AssemblyOutcome:
+      type: string
+      description: |
+        FR-036's machine-readable outcome, so a consumer can act without parsing prose. **Null
+        until the run is terminal.** This is a field on the run rather than a process exit
+        status: the feature ships no CLI, and anything scripting an assembly drives this API.
+      enum: [clean, warnings, refused]
+
+    AssemblySummary:
+      type: object
+      properties:
+        id: { type: string }
+        version: { type: integer }
+        library_root: { type: string }
+        hero_folder: { type: string }
+        pack_code: { type: [string, "null"] }
+        pack_name: { type: [string, "null"] }
+        state: { $ref: "#/components/schemas/AssemblyState" }
+        outcome: { $ref: "#/components/schemas/AssemblyOutcome" }
+        unresolved_count: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [id, version, library_root, hero_folder, state, unresolved_count, created_at, updated_at]
+
+    AssemblyList:
+      type: object
+      properties:
+        runs:
+          type: array
+          items: { $ref: "#/components/schemas/AssemblySummary" }
+      required: [runs]
+
+    AssemblyRun:
+      type: object
+      properties:
+        id: { type: string }
+        version: { type: integer }
+        library_root:
+          type: string
+          description: |
+            Retained so a resumed run knows which library it was reading and can name it when the
+            mount has gone (FR-026b). Never part of the reuse key (FR-026h).
+        hero_folder: { type: string }
+        state: { $ref: "#/components/schemas/AssemblyState" }
+        outcome: { $ref: "#/components/schemas/AssemblyOutcome" }
+        page_size: { type: string, enum: [LETTER, A4] }
+        fit_mode: { type: string, enum: [crop, fit, stretch] }
+        identification: { $ref: "#/components/schemas/PackIdentification" }
+        snapshot_revision: { type: [string, "null"] }
+        snapshot_stale:
+          type: boolean
+          description: The run ran against a stored snapshot after a failed refetch (FR-044a).
+        decklist_candidate:
+          oneOf:
+            - $ref: "#/components/schemas/DecklistCandidate"
+            - type: "null"
+          description: |
+            Null when the hero folder holds no decklist scan — see `decklist_source_url` on the
+            report — or once a decision has been recorded. While it is set, the run holds in
+            `awaiting_cards`: an undecided decklist is a card waiting on the user (FR-013d).
+        unresolved:
+          type: array
+          description: |
+            Each unresolved card individually, named, so the wizard can ask about one card at a
+            time rather than presenting a failed run (FR-026d).
+          items: { $ref: "#/components/schemas/UnresolvedCard" }
+        reused:
+          type: [boolean, "null"]
+          description: A stored PDF was served rather than rendered again (FR-026h, SC-006i).
+        pdf_id: { type: [string, "null"] }
+        report: { $ref: "#/components/schemas/AssemblyReport" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [id, version, library_root, hero_folder, state, unresolved, created_at, updated_at]
+
+    UnresolvedCard:
+      type: object
+      properties:
+        card_code: { type: string }
+        card_name:
+          type: string
+          description: From MarvelCDB. A filename is never the authority on what a card is called.
+        side: { type: string, enum: [front, back] }
+        group: { $ref: "#/components/schemas/CardGroup" }
+        searched:
+          type: array
+          description: |
+            Where the tool looked, in order. SC-008 requires the user to be able to tell which
+            card is missing and where it was sought **from the report alone**.
+          items: { type: string }
+      required: [card_code, card_name, side, group, searched]
+
+    CardGroup:
+      type: string
+      description: |
+        FR-015's four groups. They are distinct in the **report only** — FR-015d packs them into
+        as few pages as possible with no page break between them, so a page carrying the last
+        player cards and the first nemesis cards is the intended result.
+      enum: [player, identity, nemesis, decklist]
+
+    PackIdentification:
+      type: object
+      properties:
+        pack_code: { type: [string, "null"] }
+        pack_name: { type: [string, "null"] }
+        source:
+          type: string
+          description: A user-selected pack stays distinguishable from an identified one (FR-012b, SC-009a).
+          enum: [identified, user_selected]
+        confidence: { type: [number, "null"] }
+        evidence:
+          type: array
+          description: What the figure rests on, shown before the user confirms (FR-012).
+          items: { type: string }
+        confirmed: { type: boolean }
+      required: [source, evidence, confirmed]
+
+    PackCandidate:
+      type: object
+      properties:
+        pack_code: { type: string }
+        pack_name: { type: string }
+        confidence: { type: [number, "null"] }
+        evidence:
+          type: array
+          items: { type: string }
+      required: [pack_code, pack_name, evidence]
+
+    PackCandidateList:
+      type: object
+      properties:
+        candidates:
+          type: array
+          items: { $ref: "#/components/schemas/PackCandidate" }
+      required: [candidates]
+
+    PackDecision:
+      type: object
+      properties:
+        action: { type: string, enum: [confirm, select] }
+        pack_code:
+          type: [string, "null"]
+          description: Required for `select`; must be absent for `confirm`.
+      required: [action]
+
+    CardImageUpload:
+      type: object
+      properties:
+        file: { type: string, format: binary }
+        side: { type: string, enum: [front, back] }
+      required: [file]
+
+    DecklistUpload:
+      type: object
+      properties:
+        file: { type: string, format: binary }
+      required: [file]
+
+    DecklistDecision:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [confirm, select, skip]
+          description: |
+            `confirm` accepts the candidate the tool proposed (FR-013d) and is **not**
+            customization, so the run can still produce the pack's standard PDF (FR-013e,
+            FR-026h). `select` names a different file inside the hero folder. `skip` prints the
+            pack without a decklist card, reported as such (SC-006j). `select` and `skip` are
+            both customization (FR-026i).
+        ref:
+          type: string
+          description: |
+            Required for `select`: a path **relative to `library_root`**. Never absolute and never
+            from outside the root (FR-007, FR-009).
+
+    DecklistCandidate:
+      type: object
+      description: |
+        The file the tool proposes as the decklist card, awaiting the user's decision (FR-013d).
+        Matched on a filename stem containing `deck\s*list` within the hero folder — never through
+        the card cascade, which keys on data the decklist card has no entry for.
+      properties:
+        ref:
+          type: string
+          description: Relative to `library_root` (FR-009).
+        alternatives:
+          type: array
+          items: { type: string }
+          description: |
+            Present when two or more candidates with **different stems** matched — a conflict the
+            user resolves by picking, never by arbitrary choice (FR-033). Candidates differing only
+            by file extension are collapsed to one beforehand as duplicate renditions (FR-034).
+      required: [ref]
+
+    CardOmission:
+      type: object
+      properties:
+        side: { type: string, enum: [front, back] }
+        acknowledged:
+          type: boolean
+          description: |
+            Must be `true`. FR-030a requires an explicit act: this must not be reachable by
+            dismissing a prompt, ignoring a warning, or staying silent.
+      required: [acknowledged]
+
+    AssemblyConfirmation:
+      type: object
+      properties:
+        save_as:
+          type: [string, "null"]
+          description: |
+            Required when the run was customized, forbidden when it was not (FR-026h, FR-026i).
+            Supplying a file for a card or choosing to print without one is customization;
+            selecting the pack is not.
+      required: []
+
+    PackSnapshot:
+      type: object
+      properties:
+        pack_code: { type: string }
+        revision:
+          type: string
+          description: |
+            Content hash of the reduced snapshot, not the upstream `Last-Modified` — so an
+            upstream edit to card text this feature does not retain cannot throw away a 202 MB
+            stored PDF (research R10).
+        card_count: { type: integer }
+        captured_at: { type: string, format: date-time }
+        fresh_until:
+          type: string
+          format: date-time
+          description: |
+            Within it no request is issued at all, which is what SC-006d's "a second run against
+            a fresh snapshot issues none" requires literally. Measured `max-age`: 600 s.
+        stale: { type: boolean }
+      required: [pack_code, revision, card_count, captured_at, fresh_until, stale]
+
+    StoredPdf:
+      type: object
+      properties:
+        id: { type: string }
+        kind:
+          type: string
+          description: |
+            A `standard` PDF belongs to the **pack** and is shared by every clean run of it; a
+            `saved` one belongs to the run that named it (FR-026g1, FR-026h, FR-026i).
+          enum: [standard, saved]
+        name: { type: string }
+        pack_code: { type: [string, "null"] }
+        snapshot_revision: { type: [string, "null"] }
+        byte_size: { type: integer }
+        created_at: { type: string, format: date-time }
+      required: [id, kind, name, byte_size, created_at]
+
+    StoredPdfList:
+      type: object
+      properties:
+        pdfs:
+          type: array
+          items: { $ref: "#/components/schemas/StoredPdf" }
+        total_bytes:
+          type: integer
+          description: What the user is keeping, so FR-026g's reclamation is an informed choice.
+      required: [pdfs, total_bytes]
+
+    Resolution:
+      type: object
+      properties:
+        card_code: { type: string }
+        card_name: { type: string }
+        side: { type: string, enum: [front, back] }
+        group: { $ref: "#/components/schemas/CardGroup" }
+        provenance:
+          type: string
+          description: |
+            Anything other than `folder_position` is a substitution and **must** appear in the
+            report (FR-024, SC-005). `manual` stays distinguishable from every automatic
+            resolution (FR-029, SC-006c).
+          enum: [folder_position, library_position, reprint, name, manual, omitted]
+        source: { type: string, enum: [library, upload] }
+        file:
+          type: string
+          description: |
+            A path relative to the library root, or an uploaded file's **own name**. Never an
+            absolute path from outside the named folder (FR-009, FR-027).
+        note: { type: [string, "null"] }
+      required: [card_code, card_name, side, group, provenance, source, file]
+
+    ReportedFile:
+      type: object
+      properties:
+        file: { type: string }
+        reason: { type: string }
+      required: [file, reason]
+
+    AssemblyReport:
+      description: |
+        FR-015d lets one page carry cards from more than one group, so **the report is what
+        tells them apart** (FR-015e) — the user sorts cut cards by reading this, not by
+        recognising cards on sight.
+      type: object
+      properties:
+        pack_code: { type: [string, "null"] }
+        pack_name: { type: [string, "null"] }
+        pack_source: { type: string, enum: [identified, user_selected] }
+        snapshot_revision: { type: [string, "null"] }
+        snapshot_stale: { type: boolean }
+        cards_printed: { type: integer }
+        cards_in_pack:
+          type: integer
+          description: |
+            FR-018's comparison. The unit is **cards**, because that is what the pack listing
+            counts in. No total is expected and none is warned on: pack sizes vary and pre-built
+            deck sizes were measured at 40, 41, and 42.
+        faces_printed:
+          type: integer
+          description: A double-sided card is one card and two faces. The page count follows from this (SC-002b).
+        page_count: { type: [integer, "null"] }
+        decklist_printed:
+          type: boolean
+          description: SC-006j — a pack printed without one is never indistinguishable from one printed with it.
+        decklist_source_url:
+          type: [string, "null"]
+          description: |
+            Where Hall of Heroes publishes this pack's decklist photograph, offered when the
+            folder has none. **The application never fetches it** (FR-013c).
+        resolutions:
+          type: array
+          items: { $ref: "#/components/schemas/Resolution" }
+        omitted:
+          type: array
+          description: Every card printed without, by name (FR-030b, SC-006e).
+          items: { $ref: "#/components/schemas/Resolution" }
+        unused_files:
+          type: array
+          description: |
+            Every file in the **hero folder** either used or named here with a reason (FR-031,
+            SC-004). Outside that folder only files actually used or in conflict appear —
+            accounting individually for 4,447 library files would be unreadable and untestable.
+          items: { $ref: "#/components/schemas/ReportedFile" }
+        uninterpretable_files:
+          type: array
+          description: |
+            Files in the hero folder matching none of the three known filename conventions
+            (FR-032). Outside it, an uninterpretable name surfaces through the card that failed
+            to resolve, which is the thing the user can act on.
+          items: { $ref: "#/components/schemas/ReportedFile" }
+        conflicts:
+          type: array
+          description: |
+            Position conflicts naming both sides, never resolved by arbitrary choice (FR-033),
+            and duplicate renditions naming which was chosen (FR-034).
+          items: { $ref: "#/components/schemas/ReportedFile" }
+        low_resolution:
+          type: array
+          description: Scans below the resolution required at print size — a warning, not a refusal (FR-035).
+          items: { $ref: "#/components/schemas/ReportedFile" }
+      required:
+        [pack_source, cards_printed, cards_in_pack, faces_printed, decklist_printed,
+         resolutions, omitted, unused_files, uninterpretable_files, conflicts, low_resolution]
