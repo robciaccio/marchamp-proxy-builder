@@ -74,6 +74,16 @@ _PENDING_OPERATIONS = {
     ("/api/pdfs/{pdf_id}/document", "get"): "T104 (US5, stored PDFs)",
 }
 
+#: Request media types a later phase adds to an operation that already exists. Same expiring
+#: contract as `_PENDING_OPERATIONS`, one level finer: `POST .../decklist` carries two shapes
+#: on one path, and US1 builds only the JSON decision half (T048c). The multipart upload is
+#: T093's, and exempting the whole operation would stop verifying the half that *is* built.
+_PENDING_REQUEST_MEDIA_TYPES = {
+    ("/api/assemblies/{run_id}/decklist", "post"): {
+        "multipart/form-data": "T093 (US4, decklist upload)",
+    },
+}
+
 
 _PROSE_KEYS = frozenset({"description", "title", "example", "examples", "summary"})
 
@@ -200,9 +210,11 @@ def _shape(schema: Any, doc: dict[str, Any]) -> Any:
         out["required"] = sorted(resolved.get("required", []))
     if "items" in resolved:
         out["items"] = _shape(resolved["items"], doc)
-    if "anyOf" in resolved:
-        # Pydantic writes `str | None` as anyOf; the contract writes `type: [string, null]`.
-        variants = [_shape(v, doc) for v in resolved["anyOf"]]
+    if "anyOf" in resolved or "oneOf" in resolved:
+        # Pydantic writes `str | None` as anyOf; the contract writes `type: [string, null]`,
+        # and for a nullable object reference it writes `oneOf: [$ref, {type: null}]`. All
+        # three describe the same interface, and normalising is what lets the test say so.
+        variants = [_shape(v, doc) for v in resolved.get("anyOf") or resolved["oneOf"]]
         types = sorted(str(v.get("type")) for v in variants if isinstance(v, dict))
         out["type"] = types[0] if len(types) == 1 else types
         for variant in variants:
@@ -214,12 +226,23 @@ def _shape(schema: Any, doc: dict[str, Any]) -> Any:
 
 
 def _operations(doc: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any]]:
-    return {
-        (path, method): op
-        for path, item in doc["paths"].items()
-        for method, op in item.items()
-        if method in {"get", "post", "put", "patch", "delete"}
-    }
+    """Every operation, with path-level parameters folded into each one.
+
+    OpenAPI lets a path item declare parameters shared by all its operations, and 002's
+    contract uses that for `run_id` while 001's repeated them per operation. Without the
+    merge, every 002 operation appears to declare no path parameter at all and
+    `test_parameters_match` fails on a difference that is only notation.
+    """
+    operations: dict[tuple[str, str], dict[str, Any]] = {}
+    for path, item in doc["paths"].items():
+        shared = item.get("parameters", [])
+        for method, op in item.items():
+            if method not in {"get", "post", "put", "patch", "delete"}:
+                continue
+            merged = dict(op)
+            merged["parameters"] = [*shared, *op.get("parameters", [])]
+            operations[(path, method)] = merged
+    return operations
 
 
 def _expected_operations(doc: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any]]:
@@ -278,11 +301,31 @@ def test_parameters_match(key, contract, live):
 
 @pytest.mark.parametrize("key", sorted(_expected_operations(_merged_contract())))
 def test_request_body_matches(key, contract, live):
+    pending = _PENDING_REQUEST_MEDIA_TYPES.get(key, {})
+
     def body(doc, op):
         content = op.get("requestBody", {}).get("content", {})
-        return {media: _shape(v.get("schema", {}), doc) for media, v in content.items()}
+        return {
+            media: _shape(v.get("schema", {}), doc)
+            for media, v in content.items()
+            if media not in pending
+        }
 
     assert body(live, _operations(live)[key]) == body(contract, _operations(contract)[key])
+
+
+def test_no_pending_request_media_type_is_actually_implemented(contract, live):
+    """The finer exemption expires the same way the operation-level one does."""
+    arrived = {
+        (key, media)
+        for key, media_types in _PENDING_REQUEST_MEDIA_TYPES.items()
+        for media in media_types
+        if media in _operations(live).get(key, {}).get("requestBody", {}).get("content", {})
+    }
+    assert not arrived, (
+        "these request media types are implemented but still listed as pending — delete "
+        f"them from _PENDING_REQUEST_MEDIA_TYPES: {sorted(arrived)}"
+    )
 
 
 @pytest.mark.parametrize("key", sorted(_expected_operations(_merged_contract())))
@@ -296,7 +339,12 @@ def test_declared_response_statuses_exist(key, contract, live):
 @pytest.mark.parametrize("key", sorted(_expected_operations(_merged_contract())))
 def test_response_media_types_and_shapes_match(key, contract, live):
     live_op, contract_op = _operations(live)[key], _operations(contract)[key]
-    for code, expected in contract_op["responses"].items():
+    for code, raw in contract_op["responses"].items():
+        # A whole response may itself be a `$ref` into `components.responses`, which 002's
+        # contract uses for its shared `Problem404`/`Problem409State` and 001's never did.
+        # Unresolved, such a response looks like one declaring no content at all, and every
+        # error response appears to differ from the live document.
+        expected = _resolve(raw, contract)
         actual = live_op["responses"][code]
         assert set(actual.get("content", {})) == set(expected.get("content", {})), (
             f"{key} {code}: media types differ"
