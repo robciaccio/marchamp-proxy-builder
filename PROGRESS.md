@@ -14,8 +14,10 @@ as PR #22). Delete this file before opening the PR.
 
 ## Remaining, in order
 
-- [ ] T040-T042 pack identification + threshold calibration
-- [ ] T043-T045 resolve cascade steps 1 and 3, copy counts from the printed pack
+- [X] T040-T042 pack identification + threshold calibration (cd05004) — threshold measured
+      at 0.75, not the provisional 0.60; position agreement dropped from the figure
+- [X] T043-T045 resolve cascade steps 1 and 3 (6011a31) — nemesis lives in a subfolder;
+      reprints need position AND name; `Followed` is absent from the library entirely
 - [ ] T046-T047 bridge to 001's Catalog/HeroDeck
 - [ ] T048 PDF group ordering integration test
 - [ ] T048a-T048b decklist detection
