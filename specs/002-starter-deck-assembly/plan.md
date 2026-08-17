@@ -76,7 +76,7 @@ an assumption ADR 0001 states rather than verifies. Roughly 7 pages per pack PDF
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-Evaluated against constitution **v1.2.0**. Every gate that feature 001 passed still passes;
+Evaluated against constitution **v1.3.0**. Every gate that feature 001 passed still passes;
 the rows below say what **changes** in this feature, because a gate that changes is the one
 worth reading.
 
@@ -97,9 +97,19 @@ worth reading.
 | **Security — supply chain** | PASS | `httpx` moves from the dev group to runtime and `python-multipart` is added; the lockfile is updated in the same commit and CI installs frozen. No new GitHub Action. |
 | **Account controls** | N/A | Still no accounts. |
 
-**Constitution amendments required: none.** `TODO(ASSET_TARGET)` stays open and is narrowed in
-writing by ADR 0001 — it covers source assets and their encodings; the run store is app-owned
-state in a different category and does not sit behind `assets.Store`.
+**Constitution amendments required by the design: none.** Nothing in this feature's technical
+shape needs one — `httpx` is a client library rather than a component of comparable weight to the
+Technology section's pillars, and `TODO(ASSET_TARGET)` stays open, narrowed in writing by ADR 0001
+to source assets and their encodings (the run store is app-owned state in a different category and
+does not sit behind `assets.Store`).
+
+The constitution *was* amended to **v1.3.0** alongside this plan, for a process reason unrelated
+to the design: feature 002 took five branches to refine one spec, and the one-branch-per-feature
+naming rule made each invent a descriptive name that said nothing about which feature it belonged
+to. v1.3.0 admits a numeric suffix, and relaxes the requirement that a constitution amendment
+arrive in its own PR — keeping the protection that made that rule worth having (the amendment is
+its own commit and is called out in the description) without landing the amendment apart from the
+work that motivated it.
 
 ### One contradiction found, and resolved in the spec
 

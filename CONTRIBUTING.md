@@ -51,12 +51,7 @@ new descriptive name each time.
   merges on its own. If a branch cannot merge within a few days, split it — the suffix is for
   work done *in sequence*, not for several branches carried in parallel.
 
-> **Pending constitution amendment.** The constitution's *Version Control & Change Flow* section
-> requires a feature branch to match the `specs/<feature>/` directory **exactly**, which the
-> suffix does not. This document's preamble says the constitution wins any conflict, so that
-> clause needs a MINOR amendment admitting the suffix before it is fully in force. The amendment
-> must arrive in its own pull request, because a PR that amends the constitution may change
-> nothing else.
+The constitution admits the suffix as of **v1.3.0**; this section is the syntax.
 
 ## Commit messages
 
@@ -156,7 +151,9 @@ enforceable controls are GitHub push protection and the `secret-scan` status che
 
 Solo maintainer self-merge is fine. The PR still has to exist — the record is the point.
 
-A PR that amends the constitution changes nothing else.
+A PR that amends the constitution keeps the amendment in **its own commit** and says so in the
+description. It may carry other changes alongside — what matters is that the amendment is
+reviewed as an amendment rather than found later inside a diff. The size limit still applies.
 
 ## Things that must never be committed
 
