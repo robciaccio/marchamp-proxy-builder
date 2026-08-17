@@ -25,7 +25,7 @@
 
 ## Feature Readiness
 
-- [ ] All functional requirements have clear acceptance criteria — **20 scenarios for 51
+- [ ] All functional requirements have clear acceptance criteria — **29 scenarios for 59
       requirements**, see C
 - [x] User scenarios cover primary flows
 - [ ] Feature meets measurable outcomes defined in Success Criteria — not assessable before
@@ -54,9 +54,11 @@ Both are consequential — FR-023 in particular, since too strict a rule leaves 
 deferred to the plan below, and that deferral is what makes these boxes fail. If either
 becomes user-visible, it belongs back in the spec.
 
-**C. Acceptance coverage is partial.** 20 acceptance scenarios against 51 functional
-requirements. Covered: deck composition, quantities, borrowing, folder selection, manual
-resolution, and the failure paths — the correctness-critical parts. Uncovered:
+**C. Acceptance coverage is partial.** 29 acceptance scenarios against 59 functional
+requirements, after the 2026-08-16 clarification session added both. Covered: deck
+composition, quantities, borrowing, folder selection, manual resolution, run durability, the
+identity and nemesis outputs, and the failure paths — the correctness-critical parts.
+Uncovered:
 
 - the reporting block, FR-031 to FR-037
 - the MarvelCDB conduct block, FR-038 to FR-043 — only FR-040 has a proxy, in SC-006d
@@ -117,8 +119,25 @@ consequential one: the library contains "Stength in Numbers" and "Steve_s Aparta
 exact matching is too strict, while loose matching can pair a card with the wrong file. The
 plan must state the rule and test it against both.
 
-**Whether nemesis and encounter cards get their own output (FR-015).** Stated as MAY. They
-are excluded from the 40 either way, which is the part that affects correctness.
+### Resolved by clarification, 2026-08-16
+
+**Whether nemesis and encounter cards get their own output (FR-015).** No longer deferred and
+no longer a MAY. Assembling a hero now produces the player deck, the identity card, and the
+nemesis set as three distinct outputs (FR-015a to FR-015c), because a printed player deck on
+its own is not something anyone can sit down and play. They stay out of the deck total.
+
+**How the user resolves a card the tool could not find, and what happens if they stop
+halfway.** Assembly is a durable run the wizard walks the user through card by card, resumable
+on a later visit, listed as finished or still waiting (FR-026a to FR-026d). This retires
+feature 001's premise that generations need not outlive the process.
+
+**Whether this feature ships a CLI.** It does not. FR-036's outcome signal is a field on the
+run rather than a process exit status.
+
+**How the eight named heroes are verified.** Against the real library on the user's machine
+for SC-002 and SC-003, and against fixtures derived from that library's filenames for
+automated runs. Because this repository is public, FR-038a now forbids committing card art or
+MarvelCDB card text as fixture data.
 
 ### Open risk worth naming
 
