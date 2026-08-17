@@ -106,10 +106,11 @@ does not sit behind `assets.Store`).
 The constitution *was* amended to **v1.3.0** alongside this plan, for a process reason unrelated
 to the design: feature 002 took five branches to refine one spec, and the one-branch-per-feature
 naming rule made each invent a descriptive name that said nothing about which feature it belonged
-to. v1.3.0 admits a numeric suffix, and relaxes the requirement that a constitution amendment
-arrive in its own PR — keeping the protection that made that rule worth having (the amendment is
-its own commit and is called out in the description) without landing the amendment apart from the
-work that motivated it.
+to. v1.3.0 admits a numeric suffix, and narrows the requirement that a constitution amendment
+arrive in its own PR so that it binds **MAJOR amendments only** — a MAJOR invalidates compliant
+work and carries a migration path, so it keeps undivided review. A MINOR or PATCH may travel with
+the work that motivates it, provided it is its own commit and is called out in the PR description,
+which is the protection that made the old rule worth having.
 
 ### One contradiction found, and resolved in the spec
 

@@ -152,8 +152,15 @@ enforceable controls are GitHub push protection and the `secret-scan` status che
 Solo maintainer self-merge is fine. The PR still has to exist — the record is the point.
 
 A PR that amends the constitution keeps the amendment in **its own commit** and says so in the
-description. It may carry other changes alongside — what matters is that the amendment is
-reviewed as an amendment rather than found later inside a diff. The size limit still applies.
+description — what matters is that it is reviewed as an amendment rather than found later inside
+a diff.
+
+| Amendment | PR |
+|---|---|
+| **MAJOR** — removes or redefines a principle, invalidating compliant work | Its own PR, changing **nothing else** |
+| **MINOR** or **PATCH** | May travel with the work that motivates it |
+
+The size limit still applies either way.
 
 ## Things that must never be committed
 
