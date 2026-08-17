@@ -86,11 +86,22 @@ packages — `upstream/`, `library/`, `assembly/`, `store/` — plus changes to 
 
 ### The contract test must merge two documents first
 
-- [ ] T009 Change `tests/contract/test_openapi_matches.py` to load **both** `specs/001-*/contracts/openapi.yaml` and `specs/002-*/contracts/openapi.yaml`, union their `paths` and `components`, and compare that union against the live document. Today it compares 001's file alone with `set(live["paths"]) == set(contract["paths"])`, so the first 002 route breaks CI. Observe it fail (002's paths are absent from the live app) — that failure is the red state every route task below turns green.
+- [X] T009 Change `tests/contract/test_openapi_matches.py` to load **both** `specs/001-*/contracts/openapi.yaml` and `specs/002-*/contracts/openapi.yaml`, union their `paths` and `components`, and compare that union against the live document. Today it compares 001's file alone with `set(live["paths"]) == set(contract["paths"])`, so the first 002 route breaks CI. Observe it fail (002's paths are absent from the live app) — that failure is the red state every route task below turns green.
 
-> **Deferred to the Phase 3 PR.** This task's red state stays red until the first 002 route
-> exists, so landing it before then merges a knowingly failing CI. It belongs with the route
-> work that turns it green.
+> **Done in the Phase 3 PR**, with two additions the task did not anticipate:
+>
+> - **The merge refuses to resolve a collision by file order.** A repeated path is a design
+>   error and raises; a repeated *component* is legal (002 reuses 001's `Problem`) but must
+>   agree on substance, compared with prose stripped. That assertion failed on its first run:
+>   002's `Problem` was annotated "Feature 001's shape, unchanged" while omitting `type` from
+>   `required` and declaring `detail` non-nullable. Corrected in 002's contract to match the
+>   shipped 001 shape.
+> - **`_PENDING_OPERATIONS` scopes the comparison to what this phase builds.** 002's contract
+>   declares sixteen operations and Phase 3 builds seven, so without it this task cannot go
+>   green until Phase 7 — which is the knowingly-failing CI the original deferral note wanted
+>   to avoid. Each entry names the task that removes it, and
+>   `test_no_pending_operation_is_actually_implemented` fails if a listed route appears on the
+>   live app or names an operation no contract declares, so the list cannot outlive its use.
 
 ### Configuration
 
