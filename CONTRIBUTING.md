@@ -13,20 +13,50 @@ Work follows the Spec Kit flow. Do not start implementing before a plan exists.
 ```
 
 `/speckit-specify` creates `specs/NNN-short-name/` and prints the matching branch name.
-It does **not** create the branch — you do, using that exact name.
+It does **not** create the branch — you do, using that name, plus a numeric suffix if an
+earlier branch for the same feature has already been opened (see *Branch naming*).
 
 ## Branch naming
 
 | Work type | Pattern | Example |
 |---|---|---|
-| Spec Kit feature | `NNN-short-name` (must equal the `specs/` directory) | `001-assemble-printable-proxy` |
+| Spec Kit feature | `NNN-short-name` (must equal the `specs/` directory) | `002-starter-deck-assembly` |
+| Spec Kit feature, second and later branch | `NNN-short-name-N`, `N` counting from 2 | `002-starter-deck-assembly-2` |
 | Everything else | `type/short-name` | `chore/ci-pipeline` |
 
 ```bash
-git switch -c 001-assemble-printable-proxy main
+git fetch origin
+git switch -c 002-starter-deck-assembly origin/main      # the first branch
+git switch -c 002-starter-deck-assembly-2 origin/main    # the next one
 ```
 
-Branches are short-lived. If one cannot merge within a few days, split it.
+### The numeric suffix
+
+One feature takes more than one branch. Refining a spec is the usual reason: a clarification
+pass lands, the next question surfaces, and that is a second PR — small, reviewable in one
+sitting, and merged on its own. The suffix is how those stay in sequence without inventing a
+new descriptive name each time.
+
+- **The part before the suffix MUST still equal the `specs/` directory.** That is what keeps a
+  branch traceable to its feature. `002-starter-deck-assembly-2` is a branch for feature
+  `002-starter-deck-assembly`; `002-plan-and-tasks` is not, however readable it looks.
+- **Start at 2.** The first branch carries no suffix, so the numbers read as what they are —
+  the second, third, and fourth pass over the same spec.
+- **Never reuse a merged branch's name.** Take the next number instead. `main` is squash-merged,
+  so a merged branch's commits are not ancestors of `main` and `git cherry` and
+  `git branch --merged` will report it as unmerged forever; two branches sharing one name make
+  that already-confusing history unreadable. To decide whether a branch holds real work, compare
+  tree hashes (`git rev-parse <ref>^{tree}`) rather than trusting those commands.
+- **The suffix does not license a long-lived branch.** Each one is still short-lived and still
+  merges on its own. If a branch cannot merge within a few days, split it — the suffix is for
+  work done *in sequence*, not for several branches carried in parallel.
+
+> **Pending constitution amendment.** The constitution's *Version Control & Change Flow* section
+> requires a feature branch to match the `specs/<feature>/` directory **exactly**, which the
+> suffix does not. This document's preamble says the constitution wins any conflict, so that
+> clause needs a MINOR amendment admitting the suffix before it is fully in force. The amendment
+> must arrive in its own pull request, because a PR that amends the constitution may change
+> nothing else.
 
 ## Commit messages
 
