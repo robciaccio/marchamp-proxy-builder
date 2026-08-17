@@ -37,10 +37,16 @@ of this spec claimed, by requiring the deck to total 40. The deckbuilding rules 
 observed rather than proven across the whole card pool.
 
 So the check is completeness, not arithmetic: every card the tool decides belongs in the deck
-must resolve to an image, and a card that does not fails the run by name. The total is
-reported alongside, and a total other than 40 is flagged as a strong signal that something
-did not resolve — because in every case measured so far, it was. That is a warning the user
-can judge, not a gate that would refuse a legitimately larger deck.
+must resolve to an image, and one that does not stops the run by name. The total is reported
+alongside, and a total other than 40 is flagged as a strong signal that something did not
+resolve — because in every case measured so far, it was. That is a warning the user can
+judge, not a gate that would refuse a legitimately larger deck.
+
+Stopping is the default, not the last word. A user who knows a card is missing and wants the
+other thirty-nine on paper anyway can say so and print. What the tool owes them is that the
+gap is never invisible — named when it happens, and still named in the report and the log
+afterwards. The failure this feature exists to prevent is a deck that is quietly wrong, not a
+deck the user knowingly chose to print short.
 
 ## Clarifications
 
@@ -192,8 +198,11 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
    **Then** it is accepted and recorded as a manual choice from outside the boundary.
 4. **Given** a deck assembled with manual help, **When** the user opens the report, **Then**
    every manually chosen card is distinguishable from every automatically resolved one.
-5. **Given** a card the user declines to resolve, **When** they proceed, **Then** the run
-   fails rather than printing a deck with that card missing.
+5. **Given** a card the user declines to resolve, **When** they take no further action,
+   **Then** the run stops rather than printing a deck with that card missing.
+6. **Given** a card the user declines to resolve, **When** they explicitly ask to print
+   without it, **Then** the deck prints, and the omitted card is named in the report, counted
+   against the expected total, and recorded in the run's log.
 
 ---
 
@@ -282,8 +291,8 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
 - **FR-016**: The number of copies of a card MUST come from the printing being assembled,
   never from the printing an image was borrowed from.
 - **FR-017**: Every card the tool places in the deck MUST resolve to an image. A card that
-  does not MUST fail the run by name. Completeness of resolution, not the card total, is what
-  the tool verifies.
+  does not MUST stop the run by name, subject to the user's explicit override (FR-030).
+  Completeness of resolution, not the card total, is what the tool verifies.
 - **FR-018**: The tool MUST report the assembled deck's total. A total other than 40 MUST be
   reported as a warning, because a pre-built deck is expected to be 40 and every shortfall
   measured so far was an unresolved card. A total outside the legal 40-to-50 range MUST be
@@ -306,8 +315,9 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
 - **FR-024**: Every image resolved by anything other than an exact positional match in the
   identified folder MUST be reported, naming the card, the file chosen, and why.
 - **FR-025**: A card with no image anywhere in the library MUST NOT be silently omitted or
-  replaced by a placeholder. It MUST be reported by name and MUST either be supplied by the
-  user (FR-026) or fail the run.
+  replaced by a placeholder. It MUST be reported by name, and the run MUST stop unless the
+  user supplies a file for it (FR-026) or explicitly chooses to print without it (FR-030).
+  What is prohibited is the omission passing unnoticed, not the omission itself.
 
 ### Resolving the rest by hand
 
@@ -322,9 +332,16 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
   not. Manual choice bypasses discovery, never validation.
 - **FR-029**: Every manual choice MUST be reported and MUST be distinguishable from an
   automatic resolution, so a deck assembled with human help is auditable as such.
-- **FR-030**: The user MUST be able to leave a card unresolved and proceed, in which case the
-  run MUST fail rather than print an incomplete deck. Declining to choose is not consent to a
-  short deck.
+- **FR-030**: The user MUST be able to leave a card unresolved and still print, by saying so
+  explicitly. The default when a card cannot be resolved is to stop; proceeding anyway is the
+  user's decision to make, and the tool MUST NOT overrule it.
+- **FR-030a**: Proceeding with an incomplete deck MUST require an explicit act. It MUST NOT be
+  the default, MUST NOT be reachable by dismissing a prompt or ignoring a warning, and MUST
+  NOT be inferred from silence.
+- **FR-030b**: An incomplete deck MUST be legible as incomplete after the fact. The report
+  MUST name every omitted card, the deck total MUST be stated against what was expected, and
+  the omission MUST appear in the log record for the run. A user who prints one and returns to
+  it a week later MUST NOT have to rediscover what is missing.
 
 ### Reporting
 
@@ -415,8 +432,11 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
   Zero are silently ignored.
 - **SC-005**: 100% of images resolved by anything other than an exact positional match are
   reported as such. No substitution is silent.
-- **SC-006**: A deck containing a card that resolves to no image fails 100% of the time. No
-  combination of inputs yields a deck that prints with a card missing.
+- **SC-006**: A deck containing a card that resolves to no image stops 100% of the time unless
+  the user explicitly asks to print without it. No combination of inputs yields a deck that
+  prints with a card missing and no one having said so.
+- **SC-006e**: 100% of decks printed with a card omitted name that card in the report and in
+  the run's log. An incomplete deck is never indistinguishable from a complete one.
 - **SC-006a**: A deck whose total is not 40 is reported as such 100% of the time, whether or
   not the run succeeds.
 - **SC-006b**: A deck missing exactly one card from the library can be completed by the user
@@ -450,6 +470,12 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
 - **MarvelCDB's public card endpoints are available and stable.** This feature uses only the
   documented card and pack endpoints; it does not depend on the undocumented decklist
   endpoints, and does not require an account.
+- **The scope is personal use, and the requirements exist to keep it there.** The application
+  runs locally, prints from the user's own scans of cards they own, and publishes nothing.
+  It does not redistribute card artwork, does not mirror or republish MarvelCDB's data, and
+  has no sharing, hosting, or export-to-others path — matching the constitution's Distribution
+  scope clause. FR-038 to FR-043 are written to keep the application a well-behaved client of
+  a volunteer-run service, not because anything here is in tension with that scope.
 - **The library is a local directory the user names at the time they ask.** Their Google Drive
   folder is mounted locally, so no Drive-specific client is needed. A remote backend remains
   out of scope here, as it is in feature 001, and would arrive through the existing adapter.

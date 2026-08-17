@@ -25,7 +25,7 @@
 
 ## Feature Readiness
 
-- [ ] All functional requirements have clear acceptance criteria — **19 scenarios for 49
+- [ ] All functional requirements have clear acceptance criteria — **20 scenarios for 51
       requirements**, see C
 - [x] User scenarios cover primary flows
 - [ ] Feature meets measurable outcomes defined in Success Criteria — not assessable before
@@ -54,7 +54,7 @@ Both are consequential — FR-023 in particular, since too strict a rule leaves 
 deferred to the plan below, and that deferral is what makes these boxes fail. If either
 becomes user-visible, it belongs back in the spec.
 
-**C. Acceptance coverage is partial.** 19 acceptance scenarios against 49 functional
+**C. Acceptance coverage is partial.** 20 acceptance scenarios against 51 functional
 requirements. Covered: deck composition, quantities, borrowing, folder selection, manual
 resolution, and the failure paths — the correctness-critical parts. Uncovered:
 
