@@ -59,3 +59,6 @@ Thumbs.db
 
 # Claude Code local overrides
 .claude/settings.local.json
+# Agent worktrees are checkouts of this repository, not content of it. Committing one
+# embeds a git repo inside the repo and git only warns about it.
+.claude/worktrees/

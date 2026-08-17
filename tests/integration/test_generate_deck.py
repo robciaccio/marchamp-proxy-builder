@@ -12,6 +12,7 @@ import json
 import pytest
 from pypdf import PdfReader
 
+from marchamp.assets.local_dir import LocalDirectoryStore
 from marchamp.generations.service import GenerationService
 from marchamp.layout.geometry import PageSize
 from marchamp.render.images import FitMode
@@ -22,7 +23,7 @@ TOL_PT = 0.5 * PT_PER_MM  # FR-009's +/-0.5 mm, expressed in points
 
 @pytest.fixture
 def service(image_dir, catalog_path) -> GenerationService:
-    return GenerationService(catalog_path=catalog_path, image_dir=image_dir)
+    return GenerationService(catalog_path=catalog_path, store=LocalDirectoryStore(image_dir))
 
 
 def _pdf(service, **kw):
@@ -49,7 +50,7 @@ def test_new_deck_becomes_selectable_without_a_rebuild(catalog_path, image_dir):
     data["decks"].append(extra)
     catalog_path.write_text(json.dumps(data))
 
-    svc = GenerationService(catalog_path=catalog_path, image_dir=image_dir)
+    svc = GenerationService(catalog_path=catalog_path, store=LocalDirectoryStore(image_dir))
     assert {d.id for d in svc.decks()} == {"testman-deck", "second-deck"}
 
 
@@ -118,7 +119,7 @@ def test_no_substitutions_when_all_pack_art_is_present(catalog_path, image_dir):
     data["decks"][0]["entries"][-1]["preferred_printing_id"] = "energy@core"
     catalog_path.write_text(json.dumps(data))
 
-    svc = GenerationService(catalog_path=catalog_path, image_dir=image_dir)
+    svc = GenerationService(catalog_path=catalog_path, store=LocalDirectoryStore(image_dir))
     assert svc.generate("testman-deck").substitutions == []
 
 
@@ -133,7 +134,7 @@ def test_all_failing_cards_are_reported_together(catalog_path, image_dir):
         card["printings"][0]["image"] = f"Heros/Test Hero_Testman/{cid}_gone.tiff"
     catalog_path.write_text(json.dumps(data))
 
-    svc = GenerationService(catalog_path=catalog_path, image_dir=image_dir)
+    svc = GenerationService(catalog_path=catalog_path, store=LocalDirectoryStore(image_dir))
     gen = svc.generate("testman-deck")
     assert gen.status == "failed"
     named = {f.card_name for f in gen.failures}
@@ -147,7 +148,9 @@ def test_a_failed_generation_offers_no_document(catalog_path, image_dir):
     card["printings"][0]["image"] = "Heros/Test Hero_Testman/gone.tiff"
     catalog_path.write_text(json.dumps(data))
 
-    gen = GenerationService(catalog_path=catalog_path, image_dir=image_dir).generate("testman-deck")
+    gen = GenerationService(
+        catalog_path=catalog_path, store=LocalDirectoryStore(image_dir)
+    ).generate("testman-deck")
     assert gen.status == "failed"
     assert gen.document is None
 
@@ -160,7 +163,9 @@ def test_card_with_no_usable_printing_fails_rather_than_falling_back(catalog_pat
         p["image"] = "Heros/Test Hero_Testman/absent.tiff"
     catalog_path.write_text(json.dumps(data))
 
-    gen = GenerationService(catalog_path=catalog_path, image_dir=image_dir).generate("testman-deck")
+    gen = GenerationService(
+        catalog_path=catalog_path, store=LocalDirectoryStore(image_dir)
+    ).generate("testman-deck")
     assert gen.status == "failed"
     assert any(f.card_name == "Energy" for f in gen.failures)
 

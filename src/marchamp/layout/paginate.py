@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 
+from marchamp.assets.store import Store
 from marchamp.catalog.models import Catalog
 from marchamp.catalog.printings import Resolution, ResolutionOutcome, resolve_entry
 from marchamp.layout.geometry import GRID_COLS, GRID_ROWS, PageSize, Slot, page_layout
@@ -55,7 +55,7 @@ def face_count(catalog: Catalog, deck_id: str) -> int:
 
 
 def expand_faces(
-    catalog: Catalog, deck_id: str, image_dir: Path
+    catalog: Catalog, deck_id: str, store: Store
 ) -> tuple[list[Face], list[Resolution]]:
     """Expand a deck into an ordered face list, resolving each entry's printing."""
     deck = catalog.deck(deck_id)
@@ -65,7 +65,7 @@ def expand_faces(
     faces: list[Face] = []
     resolutions: list[Resolution] = []
     for entry in deck.entries:
-        res = resolve_entry(catalog, entry, image_dir)
+        res = resolve_entry(catalog, entry, store)
         resolutions.append(res)
         if res.outcome is ResolutionOutcome.UNAVAILABLE or res.printing is None:
             continue
@@ -88,8 +88,8 @@ def expand_faces(
     return faces, resolutions
 
 
-def paginate(catalog: Catalog, deck_id: str, page_size: PageSize, image_dir: Path) -> list[Page]:
-    faces, _ = expand_faces(catalog, deck_id, image_dir)
+def paginate(catalog: Catalog, deck_id: str, page_size: PageSize, store: Store) -> list[Page]:
+    faces, _ = expand_faces(catalog, deck_id, store)
     layout = page_layout(page_size)
     pages: list[Page] = []
     for i in range(0, len(faces), FACES_PER_PAGE):

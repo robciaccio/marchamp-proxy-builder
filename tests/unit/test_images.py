@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from marchamp.assets.local_dir import LocalDirectoryStore
 from marchamp.render.images import (
     FitMode,
     ImageTooSmall,
@@ -79,14 +80,15 @@ def test_dpi_measured_over_the_printed_region_for_crop():
 
 
 def test_source_below_300_dpi_is_rejected(tmp_path):
-    small = make_card_image(tmp_path / "small.tiff", "S", width=400, height=575)
+    make_card_image(tmp_path / "small.tiff", "S", width=400, height=575)
     with pytest.raises(ImageTooSmall):
-        validate_source(small, SLOT_W, SLOT_H, FitMode.CROP)
+        validate_source(LocalDirectoryStore(tmp_path), "small.tiff", SLOT_W, SLOT_H, FitMode.CROP)
 
 
 def test_adequate_source_passes(tmp_path):
-    ok = make_card_image(tmp_path / "ok.tiff", "OK")
-    assert validate_source(ok, SLOT_W, SLOT_H, FitMode.CROP).width_px == SRC_W
+    make_card_image(tmp_path / "ok.tiff", "OK")
+    info = validate_source(LocalDirectoryStore(tmp_path), "ok.tiff", SLOT_W, SLOT_H, FitMode.CROP)
+    assert info.width_px == SRC_W
 
 
 def test_pixel_ceiling_is_set_not_disabled():

@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import io
 from collections.abc import Callable
-from pathlib import Path
 
 from PIL import Image
 from reportlab.lib.colors import Color
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
+from marchamp.assets.store import Store
 from marchamp.layout.geometry import PageLayout, cut_guides, mm_to_pt, page_layout
 from marchamp.layout.paginate import Page, PlacedFace
 from marchamp.render.images import FitMode, fit_rect
@@ -30,10 +30,18 @@ Prepared = tuple[Image.Image, object, PlacedFace]
 OnPage = Callable[[int, bytes], None]
 
 
-def _prepare(path: Path, fit: FitMode, slot_w: float, slot_h: float) -> tuple[Image.Image, object]:
-    """Decode one source image and apply the fit mode's crop."""
-    img = Image.open(path)
-    img.load()
+def _prepare(
+    store: Store, ref: str, fit: FitMode, slot_w: float, slot_h: float
+) -> tuple[Image.Image, object]:
+    """Decode one source image and apply the fit mode's crop.
+
+    Reads through the adapter (FR-004). `load()` inside the handle's scope, so the decode
+    finishes before the source is closed — a store's handle need not be a file, and a lazy
+    Pillow image over a closed stream fails much later and somewhere else.
+    """
+    with store.open(ref) as handle:
+        img = Image.open(handle)
+        img.load()
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
     rect = fit_rect(img.width, img.height, slot_w, slot_h, fit)
@@ -110,7 +118,7 @@ def compose(
     pages: list[Page],
     page_size,
     fit_mode: FitMode,
-    image_dir: Path,
+    store: Store,
     on_page: OnPage | None = None,
 ) -> bytes:
     """Compose the whole document.
@@ -127,7 +135,7 @@ def compose(
     for page in pages:
         prepared: list[Prepared] = []
         for placed in page.placed:
-            img, rect = _prepare(image_dir / placed.face.image_ref, fit_mode, slot_w, slot_h)
+            img, rect = _prepare(store, placed.face.image_ref, fit_mode, slot_w, slot_h)
             prepared.append((img, rect, placed))
 
         _draw_page(c, layout, prepared)

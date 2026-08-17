@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from marchamp.api.errors import FailureKind, GenerationFailure
+from marchamp.assets.store import Store
 from marchamp.catalog.loader import CatalogError, load_catalog_file
 from marchamp.catalog.models import Catalog, HeroDeck
 from marchamp.catalog.printings import ResolutionOutcome, Substitution
@@ -85,9 +86,12 @@ class Generation:
 class GenerationService:
     """Resolve -> validate -> compose. Never retries on its own (FR-021a)."""
 
-    def __init__(self, catalog_path: Path, image_dir: Path, limits: Limits | None = None) -> None:
+    def __init__(self, catalog_path: Path, store: Store, limits: Limits | None = None) -> None:
         self.catalog_path = Path(catalog_path)
-        self.image_dir = Path(image_dir)
+        # A `Store`, not a directory (FR-004, research R8). Feature 001 always had one
+        # available and reached past it; feature 002 cannot, because a run's faces come from
+        # the library *and* from its own uploads.
+        self.store = store
         self.limits = limits or Limits()
 
     def load(self) -> Catalog:
@@ -97,7 +101,7 @@ class GenerationService:
         return list(self.load().decks)
 
     def _compose(self, pages, page_size, fit_mode, on_page=None) -> bytes:
-        return compose(pages, page_size, fit_mode, self.image_dir, on_page=on_page)
+        return compose(pages, page_size, fit_mode, self.store, on_page=on_page)
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -142,7 +146,7 @@ class GenerationService:
         catalog = gen.catalog
         gen.status = "running"
 
-        report = validate(catalog, self.image_dir)
+        report = validate(catalog, self.store)
         if not report.valid:
             # Map each issue to the taxonomy FR-021 defines. A card whose every printing is
             # absent is an *asset* problem, not a malformed catalog, and the difference is
@@ -161,7 +165,7 @@ class GenerationService:
                 started,
             )
 
-        faces, resolutions = expand_faces(catalog, gen.deck_id, self.image_dir)
+        faces, resolutions = expand_faces(catalog, gen.deck_id, self.store)
 
         if len(faces) > self.limits.max_faces_per_generation:
             return self._fail(
@@ -199,7 +203,7 @@ class GenerationService:
         slot_w, slot_h = (63.5, 88.9)
         for face in faces:
             try:
-                validate_source(self.image_dir / face.image_ref, slot_w, slot_h, gen.fit_mode)
+                validate_source(self.store, face.image_ref, slot_w, slot_h, gen.fit_mode)
             except ImageTooSmall as exc:
                 failures.append(
                     GenerationFailure(
@@ -218,7 +222,7 @@ class GenerationService:
         if failures:
             return self._fail(gen, failures, started)
 
-        pages = paginate(catalog, gen.deck_id, gen.page_size, self.image_dir)
+        pages = paginate(catalog, gen.deck_id, gen.page_size, self.store)
         # Published as soon as pagination is known rather than at the end, so an interface
         # watching a run can say "page 1 of 5" instead of counting up from nothing — how
         # much is left is the part of advancement a bare percentage does not convey.

@@ -47,14 +47,18 @@ packages — `upstream/`, `library/`, `assembly/`, `store/` — plus changes to 
 
 **Purpose**: Dependencies, source tree, and the fixture library every later phase asserts against
 
-- [ ] T001 Promote `httpx` from `[dependency-groups] dev` to `[project] dependencies` and add `python-multipart` in `pyproject.toml` (research R2, R9)
-- [ ] T002 Regenerate `uv.lock` and confirm `uv sync --locked` fails if the lockfile would change
-- [ ] T003 Create source tree `src/marchamp/{upstream,library,assembly,store}/` with `__init__.py` in each
-- [ ] T004 Write `scripts/derive_library_fixture.py` — reads the real library with `Path.rglob` (BSD `find` does not traverse the Drive mount, research R13) and writes filenames and folder layout over **generated** placeholder images, covering the ten hero folders, the Core Set folder, and the `Aspects/` subtree
+- [X] T001 Promote `httpx` from `[dependency-groups] dev` to `[project] dependencies` and add `python-multipart` in `pyproject.toml` (research R2, R9)
+- [X] T002 Regenerate `uv.lock` and confirm `uv sync --locked` fails if the lockfile would change
+- [X] T003 Create source tree `src/marchamp/{upstream,library,assembly,store}/` with `__init__.py` in each
+- [X] T004 Write `scripts/derive_library_fixture.py` — reads the real library with `Path.rglob` (BSD `find` does not traverse the Drive mount, research R13) and writes filenames and folder layout over **generated** placeholder images, covering the ten hero folders, the Core Set folder, and the `Aspects/` subtree
 - [ ] T005 Run T004 and commit `tests/fixtures/library/` for the ten acceptance heroes **plus the Core Set folder and the `Aspects/` subtree** — without the first the reprint path has no image to borrow (T043, T058), and without the second the whole-library search has nothing to find (T079). Preserve the real awkwardness verbatim: the three filename conventions, the typos, missing positions, `.tif`/`.tiff` pairs, Ant-Man's duplicate position, Quincarrier filed under Wasp, and the decklist scans **under their real filenames** (`captain america decklist.tif`, `iceman deck list.tiff` — both spellings must survive derivation) with Hulk's and Phoenix's folders left without one
-- [ ] T006 [P] Commit reduced upstream fixtures in `tests/fixtures/snapshots/` for the ten packs plus `core`, carrying only the fields in data-model.md § PackCard (FR-038a)
-- [ ] T007 [P] Write `tests/unit/test_fixtures_carry_no_card_data.py` asserting no fixture holds card text, flavour, traits, `imagesrc`, or a real image — this repository is public and FR-038a governs fixtures as much as runtime
-- [ ] T008 [P] Extend `tests/conftest.py` with a temporary state directory, a fixture `library_root`, and an offline `httpx` transport that serves the T006 fixtures and fails on any unstubbed host
+
+> **Deferred to the Phase 3 PR.** Needs the mounted Drive, which only the maintainer's
+> machine has, and its output is first consumed by T043, T058, and T079 — all Phase 3. The
+> generator (T004) is committed and ready; nothing in Phases 1-2 reads its output.
+- [X] T006 [P] Commit reduced upstream fixtures in `tests/fixtures/snapshots/` for the ten packs plus `core`, carrying only the fields in data-model.md § PackCard (FR-038a)
+- [X] T007 [P] Write `tests/unit/test_fixtures_carry_no_card_data.py` asserting no fixture holds card text, flavour, traits, `imagesrc`, or a real image — this repository is public and FR-038a governs fixtures as much as runtime
+- [X] T008 [P] Extend `tests/conftest.py` with a temporary state directory, a fixture `library_root`, and an offline `httpx` transport that serves the T006 fixtures and fails on any unstubbed host
 
 **Checkpoint**: `uv run pytest` green, and T007 proves the fixtures are clean.
 
@@ -70,53 +74,57 @@ packages — `upstream/`, `library/`, `assembly/`, `store/` — plus changes to 
 
 - [ ] T009 Change `tests/contract/test_openapi_matches.py` to load **both** `specs/001-*/contracts/openapi.yaml` and `specs/002-*/contracts/openapi.yaml`, union their `paths` and `components`, and compare that union against the live document. Today it compares 001's file alone with `set(live["paths"]) == set(contract["paths"])`, so the first 002 route breaks CI. Observe it fail (002's paths are absent from the live app) — that failure is the red state every route task below turns green.
 
+> **Deferred to the Phase 3 PR.** This task's red state stays red until the first 002 route
+> exists, so landing it before then merges a knowingly failing CI. It belongs with the route
+> work that turns it green.
+
 ### Configuration
 
-- [ ] T010 Write failing tests for `MARCHAMP_STATE_DIR` resolution, the platform default, and refusal when it resolves inside a named library root, in `tests/unit/test_config.py` (data-model.md § Configuration)
-- [ ] T011 Extend `src/marchamp/config.py` with the state directory, the upstream host, the upload byte ceiling, the library scan file-count cap, and backoff settings — and confirm `serve` still starts with `MARCHAMP_IMAGE_DIR` and `MARCHAMP_CATALOG` unset (FR-005, SC-003a)
+- [X] T010 Write failing tests for `MARCHAMP_STATE_DIR` resolution, the platform default, and refusal when it resolves inside a named library root, in `tests/unit/test_config.py` (data-model.md § Configuration)
+- [X] T011 Extend `src/marchamp/config.py` with the state directory, the upstream host, the upload byte ceiling, the library scan file-count cap, and backoff settings — and confirm `serve` still starts with `MARCHAMP_IMAGE_DIR` and `MARCHAMP_CATALOG` unset (FR-005, SC-003a)
 
 ### Durable state (ADR 0001)
 
-- [ ] T012 Write failing tests for atomic replace, file `fsync` before rename, directory `fsync` after it, and `F_FULLFSYNC` on Darwin, in `tests/unit/test_atomic.py`
-- [ ] T013 Implement `src/marchamp/store/atomic.py`. **Flag this for review as load-bearing**, per ADR 0001's dissent
-- [ ] T014 [P] Write failing tests for state-directory path construction in `tests/unit/test_store_layout.py`
-- [ ] T015 Implement `src/marchamp/store/layout.py` — `runs/<id>/run.json`, `runs/<id>/uploads/<sha256>`, `pdfs/standard/`, `pdfs/saved/`, `snapshots/<pack>.json`
-- [ ] T016 Write failing tests for run-record round-trip, the optimistic `version` (stale write rejected, not silently applied), a per-run lock, and **refusal** of a record written by a newer `schema_version`, in `tests/unit/test_store_runs.py` (FR-026b)
-- [ ] T017 Implement `src/marchamp/store/runs.py`
-- [ ] T018 Write failing tests for standard vs saved PDFs, `os.link` refcounting, `EEXIST` as the atomic uniqueness primitive for the FR-026h key, and that deletion returns bytes **to the operating system**, in `tests/unit/test_store_pdfs.py` (FR-026g, FR-026g1)
-- [ ] T019 Implement `src/marchamp/store/pdfs.py`
-- [ ] T020 [P] Write failing test for the startup orphan sweep in `tests/unit/test_store_sweep.py` (ADR 0001 § Consequences)
-- [ ] T021 Implement `src/marchamp/store/sweep.py` and call it from `src/marchamp/api/app.py` at startup
+- [X] T012 Write failing tests for atomic replace, file `fsync` before rename, directory `fsync` after it, and `F_FULLFSYNC` on Darwin, in `tests/unit/test_atomic.py`
+- [X] T013 Implement `src/marchamp/store/atomic.py`. **Flag this for review as load-bearing**, per ADR 0001's dissent
+- [X] T014 [P] Write failing tests for state-directory path construction in `tests/unit/test_store_layout.py`
+- [X] T015 Implement `src/marchamp/store/layout.py` — `runs/<id>/run.json`, `runs/<id>/uploads/<sha256>`, `pdfs/standard/`, `pdfs/saved/`, `snapshots/<pack>.json`
+- [X] T016 Write failing tests for run-record round-trip, the optimistic `version` (stale write rejected, not silently applied), a per-run lock, and **refusal** of a record written by a newer `schema_version`, in `tests/unit/test_store_runs.py` (FR-026b)
+- [X] T017 Implement `src/marchamp/store/runs.py`
+- [X] T018 Write failing tests for standard vs saved PDFs, `os.link` refcounting, `EEXIST` as the atomic uniqueness primitive for the FR-026h key, and that deletion returns bytes **to the operating system**, in `tests/unit/test_store_pdfs.py` (FR-026g, FR-026g1)
+- [X] T019 Implement `src/marchamp/store/pdfs.py`
+- [X] T020 [P] Write failing test for the startup orphan sweep in `tests/unit/test_store_sweep.py` (ADR 0001 § Consequences)
+- [X] T021 Implement `src/marchamp/store/sweep.py` and call it from `src/marchamp/api/app.py` at startup
 
 ### Asset adapter: two roots, and 001 moved behind the seam
 
-- [ ] T022 Write failing tests for `OverlayStore` — `upload:`-prefixed refs resolve inside the run directory, everything else inside the library root, each with its own containment check, and the store pickles across a process boundary — in `tests/unit/test_overlay.py` (FR-004, FR-007, FR-026e)
-- [ ] T023 Implement `src/marchamp/assets/overlay.py`
-- [ ] T024 Change `compose()` in `src/marchamp/render/document.py` to take an `assets.Store` instead of `image_dir: Path`; 001's tests MUST pass unmodified (research R8)
-- [ ] T025 Change `validate_source()` in `src/marchamp/render/images.py` to take a `Store` and a ref
-- [ ] T026 [P] Change `src/marchamp/catalog/printings.py` and `src/marchamp/catalog/validation.py` to reach files through the `Store` rather than joining `image_dir / ref`
-- [ ] T027 Update the call sites in `src/marchamp/generations/service.py` and `src/marchamp/api/routes.py` to construct a `LocalDirectoryStore` — feature 001's behaviour is unchanged, and its suite is the proof
+- [X] T022 Write failing tests for `OverlayStore` — `upload:`-prefixed refs resolve inside the run directory, everything else inside the library root, each with its own containment check, and the store pickles across a process boundary — in `tests/unit/test_overlay.py` (FR-004, FR-007, FR-026e)
+- [X] T023 Implement `src/marchamp/assets/overlay.py`
+- [X] T024 Change `compose()` in `src/marchamp/render/document.py` to take an `assets.Store` instead of `image_dir: Path`; 001's tests MUST pass unmodified (research R8)
+- [X] T025 Change `validate_source()` in `src/marchamp/render/images.py` to take a `Store` and a ref
+- [X] T026 [P] Change `src/marchamp/catalog/printings.py` and `src/marchamp/catalog/validation.py` to reach files through the `Store` rather than joining `image_dir / ref`
+- [X] T027 Update the call sites in `src/marchamp/generations/service.py` and `src/marchamp/api/routes.py` to construct a `LocalDirectoryStore` — feature 001's behaviour is unchanged, and its suite is the proof
 
 ### Upstream: MarvelCDB
 
-- [ ] T028 Write failing tests for snapshot validation on capture **and on read** — every retained field present and typed, `pack_code` consistent, at least one `type_code: hero`, at least one `card_set_type_name_code: nemesis`, `quantity` ≥ 1, dangling reprint link a warning — in `tests/unit/test_upstream_models.py` (FR-047)
-- [ ] T029 Implement `src/marchamp/upstream/models.py` — `PackIndexEntry` (`code`, `name` only) and `PackCard`, discarding card text, flavour, traits, `imagesrc`, and `pack.total` (research R12)
-- [ ] T030 Write failing tests for the client — one allowlisted host, redirects **not** followed, loopback/link-local/private ranges refused after resolution, `pack_code` validated against `^[a-z0-9_]{1,32}$` and against the pack index before reaching a URL, descriptive `User-Agent`, explicit timeouts, `Retry-After`-aware backoff with at most two retries, never more than one request in flight and never two requests inside 1 s — in `tests/unit/test_upstream_client.py` (FR-003, FR-041, FR-042, FR-043)
-- [ ] T031 Implement `src/marchamp/upstream/client.py`
-- [ ] T032 Write failing tests for the snapshot store — revision is a content hash of the reduced records and is stable across a refetch that changed nothing; within `max-age` **no request is issued at all**; past it one conditional `If-Modified-Since`; a `304` keeps the revision and extends freshness; a failed refetch serves the stored snapshot marked stale; no snapshot and a failed fetch refuses naming the pack — in `tests/unit/test_snapshots.py` (FR-039, FR-044, FR-044a, FR-046, research R1, R10)
-- [ ] T033 Implement `src/marchamp/upstream/snapshots.py`
+- [X] T028 Write failing tests for snapshot validation on capture **and on read** — every retained field present and typed, `pack_code` consistent, at least one `type_code: hero`, at least one `card_set_type_name_code: nemesis`, `quantity` ≥ 1, dangling reprint link a warning — in `tests/unit/test_upstream_models.py` (FR-047)
+- [X] T029 Implement `src/marchamp/upstream/models.py` — `PackIndexEntry` (`code`, `name` only) and `PackCard`, discarding card text, flavour, traits, `imagesrc`, and `pack.total` (research R12)
+- [X] T030 Write failing tests for the client — one allowlisted host, redirects **not** followed, loopback/link-local/private ranges refused after resolution, `pack_code` validated against `^[a-z0-9_]{1,32}$` and against the pack index before reaching a URL, descriptive `User-Agent`, explicit timeouts, `Retry-After`-aware backoff with at most two retries, never more than one request in flight and never two requests inside 1 s — in `tests/unit/test_upstream_client.py` (FR-003, FR-041, FR-042, FR-043)
+- [X] T031 Implement `src/marchamp/upstream/client.py`
+- [X] T032 Write failing tests for the snapshot store — revision is a content hash of the reduced records and is stable across a refetch that changed nothing; within `max-age` **no request is issued at all**; past it one conditional `If-Modified-Since`; a `304` keeps the revision and extends freshness; a failed refetch serves the stored snapshot marked stale; no snapshot and a failed fetch refuses naming the pack — in `tests/unit/test_snapshots.py` (FR-039, FR-044, FR-044a, FR-046, research R1, R10)
+- [X] T033 Implement `src/marchamp/upstream/snapshots.py`
 
 ### Reading the library
 
-- [ ] T034 Write failing tests for the three filename conventions, per-folder detection of the copy-counting form, the `a`/`b` suffix being ambiguous between the two face mechanisms, and unparseable names, in `tests/unit/test_filenames.py` (FR-032, research R5, R12)
-- [ ] T035 Implement `src/marchamp/library/filenames.py`
-- [ ] T036 Write failing tests for index construction — `(pack_hint, position, suffix)` and normalised-name maps, `pack_hint` absent under `Aspects/`, and normalisation matching each of the three observed typos ("Stength in Numbers", "Steve_s Apartament", "Upgarde") at the data-model's edit-distance bound, plus a case where two files fall inside the bound for one card and the result is a **conflict** rather than a pick — in `tests/unit/test_library_index.py` (FR-021, FR-023, FR-033, research R5, R13)
-- [ ] T037 Implement `src/marchamp/library/index.py` with one `os.walk` per resolve pass, bounded by the T011 file-count cap, never persisted
+- [X] T034 Write failing tests for the three filename conventions, per-folder detection of the copy-counting form, the `a`/`b` suffix being ambiguous between the two face mechanisms, and unparseable names, in `tests/unit/test_filenames.py` (FR-032, research R5, R12)
+- [X] T035 Implement `src/marchamp/library/filenames.py`
+- [X] T036 Write failing tests for index construction — `(pack_hint, position, suffix)` and normalised-name maps, `pack_hint` absent under `Aspects/`, and normalisation matching each of the three observed typos ("Stength in Numbers", "Steve_s Apartament", "Upgarde") at the data-model's edit-distance bound, plus a case where two files fall inside the bound for one card and the result is a **conflict** rather than a pick — in `tests/unit/test_library_index.py` (FR-021, FR-023, FR-033, research R5, R13)
+- [X] T037 Implement `src/marchamp/library/index.py` with one `os.walk` per resolve pass, bounded by the T011 file-count cap, never persisted
 
 ### Faces and groups
 
-- [ ] T038 Write failing tests for face expansion under **both** mechanisms — linked codes (`cap` `03001a`→`03001b`), the `double_sided` flag (`vision` `26002` Intangible), and Ant-Man's two records at position 1 giving three faces — plus group classification and the cards-vs-faces counts, in `tests/unit/test_faces.py` (FR-015, FR-015a, FR-015b, FR-015f, FR-018)
-- [ ] T039 Implement `src/marchamp/assembly/faces.py`
+- [X] T038 Write failing tests for face expansion under **both** mechanisms — linked codes (`cap` `03001a`→`03001b`), the `double_sided` flag (`vision` `26002` Intangible), and Ant-Man's two records at position 1 giving three faces — plus group classification and the cards-vs-faces counts, in `tests/unit/test_faces.py` (FR-015, FR-015a, FR-015b, FR-015f, FR-018)
+- [X] T039 Implement `src/marchamp/assembly/faces.py`
 
 **Checkpoint**: state survives a restart, the client is provably contained, and the library and
 the snapshot can each be read on their own. User story work can begin.

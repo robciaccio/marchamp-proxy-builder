@@ -6,6 +6,7 @@ authenticate, and makes no outbound call — card images come from a local direc
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from http import HTTPStatus
@@ -20,6 +21,8 @@ from fastapi.staticfiles import StaticFiles
 
 from marchamp.api.schemas import Problem
 from marchamp.config import Settings, settings_from_env
+from marchamp.store.layout import StateLayout
+from marchamp.store.sweep import sweep_state
 
 WEB_ROOT = Path(__file__).resolve().parent.parent / "web"
 
@@ -44,6 +47,25 @@ def _problem_response(status: int, detail: str) -> JSONResponse:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # ADR 0001 § Consequences: plain files buy simplicity at the cost of having no
+    # transaction across a run record and its uploaded blobs, and the sweep is what pays it.
+    # It runs *here*, before the first request, because that is what makes deleting safe —
+    # with nothing in flight, an upload its run does not reference is unreachable rather
+    # than merely not-yet-recorded. Scheduling it while serving would delete a file in the
+    # window between an upload landing and its resolution being written.
+    settings: Settings = app.state.settings
+    layout = StateLayout(settings.state_dir)
+    layout.ensure()
+    report = sweep_state(layout)
+    if report.removed or report.skipped_runs:
+        logging.getLogger("marchamp.store").info(
+            "startup sweep reclaimed %d file(s), %d bytes; skipped %d unreadable run(s)",
+            len(report.removed),
+            report.reclaimed_bytes,
+            len(report.skipped_runs),
+        )
+    app.state.state_layout = layout
+
     yield
     # An in-flight generation is bounded by FR-0A4's 120-second ceiling and holds nothing
     # worth waiting for — the document lives only in memory (FR-021b).
