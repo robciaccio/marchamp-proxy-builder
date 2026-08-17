@@ -4,7 +4,7 @@
 
 **Created**: 2026-08-01
 
-**Last revised**: 2026-08-16
+**Last revised**: 2026-08-17
 
 **Status**: Draft
 
@@ -113,8 +113,9 @@ is a pack that is quietly incomplete, not one the user knowingly chose to print 
   therefore the fallback *source of the image* when the library has no decklist scan — fetched
   by the user, not by the application (FR-013c).
 - **Q: How does the user say which library to read?**
-  A: By naming a folder when they ask for a deck. No environment variable, no pre-configured
-  root (FR-005).
+  A: By naming a **library root** and a **hero folder** within it when they ask for a pack. No
+  environment variable, no pre-configured root (FR-005). The earlier answer said "a folder",
+  singular, which turned out to be unsatisfiable — see the 2026-08-17 clarification.
 - **Q: Where does the user do all this, and what happens when they cannot finish in one
   sitting?**
   A: In the wizard. The user opens the local site, picks a hero folder, and the resolver runs.
@@ -160,12 +161,12 @@ is a pack that is quietly incomplete, not one the user knowingly chose to print 
   FR-015e, FR-048).
 - **Q: By what mechanism does the user supply that file — a path or an upload?**
   A: An upload through the browser, with the run keeping the uploaded bytes. Naming the library
-  folder stays a matter of naming a path (FR-005), but an individual replacement card is
+  root stays a matter of naming a path (FR-005), but an individual replacement card is
   uploaded, because typing a full path per missing card is worse than picking one, and because
   a run that owns its bytes stays resumable when the source file moves and can reproduce its
   PDF without depending on the filesystem being unchanged (FR-026e, FR-045). This also settles
-  a contradiction between FR-009 and FR-027: no path from outside the named folder is recorded
-  anywhere, only the uploaded file's own name and the fact that the choice was manual.
+  a contradiction between FR-009 and FR-027: no path from outside the named library root is
+  recorded anywhere, only the uploaded file's own name and the fact that the choice was manual.
 - **Q: What does the application fetch from MarvelCDB, and when does it refresh it?**
   A: One snapshot per pack, captured the first time a deck from that pack is assembled and
   reused by every run afterwards. It MUST NOT fetch the full card list: only the packs actually
@@ -226,14 +227,14 @@ is a pack that is quietly incomplete, not one the user knowingly chose to print 
   disk space are different acts and the spec now keeps them apart.
 - **Q: How far does the report's file accountability extend once the tool searches the whole
   library?**
-  A: To the **named folder**, in full, and no further (FR-031). Outside it, only files actually
+  A: To the **hero folder**, in full, and no further (FR-031). Outside it, only files actually
   used or in conflict with one are named. FR-031 was written when the tool looked in one hero
   folder, and read literally against FR-021's whole-library search it would require a report for
   one hero to account individually for 4,447 files that were never candidates for it —
   unreadable for the user and untestable as SC-004. The harm FR-031 exists to prevent is bounded
   to the folder the user pointed at: a scan sitting there, ignored, with no explanation. Files
   under other heroes are index entries, not candidates. FR-032 narrows to match; outside the
-  named folder an unparseable filename reaches the user through the card that failed to resolve,
+  hero folder an unparseable filename reaches the user through the card that failed to resolve,
   which is the thing they can act on.
 - **Q: Are both faces of a genuinely double-sided *player* card printed, and does a missing back
   stop the run?**
@@ -245,6 +246,33 @@ is a pack that is quietly incomplete, not one the user knowingly chose to print 
   inherited rule rather than extend it. Counting stays in cards: the pack listing counts cards,
   so FR-018 must, or the user's comparison against it breaks. The report states the face count
   as well, which is what SC-002b's page-count claim needs.
+
+### Session 2026-08-17
+
+- **Q: Is "the named folder" one folder or two?**
+  A: **Two, and they were doing different jobs under one name.** Raised during planning: as
+  written, FR-005 had the user name one folder, FR-007 made that folder the containment boundary
+  for every asset reference, and FR-021 required searching the *whole library* above it — which
+  User Story 3 exists to require, since a hero's cards are not reliably filed under that hero
+  (`Quincarrier` under Wasp, `Teamwork` under `Aspects/Leadership/`). FR-031 settled that the
+  folder it accounts for file-by-file is the hero folder, because accounting individually for
+  4,447 library files is unreadable and untestable. FR-007 and FR-021 could not both hold of the
+  same folder.
+
+  A run now names a **library root** — the containment boundary (FR-007) and the extent of the
+  search (FR-021) — and a **hero folder** within it, which is what the pack is identified from
+  (FR-010) and the only folder the report accounts for in full (FR-031). Both are named per run
+  and neither is configured in advance, so FR-005 and SC-003a are unchanged in substance. FR-005,
+  FR-006, FR-007, FR-008, FR-009, FR-013b, FR-013c, FR-026h, FR-027, FR-031, FR-032, SC-003a, and
+  SC-004 were reworded to say which of the two they mean.
+
+  The rejected alternative was deriving the library root by walking up from the hero folder to the
+  nearest ancestor containing `Heros/`. That is a guess about someone else's directory layout, it
+  fails silently when wrong, and it would put a path the user never named into a containment
+  decision.
+
+  Nothing about the intended behaviour changed and no success criterion moved. This was a wording
+  defect that a reader could only satisfy by picking one requirement over another.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -279,9 +307,10 @@ identity card, the nemesis set, and the decklist card.
 5. **Given** a completed run, **When** the user opens the report, **Then** every card is
    accounted for and every borrowed image is named alongside the printing it came from.
 6. **Given** no library configured anywhere and no environment variable set, **When** the user
-   names a folder and asks for a pack, **Then** it is printed from that folder.
-7. **Given** a second request naming a different folder, **When** the user prints, **Then**
-   it reads that folder, with no restart and no reconfiguration.
+   names a library root and a hero folder within it and asks for a pack, **Then** it is printed
+   from that library.
+7. **Given** a second request naming a different library root, **When** the user prints, **Then**
+   it reads that library, with no restart and no reconfiguration.
 8. **Given** a hero folder, **When** the user prints, **Then** one PDF is produced carrying
    the player cards, then the identity card, then the nemesis set, then the decklist card,
    packed into the fewest pages that hold them.
@@ -345,10 +374,10 @@ no other printing. It succeeds when the run stops, names that card, and prints n
 2. **Given** a run that could not place every pack card, **When** the user prints, **Then**
    every unplaced card is named individually, and the count of cards printed is reported
    against the count the pack listing records.
-3. **Given** a file in the named folder that the naming convention cannot parse, **When** the
+3. **Given** a file in the hero folder that the naming convention cannot parse, **When** the
    user prints, **Then** that file is named in the report rather than silently ignored.
 3a. **Given** a library of several thousand images searched to resolve one pack, **When** the
-   user opens the report, **Then** it accounts for every file in the named folder and lists
+   user opens the report, **Then** it accounts for every file in the hero folder and lists
    files from elsewhere only where they were used or conflicted.
 4. **Given** two files in one folder claiming the same position, **When** the user prints,
    **Then** both are named as a conflict and neither is chosen arbitrarily.
@@ -399,9 +428,9 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
 2. **Given** an uploaded file that is not a decodable image, or is below the required print
    resolution, **When** the user uploads it, **Then** it is rejected on upload with the
    specific reason and the card remains unresolved.
-3. **Given** a file the user uploads from outside the folder named for the run, **When** they
+3. **Given** a file the user uploads from outside the named library root, **When** they
    upload it, **Then** it is accepted and recorded as a manual choice by its own filename, and
-   no path from outside the named folder appears in the report or the log.
+   no path from outside the named library root appears in the report or the log.
 4. **Given** a run resolved with an uploaded file, **When** that file is later moved or deleted
    on disk and the run is reprinted, **Then** the run still prints that card, because the run
    holds the uploaded bytes.
@@ -515,9 +544,13 @@ folder, the pack, and the first card's resolution intact.
 - **A pack identified confidently and wrongly.** Caught only by the user declining the
   confirmation (FR-012a), which is what FR-012b's selection path exists to serve. The tool has
   no way to detect this case on its own; that is why confirmation is unconditional.
-- **A named folder that does not exist, is a file, or cannot be read.** Refused when named,
-  naming the folder and the reason — never surfacing later as a missing card.
-- **A named folder containing no card images at all.** Reported as empty rather than
+- **A named path that does not exist, is a file, or cannot be read.** Refused when named,
+  naming the folder and the reason — never surfacing later as a missing card. This applies to
+  the library root and the hero folder alike (FR-006).
+- **A hero folder that does not resolve inside the named library root.** Refused when named,
+  as an escape from the containment boundary (FR-007) rather than as a folder that happens to
+  be empty.
+- **A hero folder containing no card images at all.** Reported as empty rather than
   identified as some pack on no evidence.
 - **A pack whose card count differs from its neighbours.** Pack sizes vary and no total is
   expected, so the count is reported and printed rather than checked. Only a card that resolves
@@ -547,20 +580,39 @@ folder, the pack, and the first card's resolution intact.
 
 ### Naming the library
 
-- **FR-005**: The user MUST be able to name any readable folder on their machine when asking
-  for a deck. The application MUST NOT require a library location to be configured in advance,
-  and MUST NOT refuse to start because one is unset.
-- **FR-006**: The named folder MUST be validated when it is named — that it exists, is a
-  directory, and is readable — and MUST fail immediately and specifically when it is not,
+A run names **two** folders, and the distinction is load-bearing throughout this spec:
+
+| Term | What it is |
+|---|---|
+| **library root** | The folder the user names as their scan library. The containment boundary for the run (FR-007) and the extent of the whole-library search (FR-021). |
+| **hero folder** | A folder **within** the library root. What the pack is identified from (FR-010) and the only folder the report accounts for file-by-file (FR-031). |
+
+Both are named per run and neither is configured in advance. Wherever this spec previously said
+"the named folder" it now says whichever of the two is meant; see the 2026-08-17 clarification
+for why one term could not serve.
+
+- **FR-005**: The user MUST be able to name any readable folder on their machine as the library
+  root when asking for a pack, and MUST name a hero folder within it. The application MUST NOT
+  require either location to be configured in advance, and MUST NOT refuse to start because one
+  is unset.
+- **FR-006**: Both named paths MUST be validated when they are named — that the library root
+  exists, is a directory, and is readable, and that the hero folder resolves inside it and is
+  likewise a readable directory — and MUST fail immediately and specifically when either is not,
   rather than surfacing as a missing card later.
-- **FR-007**: For the duration of a run, the named folder MUST be the containment boundary:
-  every asset reference MUST resolve inside it, and a reference that escapes it MUST be
-  refused. Feature 001's containment guarantee is preserved; what changes is that the boundary
-  is chosen per run rather than fixed at startup.
-- **FR-008**: The named folder MUST NOT be written to, moved, renamed, or deleted from, which
-  is FR-001 restated for a boundary the user picks each time.
+- **FR-007**: For the duration of a run, the **library root** MUST be the containment boundary:
+  every asset reference the tool resolves on its own MUST resolve inside it, and a reference that
+  escapes it MUST be refused. Feature 001's containment guarantee is preserved; what changes is
+  that the boundary is chosen per run rather than fixed at startup. The boundary is the library
+  root and not the hero folder because FR-021 requires searching the whole library — a hero's
+  cards are not reliably filed under that hero, and User Story 3 exists to require finding them.
+- **FR-008**: Neither named folder MUST be written to, moved, renamed, or deleted from, which is
+  FR-001 restated for a boundary the user picks each time.
 - **FR-009**: Diagnostic and log records MUST NOT carry absolute filesystem paths from outside
-  the named folder, preserving feature 001's FR-022b under per-run boundaries.
+  the named library root, preserving feature 001's FR-022b under per-run boundaries. The two
+  named paths themselves are not "from outside" and MAY be retained on the run record — FR-026b
+  requires a resumed run to still know which folder it was reading, and the moved-folder edge
+  case requires it to be able to name that folder. What MUST NOT depend on either path is the
+  reuse key (FR-026h).
 
 ### Identifying the pack
 
@@ -600,10 +652,10 @@ folder, the pack, and the first card's resolution intact.
   card. This is a deliberate reversal: deriving membership was attempted, measured, and found to
   produce a silently wrong deck (see Clarifications).
 - **FR-013b**: The pack's decklist card MUST be printed alongside the pack's cards when the
-  named folder holds a scan of it, because it is what makes the printed pack usable — without
+  hero folder holds a scan of it, because it is what makes the printed pack usable — without
   it the user has the cards but not the instructions for building the deck. It MUST be reported
   as its own group (FR-015e) and MUST NOT be counted among the pack's cards.
-- **FR-013c**: When the named folder holds no decklist scan, the run MUST name that gap
+- **FR-013c**: When the hero folder holds no decklist scan, the run MUST name that gap
   specifically and MUST offer the address at which Hall of Heroes publishes that pack's
   decklist photograph. The application MUST NOT fetch it: the user downloads the image and
   supplies it through the same upload path an unresolved card uses (FR-026e). A missing
@@ -729,9 +781,9 @@ folder, the pack, and the first card's resolution intact.
   regenerating it. Reuse MUST be keyed on three things together: the pack, the pack's snapshot
   revision (FR-044a), and the identity of the images the run resolved. A refreshed snapshot
   (FR-044b) therefore invalidates the stored PDF rather than serving one built from superseded
-  card data, and a run whose named folder (FR-005) yields even one different image MUST rebuild
-  rather than be served a PDF assembled from scans it did not resolve. The key MUST NOT include
-  the named folder's path: reuse MUST survive that folder being moved or renamed (SC-006h), and
+  card data, and a run whose named library root (FR-005) yields even one different image MUST
+  rebuild rather than be served a PDF assembled from scans it did not resolve. The key MUST NOT
+  include either named folder's path: reuse MUST survive them being moved or renamed (SC-006h), and
   FR-009 forbids retaining such a path. It follows that a run MUST resolve its cards before it
   can establish whether reuse applies; what reuse avoids is the render, not the resolve.
 - **FR-026i**: A run the user customized MUST NOT be stored as the pack's standard PDF. The
@@ -741,12 +793,12 @@ folder, the pack, and the first card's resolution intact.
   unresolved card (FR-026), choosing to print without one (FR-030), or any later capability
   that alters the deck's contents.
 - **FR-027**: A manually supplied file MAY originate anywhere on the user's machine, including
-  outside the folder named for the run. Supplying it is an explicit act by the person running
+  outside the named library root. Supplying it is an explicit act by the person running
   the process, and MUST be recorded as a manual choice in the report and the log — the
   containment boundary of FR-007 governs what the tool resolves on its own, not what the user
   hands it. What is recorded MUST be the uploaded file's own name and the fact that the choice
-  was manual, never a filesystem path from outside the named folder, so FR-009 holds without
-  exception.
+  was manual, never a filesystem path from outside the named library root, so FR-009 holds
+  without exception.
 - **FR-028**: A manually supplied file MUST be validated on upload as an image the application
   can decode at the required print resolution, and MUST be rejected with a specific reason when
   it is not, leaving the card unresolved. Manual choice bypasses discovery, never validation.
@@ -769,7 +821,7 @@ folder, the pack, and the first card's resolution intact.
 
 ### Reporting
 
-- **FR-031**: Every file in the folder named for the run MUST be either used, or named in the
+- **FR-031**: Every file in the **hero folder** MUST be either used, or named in the
   report as unused and why. Silent omission is prohibited within that folder. Beyond it, the
   whole-library search (FR-021) reaches files that were never candidates for this pack, and the
   report MUST name only those it actually used or that conflicted with one it used (FR-033,
@@ -777,10 +829,10 @@ folder, the pack, and the first card's resolution intact.
   report no user can read and a criterion no test can assert; the harm this requirement exists
   to prevent — a scan sitting in the folder the user pointed at, ignored and unexplained — is
   bounded to that folder.
-- **FR-032**: The tool MUST report every file **within the named folder** whose name it could
-  not interpret, naming each. Outside that folder an uninterpretable filename MUST NOT be
-  listed on its own; it surfaces through the card that failed to resolve (FR-025), which is
-  what the user can act on.
+- **FR-032**: The tool MUST report every file **within the hero folder** whose name it could
+  not interpret, naming each. Outside that folder — elsewhere under the library root — an
+  uninterpretable filename MUST NOT be listed on its own; it surfaces through the card that
+  failed to resolve (FR-025), which is what the user can act on.
 - **FR-033**: The tool MUST report position conflicts, naming both sides, and MUST NOT resolve
   them by arbitrary choice.
 - **FR-034**: The tool MUST report duplicate renditions of one card, naming which was chosen.
@@ -860,7 +912,12 @@ folder, the pack, and the first card's resolution intact.
 - **Scan library**: The user's directory of card images, organised by someone else and not
   rearranged. It is a place to find images and nothing more: its folder structure carries no
   record of which cards form a starter deck, which is what the decklist card is for (FR-013a).
-- **Hero folder**: One folder under `Heros/`, holding most of that hero pack's cards, usually
+- **Library root**: The scan library's top folder, named per run (FR-005). The containment
+  boundary for everything the tool resolves on its own (FR-007) and the extent of the
+  whole-library search (FR-021). Retained on the run so it can be resumed and named if the mount
+  has gone; excluded from the reuse key (FR-026h).
+- **Hero folder**: One folder under `Heros/`, named per run relative to the library root, holding
+  most of that hero pack's cards, usually
   deduplicated, with the Core Set reprints absent, nemesis cards in a subfolder, and the pack's
   extra aspect cards filed under `Aspects/` instead. It is a place to look for images, not a
   statement about what belongs in a deck.
@@ -877,7 +934,7 @@ folder, the pack, and the first card's resolution intact.
   by which an unscanned card is sourced from elsewhere.
 - **Resolution**: The pairing of one card with one file, carrying how it was found, so a
   substitution is auditable.
-- **Assembly run**: One attempt to assemble one deck from one named folder. Durable across
+- **Assembly run**: One attempt to assemble one pack from one hero folder. Durable across
   visits and application restarts, carrying the identified pack, every resolution made
   automatically or by hand, the bytes of every file uploaded to it (FR-026e), the PDF once it
   has produced one (FR-026f), the report, and its state — awaiting confirmation of the pack,
@@ -890,7 +947,7 @@ folder, the pack, and the first card's resolution intact.
   reclaim space (FR-026g).
 - **Assembly report**: What a run produced — the pack, and whether the tool identified it or the
   user selected it (FR-012b), cards placed by group, images
-  borrowed, files unused or uninterpretable within the named folder, conflicts, low-resolution
+  borrowed, files unused or uninterpretable within the hero folder, conflicts, low-resolution
   warnings, whether a decklist card was printed, and the number of cards printed against the
   number the pack listing records, with the face count alongside it.
 
@@ -910,8 +967,8 @@ folder, the pack, and the first card's resolution intact.
   copy-counting filename convention and carry no usable positions at all, so they are the
   acceptance case for the name-match path (FR-023) and for the third convention recorded in Edge
   Cases. Under position matching alone they resolve almost nothing.
-- **SC-003a**: The user MUST be able to assemble a deck by naming a folder, with no
-  environment variable set and no library configured in advance.
+- **SC-003a**: The user MUST be able to assemble a pack by naming a library root and a hero
+  folder within it, with no environment variable set and nothing configured in advance.
 - **SC-003b**: SC-002 and SC-003 are verified against the real library — the mounted Drive
   folder, one directory per hero under `Heros/` — on the user's own machine, since neither the
   card art nor that folder is available to automated verification elsewhere. The same heroes,
@@ -925,9 +982,9 @@ folder, the pack, and the first card's resolution intact.
 - **SC-002b**: That PDF occupies the fewest pages its card count allows: no page before the
   last is partly empty, and adding the identity card, nemesis set, and decklist card costs no
   more pages than their card count requires.
-- **SC-004**: 100% of files in the folder named for the run are either used or named in the
-  report. Zero are silently ignored. Files elsewhere in the library appear in the report when
-  they were used or conflicted, and are otherwise not listed (FR-031).
+- **SC-004**: 100% of files in the hero folder are either used or named in the
+  report. Zero are silently ignored. Files elsewhere under the library root appear in the report
+  when they were used or conflicted, and are otherwise not listed (FR-031).
 - **SC-005**: 100% of images resolved by anything other than an exact positional match are
   reported as such. No substitution is silent.
 - **SC-006**: A deck containing a card that resolves to no image stops 100% of the time unless
@@ -1019,7 +1076,7 @@ folder, the pack, and the first card's resolution intact.
   This is judged acceptable because the service is loopback-only by design (feature 001's
   FR-0A2) and the person naming the folder is the person running the process, so it grants
   them nothing they did not already have. The containment guarantee is preserved in kind
-  rather than dropped: it now binds to the folder named for that run (FR-007).
+  rather than dropped: it now binds to the library root named for that run (FR-007).
 - **Depends on feature 001** for the catalog structures, the validation rules, the resolution
   floor, and PDF generation. This feature introduces no new output format and relaxes none of
   those rules.
