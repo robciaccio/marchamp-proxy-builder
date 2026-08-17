@@ -25,7 +25,7 @@
 
 ## Feature Readiness
 
-- [ ] All functional requirements have clear acceptance criteria — **29 scenarios for 59
+- [ ] All functional requirements have clear acceptance criteria — **36 scenarios for 68
       requirements**, see C
 - [x] User scenarios cover primary flows
 - [ ] Feature meets measurable outcomes defined in Success Criteria — not assessable before
@@ -54,15 +54,16 @@ Both are consequential — FR-023 in particular, since too strict a rule leaves 
 deferred to the plan below, and that deferral is what makes these boxes fail. If either
 becomes user-visible, it belongs back in the spec.
 
-**C. Acceptance coverage is partial.** 29 acceptance scenarios against 59 functional
-requirements, after the 2026-08-16 clarification session added both. Covered: deck
-composition, quantities, borrowing, folder selection, manual resolution, run durability, the
-identity and nemesis outputs, and the failure paths — the correctness-critical parts.
-Uncovered:
+**C. Acceptance coverage is partial.** 36 acceptance scenarios against 68 functional
+requirements, after two clarification sessions on 2026-08-16 added to both. Covered: deck
+composition, quantities, borrowing, folder selection, manual resolution, run durability, PDF
+retention and reuse, pack confirmation, the identity and nemesis outputs, and the failure
+paths — the correctness-critical parts. Uncovered:
 
 - the reporting block, FR-031 to FR-037
 - the MarvelCDB conduct block, FR-038 to FR-043 — only FR-040 has a proxy, in SC-006d
-- the upstream-data block, FR-044 to FR-047
+- the upstream-data block, partly closed: FR-044a and FR-044b now have scenarios (US1 12–13)
+  and SC-006d covers request volume, but FR-046 and FR-047 remain unasserted
 
 Those need scenarios before planning closes, or they will be implemented against prose alone.
 The conduct block is the one where that matters most: a requirement to honour cache headers
@@ -138,6 +139,33 @@ run rather than a process exit status.
 for SC-002 and SC-003, and against fixtures derived from that library's filenames for
 automated runs. Because this repository is public, FR-038a now forbids committing card art or
 MarvelCDB card text as fixture data.
+
+### Resolved by a second clarification session, 2026-08-16
+
+**Output packaging (FR-015d).** One PDF, not three files. The player deck, identity card, and
+nemesis set are sections of it, each starting on a fresh page. "Distinct outputs" elsewhere in
+the spec now explicitly means distinct sections.
+
+**How a replacement card reaches the tool (FR-026e).** By browser upload, with the run keeping
+the bytes. This closed a real contradiction: FR-027 required recording a manual choice made
+from outside the run's folder while FR-009 forbade logging any path from outside it. Nothing
+outside the boundary is recorded now — only the uploaded file's own name.
+
+**Upstream scope and refresh (FR-040, FR-044a, FR-044b).** Snapshots are per pack, captured on
+first use of that pack and reused after. FR-040 previously permitted fetching the full card
+list; it no longer does. Refresh is cache-header driven with an explicit manual refresh, and a
+refresh never mutates an existing run.
+
+**PDF retention and reuse (FR-026f to FR-026i).** Finished PDFs are stored, not rebuilt. A run
+needing no user input produces the pack's *standard* PDF, reused by later requests for that
+pack against the same snapshot; a customized run's PDF is named by the user and kept in a
+separate saved list. Reuse is keyed on snapshot revision so refreshed data invalidates it.
+Storage is unbounded by design, so FR-026g adds user deletion as the bound — at roughly 202 MB
+per deck this is load-bearing, not housekeeping.
+
+**Pack confirmation (FR-012a).** The user now confirms the identified pack before any card is
+resolved. FR-011 refuses a weak match; FR-012a covers the confident-but-wrong case, which
+FR-011 structurally cannot.
 
 ### Open risk worth naming
 
