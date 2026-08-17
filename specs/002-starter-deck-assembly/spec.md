@@ -101,10 +101,10 @@ deck the user knowingly chose to print short.
 - **Q: Does assembling a hero produce anything besides the 40-card deck?**
   A: Yes. A printed player deck alone cannot be played: the hero and alter-ego identity card
   and the hero's nemesis and obligation cards are not part of the 40, and without them the
-  output is not a hero you can sit down with. Assembling produces all three as distinct
-  outputs — the player deck, the identity card, and the nemesis set — resolved by the same
-  rules and held to the same completeness check. They remain excluded from the deck total, so
-  the expectation of 40 is unaffected (FR-015, FR-015a, FR-015b).
+  output is not a hero you can sit down with. Assembling produces all three — the player deck,
+  the identity card, and the nemesis set — resolved by the same rules and held to the same
+  completeness check. They remain excluded from the deck total, so the expectation of 40 is
+  unaffected (FR-015, FR-015a, FR-015b).
 - **Q: How are the eight named heroes verified, given the card art is not in the repository?**
   A: Against the real library, at the mounted Drive path the user will actually point the
   application at — a folder under its `Heros/` directory. Those runs are the acceptance
@@ -126,6 +126,49 @@ deck the user knowingly chose to print short.
   PDF is produced only on a final confirmation (FR-026a). A request to print incomplete that
   arrives before the run has reported cannot be honoured, because it would be made before the
   gap it authorises is known (FR-030a).
+- **Q: Does the user get one PDF or three?**
+  A: One, packed into as few pages as it will go. The player deck, the identity card, and the
+  nemesis set follow one another with no page break between them: a page carrying the last
+  deck cards and the first nemesis cards is the intended result. Paper is the cost being
+  minimised, and separate files or padded page boundaries both spend it for nothing. What
+  keeps the three distinguishable is the report, not the layout (FR-015d, FR-015e, FR-048).
+- **Q: By what mechanism does the user supply that file — a path or an upload?**
+  A: An upload through the browser, with the run keeping the uploaded bytes. Naming the library
+  folder stays a matter of naming a path (FR-005), but an individual replacement card is
+  uploaded, because typing a full path per missing card is worse than picking one, and because
+  a run that owns its bytes stays resumable when the source file moves and can reproduce its
+  PDF without depending on the filesystem being unchanged (FR-026e, FR-045). This also settles
+  a contradiction between FR-009 and FR-027: no path from outside the named folder is recorded
+  anywhere, only the uploaded file's own name and the fact that the choice was manual.
+- **Q: What does the application fetch from MarvelCDB, and when does it refresh it?**
+  A: One snapshot per pack, captured the first time a deck from that pack is assembled and
+  reused by every run afterwards. It MUST NOT fetch the full card list: only the packs actually
+  being assembled are retrieved, which keeps the stored footprint minimal and keeps the
+  application clear of anything resembling a mirror (FR-038, FR-040). Refresh is automatic and
+  driven by the cache headers MarvelCDB sends (FR-039), with an explicit manual refresh
+  available as well — most packs have been out for years and their data does not move, but a
+  recently released pack can pick up corrections, and waiting out an expiry is the wrong remedy
+  when the user already knows (FR-044a, FR-044b).
+- **Q: Does a finished run keep its PDF, or rebuild it on demand?**
+  A: It keeps it. Re-downloading is then instant and works even when the library folder has
+  since moved or been unmounted, which regeneration could not. The cost is real and accepted:
+  feature 001 measured roughly 202 MB per deck, so stored PDFs accumulate. The application
+  therefore MUST let the user delete one and reclaim that space (FR-026f, FR-026g).
+- **Q: Is a stored PDF private to the run that made it, or reused?**
+  A: It depends on whether the user changed anything. A run that resolved every card
+  automatically with no user input produces the pack's *standard* PDF, stored under a name
+  derived from the pack and served to any later request for that same pack, which gets the
+  stored file rather than a ~49-second rebuild. A run the user touched at all — supplying a
+  file for a card the tool could not find, printing without one, or any later editing
+  capability — is not standard, so the user names its PDF and it is kept in a browsable list of
+  saved PDFs instead (FR-026h, FR-026i). Reuse is keyed on the pack's snapshot revision as well
+  as the pack, so refreshing card data cannot cause a PDF built from superseded data to be
+  served.
+- **Q: Does the user confirm the identified pack before assembly proceeds?**
+  A: Yes, always. The wizard states the pack and the evidence and waits. FR-011 already refuses
+  a match too weak to trust; confirmation covers the case FR-011 structurally cannot — an
+  identification the tool is confident about and wrong about, which yields a deck that is
+  entirely plausible. One click against forty misprinted cards (FR-012a).
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -161,13 +204,25 @@ without being counted in the 40.
    names a folder and asks for a deck, **Then** the deck is assembled from that folder.
 7. **Given** a second request naming a different folder, **When** the user assembles, **Then**
    it reads that folder, with no restart and no reconfiguration.
-8. **Given** a hero folder, **When** the user assembles, **Then** the identity card and the
-   nemesis set are produced as outputs distinct from the player deck, and neither is counted
-   in the deck total.
-9. **Given** a hero with more than two faces, **When** the user assembles, **Then** every face
-   the card data records is produced, rather than the first two.
-10. **Given** a nemesis card that resolves to no image, **When** the user assembles, **Then**
+8. **Given** a hero folder, **When** the user assembles, **Then** one PDF is produced carrying
+   the player deck, then the identity card, then the nemesis set, packed into the fewest pages
+   that hold them, and neither the identity card nor the nemesis set is counted in the deck
+   total.
+9. **Given** that PDF, **When** the user inspects it, **Then** no page is left part-empty to
+   start one of the three on a fresh page, and the report says which cards belong to which.
+10. **Given** a hero with more than two faces, **When** the user assembles, **Then** every face
+    the card data records is produced, rather than the first two.
+11. **Given** a nemesis card that resolves to no image, **When** the user assembles, **Then**
     the run stops naming that card, exactly as it would for a missing deck card.
+12. **Given** a folder whose pack the tool identifies confidently, **When** the user starts the
+    run, **Then** the pack and its evidence are shown and nothing is resolved until the user
+    confirms.
+13. **Given** a pack whose standard PDF was already produced by an earlier clean run against
+    the same snapshot, **When** a user assembles that pack again with no customization,
+    **Then** the stored PDF is served rather than regenerated.
+14. **Given** that pack's snapshot has since been refreshed, **When** a user assembles it
+    again, **Then** the stored PDF is not served and the deck is rebuilt against the new
+    revision.
 
 ---
 
@@ -237,22 +292,26 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
 
 1. **Given** a card that resolved to nothing, **When** the user is asked, **Then** that card
    is named specifically and the user can choose a file for it.
-2. **Given** a chosen file that is not a decodable image, or is below the required print
-   resolution, **When** the user chooses it, **Then** it is rejected with the specific reason
-   and the card remains unresolved.
-3. **Given** a chosen file outside the folder named for the run, **When** the user chooses it,
-   **Then** it is accepted and recorded as a manual choice from outside the boundary.
-4. **Given** a deck assembled with manual help, **When** the user opens the report, **Then**
+2. **Given** an uploaded file that is not a decodable image, or is below the required print
+   resolution, **When** the user uploads it, **Then** it is rejected on upload with the
+   specific reason and the card remains unresolved.
+3. **Given** a file the user uploads from outside the folder named for the run, **When** they
+   upload it, **Then** it is accepted and recorded as a manual choice by its own filename, and
+   no path from outside the named folder appears in the report or the log.
+4. **Given** a run resolved with an uploaded file, **When** that file is later moved or deleted
+   on disk and the run is reprinted, **Then** the run still prints that card, because the run
+   holds the uploaded bytes.
+5. **Given** a deck assembled with manual help, **When** the user opens the report, **Then**
    every manually chosen card is distinguishable from every automatically resolved one.
-5. **Given** a card the user declines to resolve, **When** they take no further action,
+6. **Given** a card the user declines to resolve, **When** they take no further action,
    **Then** the run stops rather than printing a deck with that card missing.
-6. **Given** a card the user declines to resolve, **When** they explicitly ask to print
+7. **Given** a card the user declines to resolve, **When** they explicitly ask to print
    without it, **Then** the deck prints, and the omitted card is named in the report, counted
    against the expected total, and recorded in the run's log.
-7. **Given** a run that reported two unresolved cards, **When** the user supplies a file for
+8. **Given** a run that reported two unresolved cards, **When** the user supplies a file for
    the first, **Then** the run keeps the folder, the identified pack, and every earlier
    choice, and asks only about the second.
-8. **Given** a request to print without unresolved cards made before the run has reported any,
+9. **Given** a request to print without unresolved cards made before the run has reported any,
    **When** the user assembles, **Then** the blanket permission is refused and the run still
    stops on the first card it cannot resolve.
 
@@ -283,6 +342,13 @@ folder, the pack, and the first card's resolution intact.
    remember an identifier.
 4. **Given** a resumed run, **When** the user opens it, **Then** the report shows what was
    already resolved and what remains, so they can tell where they left off.
+5. **Given** a finished run whose library folder has since been moved or unmounted, **When**
+   the user returns, **Then** its PDF still downloads, because the run retains it.
+6. **Given** a run the user no longer wants, **When** they delete it, **Then** its stored PDF
+   and uploaded files are reclaimed and the scan library is untouched.
+7. **Given** a deck the user completed by supplying a file for one card, **When** they finish
+   it, **Then** they are asked to name the PDF and it appears in the saved-PDF list under that
+   name, not as the pack's standard PDF.
 
 ---
 
@@ -306,7 +372,11 @@ folder, the pack, and the first card's resolution intact.
   never the authority on what a card is called.
 - **MarvelCDB unreachable.** Assembly cannot proceed on library contents alone, because
   quantities and identities live only upstream. The run fails saying so, or proceeds from a
-  previously captured snapshot if one exists — it must never guess.
+  previously captured snapshot of that pack if one exists — reporting that it ran against a
+  stale revision (FR-044a). It must never guess.
+- **A pack assembled for the first time while offline.** No snapshot for it exists yet, so the
+  run is refused naming the pack, even though other packs assemble fine from their own stored
+  snapshots. Snapshots are per pack, not one global cache (FR-044a, FR-046).
 - **A folder that is not a hero pack.** Reported as unidentifiable rather than assembled
   against a wrongly guessed pack.
 - **A pack identified with low confidence.** Reported and refused. A wrong pack produces a
@@ -319,7 +389,8 @@ folder, the pack, and the first card's resolution intact.
   than refused. Only a card that resolves to no image stops a run.
 - **A saved run whose folder has moved or been deleted by the time it is resumed.** Reported
   against the run when it is reopened, naming the folder — not surfaced as a wave of newly
-  missing cards.
+  missing cards. This affects only a run still resolving cards; a finished run holds its own
+  PDF and downloads regardless (FR-026f).
 - **A saved run resumed after the upstream snapshot has been refreshed.** The run keeps the
   snapshot revision it started with, so resuming it cannot silently change the deck's
   composition or quantities under the resolutions already made (FR-044, FR-045).
@@ -365,6 +436,12 @@ folder, the pack, and the first card's resolution intact.
   agreement is too weak to be confident.
 - **FR-012**: The tool MUST state which pack it identified and on what evidence, so a wrong
   identification is visible before a PDF is printed rather than after.
+- **FR-012a**: The user MUST explicitly confirm the identified pack before the run resolves any
+  card. A run MUST hold in an awaiting-confirmation state until they do, and MUST NOT resolve
+  images or produce a PDF from an unconfirmed identification. FR-011 refuses a match too weak
+  to trust; FR-012a covers the case FR-011 cannot — an identification the tool is confident
+  about and wrong about, which yields a deck that is entirely plausible and entirely wrong. The
+  cost is one confirmation per run against forty misprinted cards.
 
 ### Composing the deck
 
@@ -375,13 +452,26 @@ folder, the pack, and the first card's resolution intact.
   treated as part of the deck and sourced from the printing it duplicates.
 - **FR-015**: Encounter cards, obligation cards, nemesis cards, and the hero's identity card
   MUST be excluded from the player deck and from the deck total FR-018 reports. They MUST be
-  produced as separate outputs alongside it (FR-015a, FR-015b), because a player deck on its
-  own is not a hero anyone can play.
+  produced alongside it (FR-015a, FR-015b), because a player deck on its own is not a hero
+  anyone can play.
 - **FR-015a**: Assembling a hero MUST produce the hero's identity card. Its faces MUST be read
   from the card data and MUST NOT be assumed to number two, since a hero may have more.
-- **FR-015b**: Assembling a hero MUST produce that hero's nemesis and obligation cards as a
-  distinct output from the player deck, so the two are printed and cut as the separate decks
-  they are.
+- **FR-015b**: Assembling a hero MUST produce that hero's nemesis and obligation cards, kept
+  distinct from the player deck in the report and excluded from its total, so the user can
+  separate them into the decks they are after cutting. They are not separated on the page —
+  FR-015d packs everything as tightly as it will go.
+- **FR-015d**: The player deck, the identity card, and the nemesis set MUST be delivered as one
+  PDF, in that order, packed into as few pages as possible. Every page MUST be filled to its
+  card capacity before the next is started, and the three MUST NOT be padded apart onto
+  separate pages — a page carrying the last deck cards and the first nemesis cards together is
+  the intended result, not a defect. Paper is the cost being minimised. They MUST NOT be split
+  across separate files either: one file keeps the wizard's final step to a single download.
+  "Distinct outputs" throughout this spec means distinct in the report and in the deck total,
+  never distinct files and never distinct pages.
+- **FR-015e**: Because FR-015d lets one page carry cards from more than one of the three, the
+  report MUST be what tells them apart. It MUST state which cards form the player deck, which
+  is the identity card, and which form the nemesis set, so the user can sort the cut cards
+  without recognising them by sight.
 - **FR-015c**: The identity card and the nemesis set MUST be resolved by the same rules as the
   deck — the same matching, the same reporting of substitutions, and the same completeness
   check (FR-017). A card missing from either MUST stop the run by name exactly as a missing
@@ -424,7 +514,8 @@ folder, the pack, and the first card's resolution intact.
 - **FR-026**: When a card cannot be resolved automatically, the user MUST be able to choose a
   file for it themselves, naming that card specifically rather than being told the run failed.
 - **FR-026a**: An assembly MUST be an addressable run that outlives a single request. Starting
-  one MUST resolve what it can and report what it could not without producing a PDF; the user
+  one MUST identify the pack and wait for the user's confirmation (FR-012a); once confirmed it
+  MUST resolve what it can and report what it could not without producing a PDF; the user
   MUST be able to supply a file for a named card, or make the FR-030 decision to print without
   it, against that same run; and the PDF MUST be produced only on an explicit final
   confirmation. The user MUST NOT have to restate the folder, the pack, or their earlier
@@ -434,18 +525,46 @@ folder, the pack, and the first card's resolution intact.
   resolutions already made, and the report intact. Restarting the application MUST NOT
   discard it.
 - **FR-026c**: The user MUST be able to see their runs without remembering an identifier —
-  which are finished and printable, and which are still waiting on a card — and MUST be able
-  to resume any unfinished one from that list.
+  which are finished and printable, which are waiting on a card, and which are waiting for the
+  pack to be confirmed — and MUST be able to resume any unfinished one from that list.
 - **FR-026d**: The wizard MUST present each unresolved card individually, naming it and
   offering the user a way to supply a file for that specific card. It MUST NOT present a
   failed run and leave the user to work out which cards were at fault.
-- **FR-027**: A manually chosen file MAY lie outside the folder named for the run. Choosing it
-  is an explicit act by the person running the process, and MUST be recorded as such in the
-  report and the log — the containment boundary of FR-007 governs what the tool resolves on
-  its own, not what the user hands it.
-- **FR-028**: A manually chosen file MUST be validated as an image the application can decode
-  at the required print resolution, and MUST be rejected with a specific reason when it is
-  not. Manual choice bypasses discovery, never validation.
+- **FR-026e**: A manually supplied file MUST be uploaded to the run through the browser, and
+  the run MUST retain the uploaded bytes. The user MUST NOT have to type a filesystem path for
+  an individual card. Retaining the bytes is what lets a resumed run keep a manual resolution
+  when the source file has since moved (FR-026b) and lets that run reprint identically
+  (FR-045).
+- **FR-026f**: A run that has produced a PDF MUST retain it. The user MUST be able to download
+  it again on a later visit without regenerating it, and that MUST hold when the library folder
+  has since moved, been renamed, or been unmounted — a finished run depends on nothing outside
+  itself.
+- **FR-026g**: The user MUST be able to delete a stored PDF, whether standard (FR-026h) or
+  saved by name (FR-026i), and deleting it MUST reclaim the space it held. Retention under
+  FR-026f is otherwise unbounded, and feature 001 measured roughly 202 MB for a single deck's
+  PDF. Deleting MUST NOT touch the scan library (FR-001).
+- **FR-026h**: A run that resolved every card automatically, with no user customization of any
+  kind, MUST store its PDF under a standard name derived from the pack. A later assembly of the
+  same pack that likewise needs no customization MUST be served that stored PDF rather than
+  regenerating it. Reuse MUST be keyed on the pack's snapshot revision (FR-044a) as well as the
+  pack, so a refreshed snapshot (FR-044b) invalidates the stored PDF rather than serving one
+  built from superseded card data.
+- **FR-026i**: A run the user customized MUST NOT be stored as the pack's standard PDF. The
+  user MUST be able to give it a name, and it MUST be kept under that name in a list of saved
+  PDFs they can browse and retrieve on a later visit, separate from the standard per-pack PDFs.
+  Customization means any user input that changes what is printed — supplying a file for an
+  unresolved card (FR-026), choosing to print without one (FR-030), or any later capability
+  that alters the deck's contents.
+- **FR-027**: A manually supplied file MAY originate anywhere on the user's machine, including
+  outside the folder named for the run. Supplying it is an explicit act by the person running
+  the process, and MUST be recorded as a manual choice in the report and the log — the
+  containment boundary of FR-007 governs what the tool resolves on its own, not what the user
+  hands it. What is recorded MUST be the uploaded file's own name and the fact that the choice
+  was manual, never a filesystem path from outside the named folder, so FR-009 holds without
+  exception.
+- **FR-028**: A manually supplied file MUST be validated on upload as an image the application
+  can decode at the required print resolution, and MUST be rejected with a specific reason when
+  it is not, leaving the card unresolved. Manual choice bypasses discovery, never validation.
 - **FR-029**: Every manual choice MUST be reported and MUST be distinguishable from an
   automatic resolution, so a deck assembled with human help is auditable as such.
 - **FR-030**: The user MUST be able to leave a card unresolved and still print, by saying so
@@ -475,6 +594,8 @@ folder, the pack, and the first card's resolution intact.
   print size, as a warning rather than a refusal.
 - **FR-036**: A run's outcome MUST be machine-readable, distinguishing "assembled cleanly" from
   "assembled with warnings" from "refused", so a consumer can act on it without parsing prose.
+  A run that has not yet reached an outcome MUST be distinguishable as such — awaiting
+  confirmation of the pack (FR-012a) or waiting on a card (FR-026b) is not a failure.
   This feature adds no command-line interface: starting the server remains the only command,
   and anything driving an assembly without a browser uses the HTTP API, which constitution
   principle II already requires be sufficient on its own.
@@ -494,9 +615,11 @@ folder, the pack, and the first card's resolution intact.
 - **FR-039**: The application MUST honour the HTTP caching MarvelCDB explicitly asks for. Its
   public responses carry `max-age` and `last-modified`; the application MUST respect both and
   MUST NOT re-request data it has been told is still fresh.
-- **FR-040**: The application MUST minimise requests by design, preferring one bulk fetch of
-  a pack or of the full card list over a request per card. Assembling a deck MUST NOT issue
-  one request per card in it.
+- **FR-040**: The application MUST minimise requests by design, fetching a pack's card list in
+  one request rather than a request per card. Assembling a deck MUST NOT issue one request per
+  card in it. It MUST NOT fetch the full card list: only packs it is actually assembling from
+  are retrieved, so the stored footprint stays proportional to what the user has used and the
+  application stays clear of anything resembling a mirror (FR-038).
 - **FR-041**: Requests MUST identify the application in a descriptive `User-Agent`, so the
   operator can attribute and contact rather than only block.
 - **FR-042**: The application MUST back off when the service signals overload or throttling,
@@ -510,8 +633,21 @@ folder, the pack, and the first card's resolution intact.
 
 - **FR-044**: MarvelCDB responses MUST be captured as a snapshot with a recorded revision, so
   a generated PDF can be traced to the card data that produced it.
+- **FR-044a**: A snapshot MUST be scoped to one pack. It MUST be captured the first time a deck
+  from that pack is assembled, stored, and reused by every later run of that pack rather than
+  refetched per run. Refresh MUST be automatic and governed by the cache headers MarvelCDB
+  sends (FR-039): a stored snapshot still fresh MUST be reused without a request, and one that
+  is not MUST be refetched. When a refetch fails, the stored snapshot MUST be used and the run
+  MUST report that it ran against a stale revision.
+- **FR-044b**: The user MUST be able to refresh a pack's snapshot explicitly, without waiting
+  for its cached copy to expire. Most packs are years old and their data does not change, but a
+  recently released pack can pick up corrections upstream, and a user who already knows that
+  MUST NOT have to wait out an expiry to act on it. An explicit refresh MUST NOT alter any
+  existing run, which keeps the revision it started with (FR-045).
 - **FR-045**: Assembling twice from the same library and the same snapshot MUST produce a
-  byte-identical PDF (constitution principle V).
+  byte-identical PDF (constitution principle V). This MUST hold of regeneration itself and MUST
+  be verifiable independently of FR-026h's reuse — serving a stored PDF MUST NOT be the reason
+  two runs agree.
 - **FR-046**: The tool MUST NOT proceed when MarvelCDB is unreachable and no snapshot exists.
   It MUST say which is missing.
 - **FR-047**: Upstream data MUST be validated on capture, and a response that does not carry
@@ -533,14 +669,23 @@ folder, the pack, and the first card's resolution intact.
   deduplicated, with the Core Set reprints absent and nemesis cards in a subfolder.
 - **Pack listing**: MarvelCDB's record of a pack — every card, its position, its type, and how
   many copies the pack contains. The authority on identity and quantity.
+- **Pack snapshot**: One pack's listing as captured at a point in time, with a revision. The
+  unit of upstream storage and refresh: fetched on first use of that pack, reused afterwards,
+  and pinned by every run that starts against it (FR-044a).
 - **Reprint link**: MarvelCDB's statement that two printings are the same card. The mechanism
   by which an unscanned card is sourced from elsewhere.
 - **Resolution**: The pairing of one card with one file, carrying how it was found, so a
   substitution is auditable.
 - **Assembly run**: One attempt to assemble one deck from one named folder. Durable across
   visits and application restarts, carrying the identified pack, every resolution made
-  automatically or by hand, the report, and whether it is finished or still waiting on a card.
-  The thing the user resumes and the thing the report hangs off.
+  automatically or by hand, the bytes of every file uploaded to it (FR-026e), the PDF once it
+  has produced one (FR-026f), the report, and its state — awaiting confirmation of the pack,
+  waiting on a card, or finished. The thing the user resumes and the thing the report hangs
+  off.
+- **Stored PDF**: A generated PDF kept for reuse. Either *standard* — produced by a run that
+  needed no user input, named from the pack, and served to later requests for that pack against
+  the same snapshot (FR-026h) — or *saved*, produced by a run the user customized, named by
+  them, and listed separately (FR-026i). Both are deletable to reclaim space (FR-026g).
 - **Assembly report**: What a run produced — the pack identified, cards placed, images
   borrowed, files unused or uninterpretable, conflicts, low-resolution warnings, and the
   card total with a warning when it is not the expected 40.
@@ -565,9 +710,13 @@ folder, the pack, and the first card's resolution intact.
   card art nor that folder is available to automated verification elsewhere. The same eight
   heroes MUST also assemble against fixtures derived from that library's filenames and folder
   layout, so a resolver regression is caught without the real scans present.
-- **SC-002a**: Each of the eight acceptance heroes produces an identity card carrying every
-  face its card data records, and a nemesis set, alongside its deck — and neither appears in
-  the deck total. A user can print one hero and play it without owning the pack.
+- **SC-002a**: Each of the eight acceptance heroes produces one PDF carrying its deck, an
+  identity card with every face its card data records, and a nemesis set, in that order — and
+  neither the identity card nor the nemesis set appears in the deck total. A user can print one
+  hero and play it without owning the pack.
+- **SC-002b**: That PDF occupies the fewest pages its card count allows: no page before the
+  last is partly empty, and adding the identity card and nemesis set to a deck costs no more
+  pages than their card count requires.
 - **SC-004**: 100% of files in the folders consulted are either used or named in the report.
   Zero are silently ignored.
 - **SC-005**: 100% of images resolved by anything other than an exact positional match are
@@ -580,7 +729,8 @@ folder, the pack, and the first card's resolution intact.
 - **SC-006a**: A deck whose total is not 40 is reported as such 100% of the time, whether or
   not the run succeeds.
 - **SC-006b**: A deck missing exactly one card from the library can be completed by the user
-  choosing one file, and prints. No card the user can point at is unprintable.
+  uploading one file, and prints. No card the user can point at is unprintable, and the deck
+  still reprints identically after that file is moved or deleted on disk.
 - **SC-006c**: 100% of manually chosen cards are distinguishable from automatically resolved
   ones in the report.
 - **SC-006f**: A run saved with cards unresolved survives an application restart and resumes
@@ -588,8 +738,16 @@ folder, the pack, and the first card's resolution intact.
   who leaves the wizard loses work they have already done.
 - **SC-006g**: A returning user can tell which of their decks are printable and which are
   still waiting on a card, from the site alone, without recording an identifier anywhere.
+- **SC-006h**: A finished run's PDF downloads again on a later visit with the library folder
+  unmounted, and deleting it reclaims the space it held. Storage grows only with PDFs the user
+  has chosen to keep.
+- **SC-006i**: Assembling a pack whose standard PDF already exists against the current snapshot
+  returns that PDF without regenerating it, so the second and later requests for a pack avoid
+  the ~49 s build entirely. A customized deck never overwrites a pack's standard PDF.
+- **SC-009**: No deck is resolved against a pack the user has not confirmed, 100% of the time.
 - **SC-006d**: Assembling a full deck issues a number of upstream requests that does not grow
-  with the number of cards in the deck.
+  with the number of cards in the deck, and a second deck from a pack whose snapshot is still
+  fresh issues none at all.
 - **SC-007**: Assembling twice from the same library and snapshot produces a byte-identical
   PDF.
 - **SC-008**: A user whose library is missing a card can tell which card, and where the tool
@@ -639,11 +797,14 @@ folder, the pack, and the first card's resolution intact.
 - **Depends on feature 001** for the catalog structures, the validation rules, the resolution
   floor, and PDF generation. This feature introduces no new output format and relaxes none of
   those rules.
-- **Assembly runs are durable, where feature 001's generations were not.** Feature 001 keeps
-  generations in memory on the stated grounds that nothing there required durable output and a
-  user who wants a PDF has already downloaded it. Saving an unfinished deck and returning to it
-  on a later visit retires that premise for this feature: run state must outlive the process.
-  Where it lives is a plan decision; that it survives a restart is not.
+- **Assembly runs and their PDFs are durable, where feature 001's generations were not.**
+  Feature 001 keeps generations in memory on the stated grounds that nothing there required
+  durable output and a user who wants a PDF has already downloaded it. Both halves of that
+  premise are retired here: an unfinished deck must be resumable on a later visit, and a
+  finished PDF is kept and reused rather than rebuilt (FR-026f, FR-026h). Run state and
+  generated PDFs must therefore outlive the process. Where they live is a plan decision; that
+  they survive a restart is not. The storage cost is known and accepted — roughly 202 MB per
+  deck, bounded by the user deleting what they no longer want (FR-026g).
 - **Aspect cards and modular sets are out of scope.** The library files them separately and
   the user can print them as a later feature. This feature assembles starter decks.
 - **Editing an assembled deck is out of scope and belongs in its own feature.** Deleting a
