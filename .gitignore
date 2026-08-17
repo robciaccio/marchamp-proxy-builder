@@ -12,6 +12,17 @@
 *.tiff
 *.psd
 
+# The one exception, and it is not a hole in the rule above. `tests/fixtures/library/` is
+# written by scripts/derive_library_fixture.py, which copies *filenames and folder layout*
+# from the real library and generates every image byte itself from a solid fill — it never
+# opens a source image. What is committed here is therefore not card art; it is the
+# library's awkward naming, which is the thing under test. tests/unit/test_fixtures_carry_no_card_data.py
+# is the enforcement (FR-038a); this negation only stops `*.tif`/`*.tiff` from silently
+# swallowing the fixture, which is how the whole directory went missing from the first
+# attempt at this commit.
+!tests/fixtures/library/**/*.tif
+!tests/fixtures/library/**/*.tiff
+
 # Generated output and derived renditions (root-anchored, same reason as above)
 /out/
 /output/

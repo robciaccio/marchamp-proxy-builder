@@ -26,14 +26,16 @@ and `os.walk` do, which is why this script uses the former.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-#: The ten acceptance heroes (SC-002, SC-003, SC-003c). Matched case-insensitively against
-#: folder names under `Heros/`, which are `<alter ego>_<hero>` — so "Iceman" finds
-#: "Bobby Drake_Iceman" without this script needing to know the alter ego.
+#: The ten acceptance heroes (SC-002, SC-003, SC-003c). Matched against the *direct children*
+#: of `Heros/`, which are `<alter ego>_<hero>` — so "Iceman" finds "Bobby Drake_Iceman"
+#: without this script needing to know the alter ego. See `hero_key` for why the match is an
+#: equality on a normalised key rather than the substring test this started as.
 HEROES = (
     "Captain America",
     "Star-Lord",
@@ -53,6 +55,12 @@ HEROES = (
 EXTRA_ROOTS = ("Core Set",)
 ASPECTS_DIRNAME = "Aspects"
 
+#: Hero folders live directly under this one. Restricting to its direct children is not
+#: tidiness: `Expansion Campaings/Civil War/Resistance/1_Captain America` and
+#: `Expansion Campaings/Agends of SHIELD/Black Widow` are *also* hero folders by name, and a
+#: library-wide search silently derives two folders for one acceptance hero.
+HEROS_DIRNAME = "Heros"
+
 IMAGE_SUFFIXES = frozenset({".tif", ".tiff", ".jpg", ".jpeg", ".png"})
 
 #: 780x1122 clears the 300 DPI floor on both axes at 63.5x88.9 mm (312 DPI), and keeps the
@@ -65,16 +73,32 @@ FIXTURE_W, FIXTURE_H = 780, 1122
 DEFAULT_FILE_CEILING = 20_000
 
 
+#: The three colours a placeholder is allowed to contain. The guard test
+#: (`test_no_image_fixture_is_a_real_scan`) admits at most 64 distinct colours as its proof
+#: that an image was generated rather than scanned, so the count must not depend on how
+#: Pillow happens to render text — see `write_placeholder`.
+FILL = (18, 32, 84)
+BAND = (220, 40, 40)
+INK = (255, 255, 255)
+
+
 def write_placeholder(path: Path, label: str, width: int, height: int) -> None:
     """Write one generated card face. Opens no source file, by construction."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    img = Image.new("RGB", (width, height), (18, 32, 84))
+    img = Image.new("RGB", (width, height), FILL)
     d = ImageDraw.Draw(img)
     band = max(1, height // 40)
     # Edge bands, as in tests/conftest.py, so a test can detect how much CROP trimmed.
-    d.rectangle([0, 0, width, band], fill=(220, 40, 40))
-    d.rectangle([0, height - band, width, height], fill=(220, 40, 40))
-    d.text((band, height // 2), label[:40], fill=(255, 255, 255))
+    d.rectangle([0, 0, width, band], fill=BAND)
+    d.rectangle([0, height - band, width, height], fill=BAND)
+    # The label is drawn through a hard-thresholded mask rather than straight onto the
+    # image. Pillow 10.1 changed `load_default()` from a bitmap font to a FreeType one, so
+    # `d.text(...)` now anti-aliases and smears a few hundred intermediate colours between
+    # INK and FILL — which reads as a photograph to the FR-038a guard and fails it. A 1-bit
+    # mask pins the output at exactly three colours whatever font Pillow supplies.
+    mask = Image.new("L", (width, height), 0)
+    ImageDraw.Draw(mask).text((band, height // 2), label[:40], fill=255)
+    img.paste(INK, (0, 0), mask.point(lambda v: 255 if v >= 128 else 0, mode="1"))
     suffix = path.suffix.lower()
     if suffix in (".jpg", ".jpeg"):
         img.save(path, format="JPEG", quality=60, dpi=(300, 300))
@@ -83,6 +107,27 @@ def write_placeholder(path: Path, label: str, width: int, height: int) -> None:
     else:
         # LZW keeps a solid fill to a few KB; uncompressed would be 2.6 MB per file.
         img.save(path, format="TIFF", compression="tiff_lzw", dpi=(300, 300))
+
+
+def hero_key(name: str) -> str:
+    """Reduce a hero name or folder name to the key the two are compared on.
+
+    Three things in the real library defeat a plain casefolded comparison, and all three are
+    load-bearing — get any of them wrong and an acceptance hero derives no fixture at all:
+
+    - The hero is the segment after the last `_` (`Kamala Khan_Ms.Marvel` → `Ms.Marvel`),
+      except in the folders that carry no alter ego (`Maria Hill`, `Hercules (u)`).
+    - A trailing parenthetical marks the scan's state, not the hero: `Jean Grey_Phoenix (u)`
+      is Phoenix.
+    - Spacing and punctuation are not observed. The library writes `Ms.Marvel` for "Ms.
+      Marvel" and `Wonderman` for "Wonder Man", so the key drops every non-alphanumeric.
+
+    Equality on this key — not a substring test — is what keeps `Hulk` off
+    `Teddy Altman_Hulking` and off the `She-Hulk` scenario folder.
+    """
+    hero = name.rsplit("_", 1)[-1]
+    hero = re.sub(r"\s*\([^)]*\)\s*$", "", hero)
+    return re.sub(r"[^a-z0-9]+", "", hero.casefold())
 
 
 def select_source_dirs(root: Path) -> list[Path]:
@@ -95,13 +140,29 @@ def select_source_dirs(root: Path) -> list[Path]:
             seen.add(d)
             selected.append(d)
 
+    heros_dir = root / HEROS_DIRNAME
+    if not heros_dir.is_dir():
+        raise SystemExit(f"no {HEROS_DIRNAME}/ under {root} — is --library-root correct?")
+    by_key: dict[str, list[Path]] = {}
+    for d in heros_dir.iterdir():
+        if d.is_dir():
+            by_key.setdefault(hero_key(d.name), []).append(d)
+
+    missing: list[str] = []
     for hero in HEROES:
-        needle = hero.casefold()
-        matches = [d for d in root.rglob("*") if d.is_dir() and needle in d.name.casefold()]
+        matches = by_key.get(hero_key(hero), [])
         if not matches:
+            missing.append(hero)
             print(f"  ! no folder found for {hero!r}", file=sys.stderr)
         for d in matches:
             add(d)
+    # A missing acceptance hero is a fixture that quietly cannot support T042's calibration
+    # or T058's end-to-end run. Fail rather than write an incomplete library.
+    if missing:
+        raise SystemExit(
+            f"{len(missing)} of {len(HEROES)} acceptance heroes have no folder under "
+            f"{heros_dir}: {', '.join(missing)}"
+        )
 
     for name in EXTRA_ROOTS:
         for d in root.rglob(name):

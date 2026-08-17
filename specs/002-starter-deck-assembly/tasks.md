@@ -51,11 +51,25 @@ packages — `upstream/`, `library/`, `assembly/`, `store/` — plus changes to 
 - [X] T002 Regenerate `uv.lock` and confirm `uv sync --locked` fails if the lockfile would change
 - [X] T003 Create source tree `src/marchamp/{upstream,library,assembly,store}/` with `__init__.py` in each
 - [X] T004 Write `scripts/derive_library_fixture.py` — reads the real library with `Path.rglob` (BSD `find` does not traverse the Drive mount, research R13) and writes filenames and folder layout over **generated** placeholder images, covering the ten hero folders, the Core Set folder, and the `Aspects/` subtree
-- [ ] T005 Run T004 and commit `tests/fixtures/library/` for the ten acceptance heroes **plus the Core Set folder and the `Aspects/` subtree** — without the first the reprint path has no image to borrow (T043, T058), and without the second the whole-library search has nothing to find (T079). Preserve the real awkwardness verbatim: the three filename conventions, the typos, missing positions, `.tif`/`.tiff` pairs, Ant-Man's duplicate position, Quincarrier filed under Wasp, and the decklist scans **under their real filenames** (`captain america decklist.tif`, `iceman deck list.tiff` — both spellings must survive derivation) with Hulk's and Phoenix's folders left without one
+- [X] T005 Run T004 and commit `tests/fixtures/library/` for the ten acceptance heroes **plus the Core Set folder and the `Aspects/` subtree** — without the first the reprint path has no image to borrow (T043, T058), and without the second the whole-library search has nothing to find (T079). Preserve the real awkwardness verbatim: the three filename conventions, the typos, missing positions, `.tif`/`.tiff` pairs, Ant-Man's duplicate position, Quincarrier filed under Wasp, and the decklist scans **under their real filenames** (`Captain America Decklist.tif`, `0A_Wonder Man Deck List.tif` — both spellings must survive derivation) with Hulk's and Phoenix's folders left without one
 
-> **Deferred to the Phase 3 PR.** Needs the mounted Drive, which only the maintainer's
-> machine has, and its output is first consumed by T043, T058, and T079 — all Phase 3. The
-> generator (T004) is committed and ready; nothing in Phases 1-2 reads its output.
+> **Done in the Phase 3 PR** — 678 generated placeholders across the ten hero folders, the
+> Core Set, and `Aspects/`. Running it against the real library required three fixes, each of
+> which was a live bug rather than a detail:
+>
+> - **T004 matched hero folders by substring**, so `Ms. Marvel` and `Wonder Man` found nothing
+>   (the folders are `Kamala Khan_Ms.Marvel` and `Simon Williams_Wonderman`, without the space)
+>   while `Hulk` additionally collected `Teddy Altman_Hulking` and a `She-Hulk` scenario folder.
+>   Selection is now an equality on a normalised key over the direct children of `Heros/`, and a
+>   missing acceptance hero is a hard failure rather than a warning.
+> - **`.gitignore`'s `*.tif`/`*.tiff` swallowed the entire fixture.** Negations added, narrowly
+>   scoped to `tests/fixtures/library/`.
+> - **The placeholders failed T007.** Pillow 10.1 made `load_default()` a FreeType font, so the
+>   label anti-aliased into hundreds of colours and tripped the FR-038a "this is a photograph"
+>   guard. The label is now drawn through a 1-bit mask.
+>
+> The decklist filenames named in this task were corrected against the library at the same
+> time; see research.md § filename conventions.
 - [X] T006 [P] Commit reduced upstream fixtures in `tests/fixtures/snapshots/` for the ten packs plus `core`, carrying only the fields in data-model.md § PackCard (FR-038a)
 - [X] T007 [P] Write `tests/unit/test_fixtures_carry_no_card_data.py` asserting no fixture holds card text, flavour, traits, `imagesrc`, or a real image — this repository is public and FR-038a governs fixtures as much as runtime
 - [X] T008 [P] Extend `tests/conftest.py` with a temporary state directory, a fixture `library_root`, and an offline `httpx` transport that serves the T006 fixtures and fails on any unstubbed host
@@ -163,7 +177,7 @@ The decklist is US1's, not US4's: without it the MVP prints a pack the user cann
 starter deck from, which is the whole point of printing packs. US4 keeps only the
 download-from-Hall-of-Heroes upload for folders that hold no scan.
 
-- [ ] T048a [US1] Write failing tests for decklist detection in `tests/unit/test_decklist.py` — **both** observed spellings (`captain america decklist.tif`, `iceman deck list.tiff`) and all three extensions; the hero name in the filename **not** required to match the folder's; one candidate proposed and **not** printed until accepted; a `.tif`/`.tiff` pair of one stem treated as a single candidate resolved deterministically (FR-034) rather than prompting; two candidates with **different** stems reported as a conflict the user resolves (FR-033); zero candidates reported as FR-013c's gap, which is Hulk's and Phoenix's real case; and a matched candidate excluded from **both** the unused-file and uninterpretable lists — no decklist filename matches any of the three conventions, so without the exclusion every one of them is an FR-032 report (FR-013d, FR-031, FR-032)
+- [ ] T048a [US1] Write failing tests for decklist detection in `tests/unit/test_decklist.py` — **both** observed spellings (`Captain America Decklist.tif`, `0A_Wonder Man Deck List.tif`) and all three extensions; the match case-insensitive and searched **within** the stem rather than anchored at its start, since Wonder Man's carries a leading `0A_` token; the hero name in the filename **not** required to match the folder's; one candidate proposed and **not** printed until accepted; a `.tif`/`.tiff` pair of one stem treated as a single candidate resolved deterministically (FR-034) rather than prompting; two candidates with **different** stems reported as a conflict the user resolves (FR-033); zero candidates reported as FR-013c's gap, which is Hulk's and Phoenix's real case; and a matched candidate excluded from **both** the unused-file and uninterpretable lists — no decklist filename matches any of the three conventions, so without the exclusion every one of them is an FR-032 report (FR-013d, FR-031, FR-032)
 - [ ] T048b [US1] Implement decklist detection — the `decklist_candidates` entry in `src/marchamp/library/index.py` and the `decklist_name` cascade step in `src/marchamp/assembly/resolve.py`, carrying the pseudo-code `decklist`. It never enters the FR-020–FR-025 cascade proper
 - [ ] T048c [US1] Write failing contract test for the `DecklistDecision` half of `POST /api/assemblies/{run_id}/decklist` — `confirm`, `select` with a library-relative `ref`, and `skip` — and a test that `confirm` leaves the run **uncustomized** so it still produces the pack's standard PDF while `select` and `skip` do not, in `tests/contract/test_assembly_contract.py`. Were acceptance itself customization, no run would ever be standard and reuse would never fire (FR-013d, FR-013e, FR-026h, FR-026i)
 - [ ] T048d [US1] Implement the decision route in `src/marchamp/api/routes.py`, the `decklist_candidate` field on the run, the hold in `awaiting_cards` while it is undecided, and the `decklist_printed` / `decklist_source_url` fields in `src/marchamp/assembly/report.py` (FR-013b, FR-013d, FR-013e, SC-006j)

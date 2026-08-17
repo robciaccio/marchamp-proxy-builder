@@ -210,11 +210,11 @@ The conventions, verified across eight hero folders:
 | Suffixed identity face | `..._Hero_1a`, `..._Alter-Ego_1b`, `..._Hero_Giant_1c` | `1`, face `a`/`b`/`c` |
 | No position at all | `Basic_Invulnerability_Event.tiff` | none — name-matched only |
 | **Leading number counting physical copies** | `2_Active Altruism_Event.tif`, `3_Active Altruism_Event.tif`, `4_Active Altruism_Event.tif` | **none** — the number is a copy index |
-| **Decklist scan** | `captain america decklist.tif`, `iceman deck list.tiff`, `psylocke decklist.jpg` | **none** — see below |
+| **Decklist scan** | `Captain America Decklist.tif`, `0A_Wonder Man Deck List.tif`, `psylocke decklist.jpg` | **none** — see below |
 
 **The decklist scan matches none of the conventions above**, measured 2026-08-17 across the
 folders that hold one. The form is `<hero name> decklist.<ext>` or `<hero name> deck list.<ext>`,
-lowercase and space-separated, in `.jpg`, `.tif`, and `.tiff`. There is no position, no faction
+space-separated, in `.jpg`, `.tif`, and `.tiff`. There is no position, no faction
 prefix, and no type token, so a resolver following only this section files every decklist scan
 under `unparseable` and reports it as an uninterpretable file in the one folder where FR-031
 demands every file be accounted for. FR-013d therefore matches it on the stem containing
@@ -222,6 +222,20 @@ demands every file be accounted for. FR-013d therefore matches it on the stem co
 in the filename is deliberately not part of the rule: `iceman deck list.tiff` sits under
 `Bobby Drake_Iceman`, so requiring agreement would fail on exactly the folders the rule exists to
 serve. `.tif`/`.tiff` pairs of one stem are FR-034 duplicate renditions, not FR-033 conflicts.
+
+**Corrected 2026-08-17 when T005 derived the fixture from the mounted library.** This section
+originally transcribed the decklist filenames in lowercase (`captain america decklist.tif`). They
+are not lowercase on disk — the real files are title-cased (`Captain America Decklist.tif`,
+`Thor Decklist.tiff`) — so the match must be case-insensitive, which the `deck\s*list` stem rule
+already implies but the examples above previously argued against. Two further observations the
+original measurement missed, both load-bearing for T048a:
+
+- **A decklist filename may carry a leading token.** Wonder Man's is `0A_Wonder Man Deck List.tif`.
+  A rule anchored at the start of the stem misses it; the stem must be searched, not matched whole.
+- **`iceman deck list.tiff` is not in the fixture.** Iceman is not one of the ten acceptance heroes,
+  so the `deck list` spelling is carried into `tests/fixtures/library/` by Wonder Man's file
+  instead. Both spellings do survive derivation, as T005 requires — but a test written against the
+  Iceman filename asserts on a file that is not there.
 
 The last form is the one that most easily produces a wrong answer rather than no answer, and it
 was found late. The Phoenix and Wonder Man folders number files by *physical copy*: three files
