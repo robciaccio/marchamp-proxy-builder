@@ -127,10 +127,11 @@ deck the user knowingly chose to print short.
   arrives before the run has reported cannot be honoured, because it would be made before the
   gap it authorises is known (FR-030a).
 - **Q: Does the user get one PDF or three?**
-  A: One. The player deck, the identity card, and the nemesis set are distinct *sections* of a
-  single PDF, each starting on a fresh page, not three separate files. Printing a chosen page
-  range is easy enough that splitting the download buys nothing, and one file keeps the
-  wizard's final step to a single download (FR-015d, FR-048).
+  A: One, packed into as few pages as it will go. The player deck, the identity card, and the
+  nemesis set follow one another with no page break between them: a page carrying the last
+  deck cards and the first nemesis cards is the intended result. Paper is the cost being
+  minimised, and separate files or padded page boundaries both spend it for nothing. What
+  keeps the three distinguishable is the report, not the layout (FR-015d, FR-015e, FR-048).
 - **Q: By what mechanism does the user supply that file — a path or an upload?**
   A: An upload through the browser, with the run keeping the uploaded bytes. Naming the library
   folder stays a matter of naming a path (FR-005), but an individual replacement card is
@@ -204,19 +205,22 @@ without being counted in the 40.
 7. **Given** a second request naming a different folder, **When** the user assembles, **Then**
    it reads that folder, with no restart and no reconfiguration.
 8. **Given** a hero folder, **When** the user assembles, **Then** one PDF is produced carrying
-   the player deck, then the identity card, then the nemesis set, each starting on a fresh
-   page, and neither the identity card nor the nemesis set is counted in the deck total.
-9. **Given** a hero with more than two faces, **When** the user assembles, **Then** every face
-   the card data records is produced, rather than the first two.
-10. **Given** a nemesis card that resolves to no image, **When** the user assembles, **Then**
+   the player deck, then the identity card, then the nemesis set, packed into the fewest pages
+   that hold them, and neither the identity card nor the nemesis set is counted in the deck
+   total.
+9. **Given** that PDF, **When** the user inspects it, **Then** no page is left part-empty to
+   start one of the three on a fresh page, and the report says which cards belong to which.
+10. **Given** a hero with more than two faces, **When** the user assembles, **Then** every face
+    the card data records is produced, rather than the first two.
+11. **Given** a nemesis card that resolves to no image, **When** the user assembles, **Then**
     the run stops naming that card, exactly as it would for a missing deck card.
-11. **Given** a folder whose pack the tool identifies confidently, **When** the user starts the
+12. **Given** a folder whose pack the tool identifies confidently, **When** the user starts the
     run, **Then** the pack and its evidence are shown and nothing is resolved until the user
     confirms.
-12. **Given** a pack whose standard PDF was already produced by an earlier clean run against
+13. **Given** a pack whose standard PDF was already produced by an earlier clean run against
     the same snapshot, **When** a user assembles that pack again with no customization,
     **Then** the stored PDF is served rather than regenerated.
-13. **Given** that pack's snapshot has since been refreshed, **When** a user assembles it
+14. **Given** that pack's snapshot has since been refreshed, **When** a user assembles it
     again, **Then** the stored PDF is not served and the deck is rebuilt against the new
     revision.
 
@@ -452,15 +456,22 @@ folder, the pack, and the first card's resolution intact.
   anyone can play.
 - **FR-015a**: Assembling a hero MUST produce the hero's identity card. Its faces MUST be read
   from the card data and MUST NOT be assumed to number two, since a hero may have more.
-- **FR-015b**: Assembling a hero MUST produce that hero's nemesis and obligation cards as a
-  section distinct from the player deck, so the two are printed and cut as the separate decks
-  they are.
+- **FR-015b**: Assembling a hero MUST produce that hero's nemesis and obligation cards, kept
+  distinct from the player deck in the report and excluded from its total, so the user can
+  separate them into the decks they are after cutting. They are not separated on the page —
+  FR-015d packs everything as tightly as it will go.
 - **FR-015d**: The player deck, the identity card, and the nemesis set MUST be delivered as one
-  PDF, in that order, each beginning on a fresh page so no page carries cards from two of them.
-  They MUST NOT be split across separate files: printing a chosen page range is easy enough
-  that separate downloads buy nothing, and one file keeps the wizard's final step to a single
-  download. "Distinct outputs" throughout this spec means distinct sections of that PDF, never
-  distinct files.
+  PDF, in that order, packed into as few pages as possible. Every page MUST be filled to its
+  card capacity before the next is started, and the three MUST NOT be padded apart onto
+  separate pages — a page carrying the last deck cards and the first nemesis cards together is
+  the intended result, not a defect. Paper is the cost being minimised. They MUST NOT be split
+  across separate files either: one file keeps the wizard's final step to a single download.
+  "Distinct outputs" throughout this spec means distinct in the report and in the deck total,
+  never distinct files and never distinct pages.
+- **FR-015e**: Because FR-015d lets one page carry cards from more than one of the three, the
+  report MUST be what tells them apart. It MUST state which cards form the player deck, which
+  is the identity card, and which form the nemesis set, so the user can sort the cut cards
+  without recognising them by sight.
 - **FR-015c**: The identity card and the nemesis set MUST be resolved by the same rules as the
   deck — the same matching, the same reporting of substitutions, and the same completeness
   check (FR-017). A card missing from either MUST stop the run by name exactly as a missing
@@ -700,9 +711,12 @@ folder, the pack, and the first card's resolution intact.
   heroes MUST also assemble against fixtures derived from that library's filenames and folder
   layout, so a resolver regression is caught without the real scans present.
 - **SC-002a**: Each of the eight acceptance heroes produces one PDF carrying its deck, an
-  identity card with every face its card data records, and a nemesis set, in that order and on
-  page boundaries — and neither the identity card nor the nemesis set appears in the deck
-  total. A user can print one hero and play it without owning the pack.
+  identity card with every face its card data records, and a nemesis set, in that order — and
+  neither the identity card nor the nemesis set appears in the deck total. A user can print one
+  hero and play it without owning the pack.
+- **SC-002b**: That PDF occupies the fewest pages its card count allows: no page before the
+  last is partly empty, and adding the identity card and nemesis set to a deck costs no more
+  pages than their card count requires.
 - **SC-004**: 100% of files in the folders consulted are either used or named in the report.
   Zero are silently ignored.
 - **SC-005**: 100% of images resolved by anything other than an exact positional match are

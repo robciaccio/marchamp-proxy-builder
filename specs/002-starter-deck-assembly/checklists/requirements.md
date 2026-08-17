@@ -25,7 +25,7 @@
 
 ## Feature Readiness
 
-- [ ] All functional requirements have clear acceptance criteria — **36 scenarios for 68
+- [ ] All functional requirements have clear acceptance criteria — **37 scenarios for 69
       requirements**, see C
 - [x] User scenarios cover primary flows
 - [ ] Feature meets measurable outcomes defined in Success Criteria — not assessable before
@@ -54,7 +54,7 @@ Both are consequential — FR-023 in particular, since too strict a rule leaves 
 deferred to the plan below, and that deferral is what makes these boxes fail. If either
 becomes user-visible, it belongs back in the spec.
 
-**C. Acceptance coverage is partial.** 36 acceptance scenarios against 68 functional
+**C. Acceptance coverage is partial.** 37 acceptance scenarios against 69 functional
 requirements, after two clarification sessions on 2026-08-16 added to both. Covered: deck
 composition, quantities, borrowing, folder selection, manual resolution, run durability, PDF
 retention and reuse, pack confirmation, the identity and nemesis outputs, and the failure
@@ -126,6 +126,8 @@ plan must state the rule and test it against both.
 no longer a MAY. Assembling a hero now produces the player deck, the identity card, and the
 nemesis set as three distinct outputs (FR-015a to FR-015c), because a printed player deck on
 its own is not something anyone can sit down and play. They stay out of the deck total.
+Distinctness is a matter of the report, not the page — see the second session's note on
+FR-015d below.
 
 **How the user resolves a card the tool could not find, and what happens if they stop
 halfway.** Assembly is a durable run the wizard walks the user through card by card, resumable
@@ -142,9 +144,12 @@ MarvelCDB card text as fixture data.
 
 ### Resolved by a second clarification session, 2026-08-16
 
-**Output packaging (FR-015d).** One PDF, not three files. The player deck, identity card, and
-nemesis set are sections of it, each starting on a fresh page. "Distinct outputs" elsewhere in
-the spec now explicitly means distinct sections.
+**Output packaging (FR-015d, FR-015e).** One PDF, not three files, and packed into as few pages
+as the cards allow — the player deck, identity card, and nemesis set run together with no page
+break between them, so a single page may carry cards from two of the three. Paper is the cost
+being minimised. "Distinct outputs" elsewhere in the spec means distinct in the report and in
+the deck total, never distinct files or pages, and FR-015e makes the report responsible for
+telling the three apart since the layout no longer does.
 
 **How a replacement card reaches the tool (FR-026e).** By browser upload, with the run keeping
 the bytes. This closed a real contradiction: FR-027 required recording a manual choice made
