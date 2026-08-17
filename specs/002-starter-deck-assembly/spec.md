@@ -88,21 +88,60 @@ deck the user knowingly chose to print short.
 - **Q: How does the user say which library to read?**
   A: By naming a folder when they ask for a deck. No environment variable, no pre-configured
   root (FR-005).
+- **Q: Where does the user do all this, and what happens when they cannot finish in one
+  sitting?**
+  A: In the wizard. The user opens the local site, picks a hero folder, and the resolver runs.
+  If every card resolves they get a PDF. If not, the wizard names each unresolved card and
+  offers to choose a file for it, one card at a time, rather than reporting a failed run. A
+  user who does not want to finish now saves the run and returns to it on a later visit, so
+  the site lists what is finished and what is still waiting (FR-026b, FR-026c). Assembly runs
+  are therefore durable, which feature 001's generation registry deliberately was not — and
+  the assembly report lives on the run record, so an incomplete deck stays legible as
+  incomplete without depending on a browser tab staying open (FR-030b).
+- **Q: Does assembling a hero produce anything besides the 40-card deck?**
+  A: Yes. A printed player deck alone cannot be played: the hero and alter-ego identity card
+  and the hero's nemesis and obligation cards are not part of the 40, and without them the
+  output is not a hero you can sit down with. Assembling produces all three as distinct
+  outputs — the player deck, the identity card, and the nemesis set — resolved by the same
+  rules and held to the same completeness check. They remain excluded from the deck total, so
+  the expectation of 40 is unaffected (FR-015, FR-015a, FR-015b).
+- **Q: How are the eight named heroes verified, given the card art is not in the repository?**
+  A: Against the real library, at the mounted Drive path the user will actually point the
+  application at — a folder under its `Heros/` directory. Those runs are the acceptance
+  evidence for SC-002 and SC-003 and are executed locally, because neither the art nor the
+  path exists in CI. The same eight are additionally covered in CI by fixtures derived from
+  that library's structure: its filenames and folder layout reproduced over generated
+  placeholder images, with no card art and no MarvelCDB card text committed (FR-038a). The
+  resolver matches on positions and names and never on pixels, so the derived fixtures
+  exercise the real behaviour.
+- **Q: Does this feature ship a command-line way to assemble a deck?**
+  A: No. The wizard is the interface. FR-036's machine-readable outcome — clean, warnings, or
+  refused — is a field on the run in the API rather than a process exit status, and anything
+  scripting an assembly drives that API. No constitutional or repository rule required a CLI;
+  only FR-036's wording implied one, and it has been corrected.
+- **Q: How does the user hand the tool a file for a card it could not resolve?**
+  A: Inside an assembly run the application remembers. Starting an assembly creates a run that
+  resolves what it can and reports what it could not, producing no PDF; the user then supplies
+  a file for a named card, or explicitly asks to print without it, against that same run; the
+  PDF is produced only on a final confirmation (FR-026a). A request to print incomplete that
+  arrives before the run has reported cannot be honoured, because it would be made before the
+  gap it authorises is known (FR-030a).
 
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Print a hero's starter deck (Priority: P1) 🎯 MVP
 
-Someone points the application at a hero's folder and receives a print-ready PDF of that
-hero's 40-card starter deck, without writing a catalog, typing a quantity, or knowing that
-six of the cards were never scanned.
+Someone points the application at a hero's folder and receives that hero print-ready — the
+40-card starter deck, the identity card, and the nemesis set — without writing a catalog,
+typing a quantity, or knowing that six of the cards were never scanned.
 
 **Why this priority**: This is the entire barrier. Today the application is unusable by
 anyone who has not hand-authored a catalog, which is almost nobody.
 
 **Independent Test**: Point the tool at `Heros/Steve Rogers_Captain America/` with no catalog
-present. It succeeds when the PDF contains 40 cards, in the right quantities, including the
-six sourced from the Core Set.
+present. It succeeds when the deck contains 40 cards, in the right quantities, including the
+six sourced from the Core Set, and the identity card and nemesis set are produced alongside it
+without being counted in the 40.
 
 **Acceptance Scenarios**:
 
@@ -122,6 +161,13 @@ six sourced from the Core Set.
    names a folder and asks for a deck, **Then** the deck is assembled from that folder.
 7. **Given** a second request naming a different folder, **When** the user assembles, **Then**
    it reads that folder, with no restart and no reconfiguration.
+8. **Given** a hero folder, **When** the user assembles, **Then** the identity card and the
+   nemesis set are produced as outputs distinct from the player deck, and neither is counted
+   in the deck total.
+9. **Given** a hero with more than two faces, **When** the user assembles, **Then** every face
+   the card data records is produced, rather than the first two.
+10. **Given** a nemesis card that resolves to no image, **When** the user assembles, **Then**
+    the run stops naming that card, exactly as it would for a missing deck card.
 
 ---
 
@@ -203,6 +249,40 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
 6. **Given** a card the user declines to resolve, **When** they explicitly ask to print
    without it, **Then** the deck prints, and the omitted card is named in the report, counted
    against the expected total, and recorded in the run's log.
+7. **Given** a run that reported two unresolved cards, **When** the user supplies a file for
+   the first, **Then** the run keeps the folder, the identified pack, and every earlier
+   choice, and asks only about the second.
+8. **Given** a request to print without unresolved cards made before the run has reported any,
+   **When** the user assembles, **Then** the blanket permission is refused and the run still
+   stops on the first card it cannot resolve.
+
+---
+
+### User Story 5 - Put a deck down and pick it up later (Priority: P2)
+
+A user who cannot finish resolving a deck now saves it and comes back to it on a later visit,
+finding it where they left it rather than starting again.
+
+**Why this priority**: Finding a file for a missing card can mean going and looking for it, and
+a wizard that loses the other thirty-nine resolutions while the user does that is one they will
+not use twice. It shares P2 with User Story 4 because it is what makes manual resolution
+survivable rather than a separate capability.
+
+**Independent Test**: Start an assembly that cannot resolve two cards, save it, restart the
+application, and return. It succeeds when the run is listed as unfinished and resumes with the
+folder, the pack, and the first card's resolution intact.
+
+**Acceptance Scenarios**:
+
+1. **Given** a run with cards still unresolved, **When** the user saves it and returns on a
+   later visit, **Then** the run is listed as unfinished and can be resumed.
+2. **Given** a saved run, **When** the application is restarted, **Then** the run, its
+   resolutions, and its report survive.
+3. **Given** several runs, **When** the user opens the site, **Then** finished and printable
+   runs are distinguishable from ones still waiting on a card, without the user having to
+   remember an identifier.
+4. **Given** a resumed run, **When** the user opens it, **Then** the report shows what was
+   already resolved and what remains, so they can tell where they left off.
 
 ---
 
@@ -219,7 +299,8 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
 - **Two files in one folder claiming the same position.** Reported as a conflict, not
   resolved by arbitrary choice.
 - **A hero with three faces.** Ant-Man has a tiny form, a giant form, and an alter-ego where
-  every other hero has two. Face count is read from the data, never assumed to be two.
+  every other hero has two. Face count is read from the data, never assumed to be two
+  (FR-015a).
 - **A card name misspelled in the filename.** "Stength in Numbers", "Steve_s Apartament", and
   a type written "Upgarde" all occur. Display names come from MarvelCDB; the filename is
   never the authority on what a card is called.
@@ -236,6 +317,12 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
   identified as some pack on no evidence.
 - **A deck totalling more than 40.** Permitted by the rules, so reported and printed rather
   than refused. Only a card that resolves to no image stops a run.
+- **A saved run whose folder has moved or been deleted by the time it is resumed.** Reported
+  against the run when it is reopened, naming the folder — not surfaced as a wave of newly
+  missing cards.
+- **A saved run resumed after the upstream snapshot has been refreshed.** The run keeps the
+  snapshot revision it started with, so resuming it cannot silently change the deck's
+  composition or quantities under the resolutions already made (FR-044, FR-045).
 
 ## Requirements *(mandatory)*
 
@@ -287,13 +374,26 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
 - **FR-014**: A pack card absent from the hero folder that carries a reprint link MUST be
   treated as part of the deck and sourced from the printing it duplicates.
 - **FR-015**: Encounter cards, obligation cards, nemesis cards, and the hero's identity card
-  MUST be excluded from the player deck. They MAY be offered as a separate output.
+  MUST be excluded from the player deck and from the deck total FR-018 reports. They MUST be
+  produced as separate outputs alongside it (FR-015a, FR-015b), because a player deck on its
+  own is not a hero anyone can play.
+- **FR-015a**: Assembling a hero MUST produce the hero's identity card. Its faces MUST be read
+  from the card data and MUST NOT be assumed to number two, since a hero may have more.
+- **FR-015b**: Assembling a hero MUST produce that hero's nemesis and obligation cards as a
+  distinct output from the player deck, so the two are printed and cut as the separate decks
+  they are.
+- **FR-015c**: The identity card and the nemesis set MUST be resolved by the same rules as the
+  deck — the same matching, the same reporting of substitutions, and the same completeness
+  check (FR-017). A card missing from either MUST stop the run by name exactly as a missing
+  deck card does, subject to the same explicit override (FR-030).
 - **FR-016**: The number of copies of a card MUST come from the printing being assembled,
   never from the printing an image was borrowed from.
 - **FR-017**: Every card the tool places in the deck MUST resolve to an image. A card that
   does not MUST stop the run by name, subject to the user's explicit override (FR-030).
   Completeness of resolution, not the card total, is what the tool verifies.
-- **FR-018**: The tool MUST report the assembled deck's total. A total other than 40 MUST be
+- **FR-018**: The tool MUST report the assembled deck's total, counting the player deck alone —
+  the identity card and the nemesis set are separate outputs and MUST NOT be added to it
+  (FR-015). A total other than 40 MUST be
   reported as a warning, because a pre-built deck is expected to be 40 and every shortfall
   measured so far was an unresolved card. A total outside the legal 40-to-50 range MUST be
   reported more strongly still. Neither MUST refuse the run on the count alone — the rules
@@ -323,6 +423,22 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
 
 - **FR-026**: When a card cannot be resolved automatically, the user MUST be able to choose a
   file for it themselves, naming that card specifically rather than being told the run failed.
+- **FR-026a**: An assembly MUST be an addressable run that outlives a single request. Starting
+  one MUST resolve what it can and report what it could not without producing a PDF; the user
+  MUST be able to supply a file for a named card, or make the FR-030 decision to print without
+  it, against that same run; and the PDF MUST be produced only on an explicit final
+  confirmation. The user MUST NOT have to restate the folder, the pack, or their earlier
+  choices to answer a second unresolved card.
+- **FR-026b**: An assembly run MUST survive the user leaving. A run with cards still
+  unresolved MUST be resumable on a later visit, with the folder, the identified pack, the
+  resolutions already made, and the report intact. Restarting the application MUST NOT
+  discard it.
+- **FR-026c**: The user MUST be able to see their runs without remembering an identifier —
+  which are finished and printable, and which are still waiting on a card — and MUST be able
+  to resume any unfinished one from that list.
+- **FR-026d**: The wizard MUST present each unresolved card individually, naming it and
+  offering the user a way to supply a file for that specific card. It MUST NOT present a
+  failed run and leave the user to work out which cards were at fault.
 - **FR-027**: A manually chosen file MAY lie outside the folder named for the run. Choosing it
   is an explicit act by the person running the process, and MUST be recorded as such in the
   report and the log — the containment boundary of FR-007 governs what the tool resolves on
@@ -337,11 +453,15 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
   user's decision to make, and the tool MUST NOT overrule it.
 - **FR-030a**: Proceeding with an incomplete deck MUST require an explicit act. It MUST NOT be
   the default, MUST NOT be reachable by dismissing a prompt or ignoring a warning, and MUST
-  NOT be inferred from silence.
+  NOT be inferred from silence. It MUST NOT be granted in advance of the run reporting which
+  cards are unresolved: a decision taken before the gap is known is not an informed one, and
+  the tool MUST refuse a blanket permission offered up front rather than honouring it.
 - **FR-030b**: An incomplete deck MUST be legible as incomplete after the fact. The report
   MUST name every omitted card, the deck total MUST be stated against what was expected, and
-  the omission MUST appear in the log record for the run. A user who prints one and returns to
-  it a week later MUST NOT have to rediscover what is missing.
+  the omission MUST appear in the log record for the run. The report MUST be retrievable from
+  the run record itself on a later visit (FR-026b), not only from the response that produced
+  it. A user who prints one and returns to it a week later MUST NOT have to rediscover what is
+  missing.
 
 ### Reporting
 
@@ -353,8 +473,11 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
 - **FR-034**: The tool MUST report duplicate renditions of one card, naming which was chosen.
 - **FR-035**: The tool MUST report scans below the resolution the application requires at
   print size, as a warning rather than a refusal.
-- **FR-036**: The tool's exit status MUST distinguish "assembled cleanly" from "assembled with
-  warnings" from "refused", so it is usable from a script without parsing prose.
+- **FR-036**: A run's outcome MUST be machine-readable, distinguishing "assembled cleanly" from
+  "assembled with warnings" from "refused", so a consumer can act on it without parsing prose.
+  This feature adds no command-line interface: starting the server remains the only command,
+  and anything driving an assembly without a browser uses the HTTP API, which constitution
+  principle II already requires be sufficient on its own.
 - **FR-037**: Failures MUST name the specific card or file at fault, never a generic error
   (constitution principle V).
 
@@ -363,6 +486,11 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
 - **FR-038**: The application MUST stay within the use MarvelCDB states its API is provided
   for — tools that complement playing Marvel Champions. It MUST NOT be used to mirror,
   republish, or redistribute their data, whose text is copyrighted by Fantasy Flight Games.
+- **FR-038a**: This repository is public, so FR-038 governs its test fixtures as well as its
+  runtime behaviour. Committed fixtures MUST NOT carry card artwork, and MUST NOT carry
+  MarvelCDB card text. A fixture snapshot MUST be reduced to the fields this feature actually
+  resolves against — pack, position, quantity, name, type, and reprint links — for the packs
+  under test, never a full mirror of the upstream response.
 - **FR-039**: The application MUST honour the HTTP caching MarvelCDB explicitly asks for. Its
   public responses carry `max-age` and `last-modified`; the application MUST respect both and
   MUST NOT re-request data it has been told is still fresh.
@@ -409,6 +537,10 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
   by which an unscanned card is sourced from elsewhere.
 - **Resolution**: The pairing of one card with one file, carrying how it was found, so a
   substitution is auditable.
+- **Assembly run**: One attempt to assemble one deck from one named folder. Durable across
+  visits and application restarts, carrying the identified pack, every resolution made
+  automatically or by hand, the report, and whether it is finished or still waiting on a card.
+  The thing the user resumes and the thing the report hangs off.
 - **Assembly report**: What a run produced — the pack identified, cards placed, images
   borrowed, files unused or uninterpretable, conflicts, low-resolution warnings, and the
   card total with a warning when it is not the expected 40.
@@ -428,6 +560,14 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
   to the hero folder.
 - **SC-003a**: The user MUST be able to assemble a deck by naming a folder, with no
   environment variable set and no library configured in advance.
+- **SC-003b**: SC-002 and SC-003 are verified against the real library — the mounted Drive
+  folder, one directory per hero under `Heros/` — on the user's own machine, since neither the
+  card art nor that folder is available to automated verification elsewhere. The same eight
+  heroes MUST also assemble against fixtures derived from that library's filenames and folder
+  layout, so a resolver regression is caught without the real scans present.
+- **SC-002a**: Each of the eight acceptance heroes produces an identity card carrying every
+  face its card data records, and a nemesis set, alongside its deck — and neither appears in
+  the deck total. A user can print one hero and play it without owning the pack.
 - **SC-004**: 100% of files in the folders consulted are either used or named in the report.
   Zero are silently ignored.
 - **SC-005**: 100% of images resolved by anything other than an exact positional match are
@@ -443,6 +583,11 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
   choosing one file, and prints. No card the user can point at is unprintable.
 - **SC-006c**: 100% of manually chosen cards are distinguishable from automatically resolved
   ones in the report.
+- **SC-006f**: A run saved with cards unresolved survives an application restart and resumes
+  with its folder, its pack, its resolutions, and its report intact, 100% of the time. No user
+  who leaves the wizard loses work they have already done.
+- **SC-006g**: A returning user can tell which of their decks are printable and which are
+  still waiting on a card, from the site alone, without recording an identifier anywhere.
 - **SC-006d**: Assembling a full deck issues a number of upstream requests that does not grow
   with the number of cards in the deck.
 - **SC-007**: Assembling twice from the same library and snapshot produces a byte-identical
@@ -476,6 +621,12 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
   has no sharing, hosting, or export-to-others path — matching the constitution's Distribution
   scope clause. FR-038 to FR-043 are written to keep the application a well-behaved client of
   a volunteer-run service, not because anything here is in tension with that scope.
+- **The acceptance library is the user's mounted Drive folder**, whose `Heros/` directory holds
+  one folder per hero named `<Alter ego>_<Hero>`. That is the exact structure the application
+  will be pointed at in use — a folder under `Heros/` — and it is the source both for the
+  acceptance runs and for the filenames the CI fixtures reproduce. Its absolute path is not
+  recorded here: this repository is public, and the folder is named per run (FR-005) rather
+  than configured.
 - **The library is a local directory the user names at the time they ask.** Their Google Drive
   folder is mounted locally, so no Drive-specific client is needed. A remote backend remains
   out of scope here, as it is in feature 001, and would arrive through the existing adapter.
@@ -488,6 +639,11 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
 - **Depends on feature 001** for the catalog structures, the validation rules, the resolution
   floor, and PDF generation. This feature introduces no new output format and relaxes none of
   those rules.
+- **Assembly runs are durable, where feature 001's generations were not.** Feature 001 keeps
+  generations in memory on the stated grounds that nothing there required durable output and a
+  user who wants a PDF has already downloaded it. Saving an unfinished deck and returning to it
+  on a later visit retires that premise for this feature: run state must outlive the process.
+  Where it lives is a plan decision; that it survives a restart is not.
 - **Aspect cards and modular sets are out of scope.** The library files them separately and
   the user can print them as a later feature. This feature assembles starter decks.
 - **Editing an assembled deck is out of scope and belongs in its own feature.** Deleting a
