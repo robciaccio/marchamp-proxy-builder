@@ -169,9 +169,9 @@ with the identity card, the nemesis set, and the decklist card.
 
 ### Identifying the pack
 
-- [ ] T040 [US1] Write failing tests for pack ranking against the pack index, the confidence figure, the evidence list, and refusal below threshold routing to selection rather than ending the run, in `tests/unit/test_identify.py` (FR-010, FR-011, FR-012)
-- [ ] T041 [US1] Implement `src/marchamp/library/identify.py` — rank the 61 pack names from the index, then verify against that one pack's cards (two requests to identify and verify; the packs a reprint points at are fetched later, research R3, R4)
-- [ ] T042 [US1] Calibrate the FR-011 threshold against all ten acceptance heroes and **record the chosen number in data-model.md § Pack Identification**. Phoenix and Wonder Man carry no usable positions and must clear it on name matches alone; a threshold only the easy folders clear is worse than none
+- [X] T040 [US1] Write failing tests for pack ranking against the pack index, the confidence figure, the evidence list, and refusal below threshold routing to selection rather than ending the run, in `tests/unit/test_identify.py` (FR-010, FR-011, FR-012)
+- [X] T041 [US1] Implement `src/marchamp/library/identify.py` — rank the 61 pack names from the index, then verify against that one pack's cards (two requests to identify and verify; the packs a reprint points at are fetched later, research R3, R4)
+- [X] T042 [US1] Calibrate the FR-011 threshold against all ten acceptance heroes and **record the chosen number in data-model.md § Pack Identification**. Phoenix and Wonder Man carry no usable positions and must clear it on name matches alone; a threshold only the easy folders clear is worse than none
 
 ### Resolving and composing
 
