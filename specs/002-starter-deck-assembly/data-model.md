@@ -144,7 +144,7 @@ faces(record) = for each code C in [record.code, *record.linked_codes]:
 | `identity` | `type_code == "hero"` |
 | `nemesis` | `card_set_type_name_code == "nemesis"` |
 | `player` | everything else |
-| `decklist` | not present in the card data at all — sourced from the library or the user (FR-013b, FR-013c) |
+| `decklist` | Not present in the card data at all. Found by filename in `hero_folder` and accepted by the user (FR-013d), or uploaded (FR-013c), or absent and reported (SC-006j). Carries the pseudo-code `decklist`, has one face, and is never counted among the pack's cards (FR-013b, FR-018). |
 
 **Counting.** FR-018's unit is **cards**, because that is the unit the pack listing counts in.
 The report states the face count alongside it, because that is what the page count follows from
@@ -174,6 +174,7 @@ FR-029, and SC-005 are asserted against.
 
 | Step | `provenance` | Rule |
 |---|---|---|
+| 0 | `decklist_name` | **Decklist only.** A `deck\s*list` stem match inside `hero_folder`, proposed to the user and printed only once accepted (FR-013d). Never reaches steps 1–4: the decklist card has no `pack_code`, no `position`, and no canonical name, and this is a literal substring test rather than FR-023's name match. Candidates differing only by extension are one candidate (FR-034); different stems are a conflict the user resolves (FR-033); none is FR-013c's gap. `card_code` is the literal `decklist` and is not a MarvelCDB code. |
 | 1 | `folder_position` | Exact `(pack_code, position, code suffix)` match inside `hero_folder`. The only provenance that is *not* reported as a substitution. |
 | 2 | `library_position` | The same match anywhere under `library_root` (FR-021). Origin named in the report. |
 | 3 | `reprint` | Follow `duplicate_of_code` / `duplicated_by` in both directions and accept any other printing of the same card (FR-014, FR-022). |
@@ -196,7 +197,8 @@ went away to find the missing file.
 | Field | Type | Rules |
 |---|---|---|
 | `by_position` | map | `(pack_hint, position, suffix) -> [entry]`. `pack_hint` comes from the containing hero folder; absent under `Aspects/`, where a position means nothing without a pack. |
-| `by_name` | map | `normalised name -> [entry]`. Casefolded, punctuation and underscores stripped, whitespace collapsed — enough to survive the observed typos. |
+| `by_name` | map | `normalised name -> [entry]`. Casefolded, punctuation and underscores stripped, whitespace collapsed, then compared with a **Levenshtein distance ≤ 2**, tightened to **≤ 1** for canonical names under 8 characters. Stripping alone is not enough and never was: "Stength in Numbers" is a dropped letter. A match MUST be **unique** — two candidates inside the bound are a conflict (FR-033), never an arbitrary pick — and every hit is reported as a name match (FR-024). |
+| `decklist_candidates` | entry[] | Files anywhere in `hero_folder` whose normalised stem contains `deck\s*list` (FR-013d). A candidate is **not** an `unparseable` entry and is never reported as unused (FR-031, FR-032). Candidates sharing a stem and differing only by extension collapse to one under FR-034. |
 | `unparseable` | entry[] | Files matching none of the three conventions. Reported when inside `hero_folder` (FR-032); outside it they surface only through the card that failed to resolve. |
 
 ### Filename conventions
@@ -232,9 +234,9 @@ the card prints once.
 | `evidence` | string[] | What the figure rests on, shown to the user before they confirm (FR-012). |
 | `candidates` | ranked[] | Offered when the user declines or identification is refused (FR-012b). |
 
-**Threshold**: ≥ 0.60 with at least 5 matched cards, **calibrated during `/speckit-tasks`
-against the ten acceptance heroes** — Phoenix and Wonder Man must clear it on name matches
-alone. Below it, the run is refused as too weak *and offered selection* (FR-011, FR-012b): a
+**Threshold** — **provisional: ≥ 0.60 with at least 5 matched cards.** Calibrated in **T042**
+against the ten acceptance heroes, which is where the measured figure replaces this one — Phoenix
+and Wonder Man must clear it on name matches alone. Below it, the run is refused as too weak *and offered selection* (FR-011, FR-012b): a
 refusal is a prompt, never a dead end.
 
 Confirmation is unconditional (FR-012a). No card is resolved from an unconfirmed identification,
@@ -306,6 +308,9 @@ Rules the transitions encode:
 - **A request to omit unresolved cards before the run has reported any is refused** (FR-030a):
   the run has not reached `awaiting_cards`, so there is no named gap for the permission to be
   informed about, and a blanket permission is not an informed decision.
+- **An undecided decklist candidate holds the run in `awaiting_cards`** (FR-013d). It is a card
+  waiting on the user like any other, needs no state of its own, and `skip` is the FR-030-shaped
+  escape. Accepting the tool's candidate leaves the run uncustomized (FR-013e).
 - **`complete` and `failed` are terminal.** A run is never retried in place; there is no partial
   state, inherited from 001's FR-020b.
 
@@ -321,14 +326,18 @@ anything.
 | `kind` | enum | `standard` or `saved`. |
 | `path` | string | `pdfs/standard/<pack_code>@<snapshot_revision>@<image_identity>.pdf`, or `pdfs/saved/<uuid>.pdf`. |
 | `name` | string | Derived from the pack for `standard`; supplied by the user for `saved` (FR-026i). |
-| `byte_size` | integer | ~202 MB, measured in 001. What FR-026g's deletion reclaims. |
+| `byte_size` | integer | 001 measured ~202 MB for a 41-card deck; a pack is ~60 faces, so **at least that and probably more** — measured for real in T116. What FR-026g's deletion reclaims. |
 
 **Reuse key** (FR-026h) — all three together:
 
 1. `pack_code`
 2. `snapshot_revision` — a refresh invalidates rather than serving a PDF built from superseded
    card data (US1 scenario 16)
-3. `image_identity` — `sha256` over the sorted list of `(card_code, side, content_digest)`
+3. `image_identity` — `sha256` over the sorted list of `(card_code, side, content_digest)`,
+   **the decklist included as `("decklist", "front", digest)`** and its absence as
+   `("decklist", "front", "")`. Without it, two libraries holding different decklist scans — or one
+   holding none — key identically and the second run is served the first's PDF, which is precisely
+   the failure SC-006k forbids.
 
 The key deliberately excludes the library folder's path: reuse must survive that folder moving
 or being renamed (SC-006h, US1 scenario 15b), and FR-009 forbids retaining such a path anyway.
@@ -339,7 +348,10 @@ different bytes rebuilds (SC-006k, US1 scenario 15a).
 **Standard versus saved.** A run that resolved every card automatically with no user input of
 any kind produces the pack's `standard` PDF. Any customization — an uploaded file (FR-026), an
 omission (FR-030), or any later editing capability — makes it `saved`, named by the user
-(FR-026i). Selecting the pack is not customization (FR-012b).
+(FR-026i). Selecting the pack is not customization (FR-012b), and neither is accepting the
+decklist candidate the tool proposed (FR-013e). Picking a different decklist file, uploading one,
+or skipping the decklist **is** customization — each changes what is printed. Were acceptance
+itself customization, no run would ever be standard and reuse would never fire once.
 
 **Ownership and deletion.** A standard PDF belongs to the **pack**, not to the run that built it
 (FR-026g1). `os.link` gives kernel-maintained refcounting, so:
@@ -426,4 +438,4 @@ location is unset, and SC-003a requires assembly with no environment variable se
 | `User-Agent` | Names the application and a contact URL | FR-041 — so the operator can attribute and contact rather than only block. |
 | Upload byte ceiling | Inherits 001's per-image ceilings | An upload is an untrusted binary and gets the identical treatment (FR-028). |
 | Library scan ceiling | File count cap on one `os.walk` | Bounds a run against a mistakenly named root such as `/`. |
-| Backoff | Exponential with jitter, at most two retries | FR-042, FR-043. MarvelCDB publishes no rate limit; its absence is not permission. |
+| Backoff and pacing | Exponential with jitter, at most two retries. **At most one request in flight, and at least 1 s between requests** | FR-042, FR-043. MarvelCDB publishes no rate limit; its absence is not permission. The pacing figures are self-imposed and stated here rather than left to inference — an assembly makes two or three requests, so they cost nothing and make "conservative" testable. |

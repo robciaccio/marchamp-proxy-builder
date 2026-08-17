@@ -270,8 +270,14 @@ paths:
       - { name: run_id, in: path, required: true, schema: { type: string } }
     post:
       tags: [assemblies]
-      summary: Supply the pack's decklist card image
+      summary: Decide or supply the pack's decklist card
       description: |
+        Two shapes on one path. A JSON `DecklistDecision` answers the candidate the tool found by
+        filename in the hero folder (FR-013d): `confirm` accepts it, `select` names a different
+        file inside the folder, `skip` prints without one. Confirming is not customization, so a
+        run that confirmed and otherwise resolved automatically still produces the pack's standard
+        PDF (FR-013e). A multipart `DecklistUpload` supplies an image the folder does not hold.
+
         25 of 60 hero folders hold no decklist scan. The run names that gap and offers the
         address at which Hall of Heroes publishes the pack's decklist photograph; **the
         application never fetches it** (FR-013c), which is what keeps FR-002 intact and the
@@ -280,12 +286,14 @@ paths:
         A missing decklist never refuses the run — the rest of the pack still prints, reported
         as printed without one (SC-006j). This endpoint is separate from the card upload
         because the decklist card is not a MarvelCDB card and has no code.
-      operationId: uploadAssemblyDecklist
+      operationId: decideAssemblyDecklist
       parameters:
         - $ref: "#/components/parameters/IfMatch"
       requestBody:
         required: true
         content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DecklistDecision" }
           multipart/form-data:
             schema: { $ref: "#/components/schemas/DecklistUpload" }
       responses:
@@ -595,6 +603,14 @@ components:
         snapshot_stale:
           type: boolean
           description: The run ran against a stored snapshot after a failed refetch (FR-044a).
+        decklist_candidate:
+          oneOf:
+            - $ref: "#/components/schemas/DecklistCandidate"
+            - type: "null"
+          description: |
+            Null when the hero folder holds no decklist scan — see `decklist_source_url` on the
+            report — or once a decision has been recorded. While it is set, the run holds in
+            `awaiting_cards`: an undecided decklist is a card waiting on the user (FR-013d).
         unresolved:
           type: array
           description: |
@@ -692,6 +708,44 @@ components:
       properties:
         file: { type: string, format: binary }
       required: [file]
+
+    DecklistDecision:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [confirm, select, skip]
+          description: |
+            `confirm` accepts the candidate the tool proposed (FR-013d) and is **not**
+            customization, so the run can still produce the pack's standard PDF (FR-013e,
+            FR-026h). `select` names a different file inside the hero folder. `skip` prints the
+            pack without a decklist card, reported as such (SC-006j). `select` and `skip` are
+            both customization (FR-026i).
+        ref:
+          type: string
+          description: |
+            Required for `select`: a path **relative to `library_root`**. Never absolute and never
+            from outside the root (FR-007, FR-009).
+
+    DecklistCandidate:
+      type: object
+      description: |
+        The file the tool proposes as the decklist card, awaiting the user's decision (FR-013d).
+        Matched on a filename stem containing `deck\s*list` within the hero folder — never through
+        the card cascade, which keys on data the decklist card has no entry for.
+      properties:
+        ref:
+          type: string
+          description: Relative to `library_root` (FR-009).
+        alternatives:
+          type: array
+          items: { type: string }
+          description: |
+            Present when two or more candidates with **different stems** matched — a conflict the
+            user resolves by picking, never by arbitrary choice (FR-033). Candidates differing only
+            by file extension are collapsed to one beforehand as duplicate renditions (FR-034).
+      required: [ref]
 
     CardOmission:
       type: object

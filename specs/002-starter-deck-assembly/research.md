@@ -196,7 +196,7 @@ Request count per assembled pack is therefore bounded by the number of *distinct
 referenced — typically two — and is zero on every later run of that pack. This is what SC-006d
 measures.
 
-## R5 — Filenames: two conventions, and one that carries no position
+## R5 — Filenames: three conventions, one of which carries no position
 
 **Decision**: Parse the trailing numeric component with two patterns, report anything matching
 neither (FR-032), and never parse a card *name* out of a filename (FR-023).
@@ -210,6 +210,18 @@ The conventions, verified across eight hero folders:
 | Suffixed identity face | `..._Hero_1a`, `..._Alter-Ego_1b`, `..._Hero_Giant_1c` | `1`, face `a`/`b`/`c` |
 | No position at all | `Basic_Invulnerability_Event.tiff` | none — name-matched only |
 | **Leading number counting physical copies** | `2_Active Altruism_Event.tif`, `3_Active Altruism_Event.tif`, `4_Active Altruism_Event.tif` | **none** — the number is a copy index |
+| **Decklist scan** | `captain america decklist.tif`, `iceman deck list.tiff`, `psylocke decklist.jpg` | **none** — see below |
+
+**The decklist scan matches none of the conventions above**, measured 2026-08-17 across the
+folders that hold one. The form is `<hero name> decklist.<ext>` or `<hero name> deck list.<ext>`,
+lowercase and space-separated, in `.jpg`, `.tif`, and `.tiff`. There is no position, no faction
+prefix, and no type token, so a resolver following only this section files every decklist scan
+under `unparseable` and reports it as an uninterpretable file in the one folder where FR-031
+demands every file be accounted for. FR-013d therefore matches it on the stem containing
+`deck\s*list` and excludes the match from both the unused and uninterpretable lists. The hero name
+in the filename is deliberately not part of the rule: `iceman deck list.tiff` sits under
+`Bobby Drake_Iceman`, so requiring agreement would fail on exactly the folders the rule exists to
+serve. `.tif`/`.tiff` pairs of one stem are FR-034 duplicate renditions, not FR-033 conflicts.
 
 The last form is the one that most easily produces a wrong answer rather than no answer, and it
 was found late. The Phoenix and Wonder Man folders number files by *physical copy*: three files
@@ -227,7 +239,10 @@ A file with no position is not an error and is not ignored: it enters a name ind
 normalised form of the whole filename, consulted **only** when looking for a specific card whose
 canonical MarvelCDB name is already known (FR-023). Normalisation must be lenient about the
 observed typos — "Stength in Numbers", "Steve_s Apartament", "Upgarde" — which argues for a
-case-folded, punctuation-stripped comparison with a bounded edit distance, reported as a name
+case-folded, punctuation-stripped comparison with a **Levenshtein distance ≤ 2** (≤ 1 for
+canonical names under 8 characters), the bound recorded in data-model.md § Library Index. All
+three observed typos sit at distance 1–2, and stripping alone reaches none of them: "Stength" is a
+dropped letter. Two candidates inside the bound are a conflict, not a pick. Reported as a name
 match whenever it fires (FR-024, User Story 3 scenario 3).
 
 `.tif`/`.tiff` duplicate pairs are resolved by sorting on `(extension, name)` and taking the
@@ -380,6 +395,16 @@ layout** over synthetic images, alongside reduced snapshot fixtures carrying onl
 fields in R1. The set is the original eight plus **Phoenix and Wonder Man** (SC-003c), which
 carry the copy-counting convention from R5 and are the only fixtures that exercise the name
 fallback as the sole resolution path.
+
+The set is not only hero folders. A reprint resolves to an image of *another* printing, so the
+Core Set folder is fixture material in its own right, and the pack's extra aspect cards live under
+`Aspects/` by design — both are derived alongside the ten heroes, or the reprint path (T043, T058)
+and the whole-library search (T079) have nothing to assert against.
+
+Eight of the ten hold a decklist scan and **Hulk and Phoenix hold none** (measured 2026-08-17), so
+the derived fixture covers both FR-013d's match and FR-013c's gap without contriving either. The
+filenames must survive derivation verbatim — `deck list` and `decklist` are different spellings
+and the pattern is only tested if both appear.
 
 `tests/conftest.py` already establishes the pattern and the reason — every image is generated,
 never copied. The extension is that filenames are now data under test, so the fixture must

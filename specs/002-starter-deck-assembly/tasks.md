@@ -50,8 +50,8 @@ packages — `upstream/`, `library/`, `assembly/`, `store/` — plus changes to 
 - [ ] T001 Promote `httpx` from `[dependency-groups] dev` to `[project] dependencies` and add `python-multipart` in `pyproject.toml` (research R2, R9)
 - [ ] T002 Regenerate `uv.lock` and confirm `uv sync --locked` fails if the lockfile would change
 - [ ] T003 Create source tree `src/marchamp/{upstream,library,assembly,store}/` with `__init__.py` in each
-- [ ] T004 Write `scripts/derive_library_fixture.py` — reads the real library with `Path.rglob` (BSD `find` does not traverse the Drive mount, research R13) and writes filenames and folder layout over **generated** placeholder images
-- [ ] T005 Run T004 and commit `tests/fixtures/library/` for the ten acceptance heroes, preserving the real awkwardness verbatim: the three filename conventions, the typos, missing positions, `.tif`/`.tiff` pairs, Ant-Man's duplicate position, and Quincarrier filed under Wasp
+- [ ] T004 Write `scripts/derive_library_fixture.py` — reads the real library with `Path.rglob` (BSD `find` does not traverse the Drive mount, research R13) and writes filenames and folder layout over **generated** placeholder images, covering the ten hero folders, the Core Set folder, and the `Aspects/` subtree
+- [ ] T005 Run T004 and commit `tests/fixtures/library/` for the ten acceptance heroes **plus the Core Set folder and the `Aspects/` subtree** — without the first the reprint path has no image to borrow (T043, T058), and without the second the whole-library search has nothing to find (T079). Preserve the real awkwardness verbatim: the three filename conventions, the typos, missing positions, `.tif`/`.tiff` pairs, Ant-Man's duplicate position, Quincarrier filed under Wasp, and the decklist scans **under their real filenames** (`captain america decklist.tif`, `iceman deck list.tiff` — both spellings must survive derivation) with Hulk's and Phoenix's folders left without one
 - [ ] T006 [P] Commit reduced upstream fixtures in `tests/fixtures/snapshots/` for the ten packs plus `core`, carrying only the fields in data-model.md § PackCard (FR-038a)
 - [ ] T007 [P] Write `tests/unit/test_fixtures_carry_no_card_data.py` asserting no fixture holds card text, flavour, traits, `imagesrc`, or a real image — this repository is public and FR-038a governs fixtures as much as runtime
 - [ ] T008 [P] Extend `tests/conftest.py` with a temporary state directory, a fixture `library_root`, and an offline `httpx` transport that serves the T006 fixtures and fails on any unstubbed host
@@ -101,7 +101,7 @@ packages — `upstream/`, `library/`, `assembly/`, `store/` — plus changes to 
 
 - [ ] T028 Write failing tests for snapshot validation on capture **and on read** — every retained field present and typed, `pack_code` consistent, at least one `type_code: hero`, at least one `card_set_type_name_code: nemesis`, `quantity` ≥ 1, dangling reprint link a warning — in `tests/unit/test_upstream_models.py` (FR-047)
 - [ ] T029 Implement `src/marchamp/upstream/models.py` — `PackIndexEntry` (`code`, `name` only) and `PackCard`, discarding card text, flavour, traits, `imagesrc`, and `pack.total` (research R12)
-- [ ] T030 Write failing tests for the client — one allowlisted host, redirects **not** followed, loopback/link-local/private ranges refused after resolution, `pack_code` validated against `^[a-z0-9_]{1,32}$` and against the pack index before reaching a URL, descriptive `User-Agent`, explicit timeouts, `Retry-After`-aware backoff with at most two retries — in `tests/unit/test_upstream_client.py` (FR-003, FR-041, FR-042, FR-043)
+- [ ] T030 Write failing tests for the client — one allowlisted host, redirects **not** followed, loopback/link-local/private ranges refused after resolution, `pack_code` validated against `^[a-z0-9_]{1,32}$` and against the pack index before reaching a URL, descriptive `User-Agent`, explicit timeouts, `Retry-After`-aware backoff with at most two retries, never more than one request in flight and never two requests inside 1 s — in `tests/unit/test_upstream_client.py` (FR-003, FR-041, FR-042, FR-043)
 - [ ] T031 Implement `src/marchamp/upstream/client.py`
 - [ ] T032 Write failing tests for the snapshot store — revision is a content hash of the reduced records and is stable across a refetch that changed nothing; within `max-age` **no request is issued at all**; past it one conditional `If-Modified-Since`; a `304` keeps the revision and extends freshness; a failed refetch serves the stored snapshot marked stale; no snapshot and a failed fetch refuses naming the pack — in `tests/unit/test_snapshots.py` (FR-039, FR-044, FR-044a, FR-046, research R1, R10)
 - [ ] T033 Implement `src/marchamp/upstream/snapshots.py`
@@ -110,7 +110,7 @@ packages — `upstream/`, `library/`, `assembly/`, `store/` — plus changes to 
 
 - [ ] T034 Write failing tests for the three filename conventions, per-folder detection of the copy-counting form, the `a`/`b` suffix being ambiguous between the two face mechanisms, and unparseable names, in `tests/unit/test_filenames.py` (FR-032, research R5, R12)
 - [ ] T035 Implement `src/marchamp/library/filenames.py`
-- [ ] T036 Write failing tests for index construction — `(pack_hint, position, suffix)` and normalised-name maps, `pack_hint` absent under `Aspects/`, and normalisation surviving the observed typos ("Stength in Numbers", "Steve_s Apartament", "Upgarde") — in `tests/unit/test_library_index.py` (FR-021, FR-023, research R13)
+- [ ] T036 Write failing tests for index construction — `(pack_hint, position, suffix)` and normalised-name maps, `pack_hint` absent under `Aspects/`, and normalisation matching each of the three observed typos ("Stength in Numbers", "Steve_s Apartament", "Upgarde") at the data-model's edit-distance bound, plus a case where two files fall inside the bound for one card and the result is a **conflict** rather than a pick — in `tests/unit/test_library_index.py` (FR-021, FR-023, FR-033, research R5, R13)
 - [ ] T037 Implement `src/marchamp/library/index.py` with one `os.walk` per resolve pass, bounded by the T011 file-count cap, never persisted
 
 ### Faces and groups
@@ -137,7 +137,7 @@ with the identity card, the nemesis set, and the decklist card.
 ### Identifying the pack
 
 - [ ] T040 [US1] Write failing tests for pack ranking against the pack index, the confidence figure, the evidence list, and refusal below threshold routing to selection rather than ending the run, in `tests/unit/test_identify.py` (FR-010, FR-011, FR-012)
-- [ ] T041 [US1] Implement `src/marchamp/library/identify.py` — rank the 61 pack names from the index, then verify against that one pack's cards (two requests, research R3)
+- [ ] T041 [US1] Implement `src/marchamp/library/identify.py` — rank the 61 pack names from the index, then verify against that one pack's cards (two requests to identify and verify; the packs a reprint points at are fetched later, research R3, R4)
 - [ ] T042 [US1] Calibrate the FR-011 threshold against all ten acceptance heroes and **record the chosen number in data-model.md § Pack Identification**. Phoenix and Wonder Man carry no usable positions and must clear it on name matches alone; a threshold only the easy folders clear is worse than none
 
 ### Resolving and composing
@@ -147,13 +147,24 @@ with the identity card, the nemesis set, and the decklist card.
 - [ ] T045 [US1] Write failing test that copy counts come from the pack being printed and never from the printing an image was borrowed from — `cap` `03016` Make the Call prints twice whatever the Core Set ships — in `tests/unit/test_resolve.py` (FR-016, US1 scenario 4)
 - [ ] T046 [US1] Write failing test for the bridge to feature 001's structures: pack plus resolutions to an in-memory `Catalog` and one `HeroDeck`, entries ordered `(group, position, code)`, in `tests/unit/test_assembly_catalog.py` (FR-048)
 - [ ] T047 [US1] Implement `src/marchamp/assembly/catalog.py`. The synthesised catalog is in memory only and is never written to disk
-- [ ] T048 [US1] Write failing test that the PDF carries the four groups in order, packed into the fewest pages the card count allows, with **no page break between groups**, in `tests/integration/test_pack_pdf.py` (FR-015d, SC-002a, SC-002b)
+- [ ] T048 [US1] Write failing test that the PDF carries the groups in order, packed into the fewest pages the card count allows, with **no page break between groups**, in `tests/integration/test_pack_pdf.py`. Four groups for a hero whose folder holds a decklist scan and three for Hulk or Phoenix, which hold none (FR-013c, FR-015d, SC-002a, SC-002b)
+
+### The decklist card
+
+The decklist is US1's, not US4's: without it the MVP prints a pack the user cannot build the
+starter deck from, which is the whole point of printing packs. US4 keeps only the
+download-from-Hall-of-Heroes upload for folders that hold no scan.
+
+- [ ] T048a [US1] Write failing tests for decklist detection in `tests/unit/test_decklist.py` — **both** observed spellings (`captain america decklist.tif`, `iceman deck list.tiff`) and all three extensions; the hero name in the filename **not** required to match the folder's; one candidate proposed and **not** printed until accepted; a `.tif`/`.tiff` pair of one stem treated as a single candidate resolved deterministically (FR-034) rather than prompting; two candidates with **different** stems reported as a conflict the user resolves (FR-033); zero candidates reported as FR-013c's gap, which is Hulk's and Phoenix's real case; and a matched candidate excluded from **both** the unused-file and uninterpretable lists — no decklist filename matches any of the three conventions, so without the exclusion every one of them is an FR-032 report (FR-013d, FR-031, FR-032)
+- [ ] T048b [US1] Implement decklist detection — the `decklist_candidates` entry in `src/marchamp/library/index.py` and the `decklist_name` cascade step in `src/marchamp/assembly/resolve.py`, carrying the pseudo-code `decklist`. It never enters the FR-020–FR-025 cascade proper
+- [ ] T048c [US1] Write failing contract test for the `DecklistDecision` half of `POST /api/assemblies/{run_id}/decklist` — `confirm`, `select` with a library-relative `ref`, and `skip` — and a test that `confirm` leaves the run **uncustomized** so it still produces the pack's standard PDF while `select` and `skip` do not, in `tests/contract/test_assembly_contract.py`. Were acceptance itself customization, no run would ever be standard and reuse would never fire (FR-013d, FR-013e, FR-026h, FR-026i)
+- [ ] T048d [US1] Implement the decision route in `src/marchamp/api/routes.py`, the `decklist_candidate` field on the run, the hold in `awaiting_cards` while it is undecided, and the `decklist_printed` / `decklist_source_url` fields in `src/marchamp/assembly/report.py` (FR-013b, FR-013d, FR-013e, SC-006j)
 
 ### The run as a resource
 
 - [ ] T049 [US1] Write failing tests for the run lifecycle — `identifying` → `awaiting_pack` / `unidentified` → `resolving` → `awaiting_cards` / `ready` → `rendering` → `complete` / `failed`, that **nothing resolves before the pack is confirmed**, and that `ready` does not print by itself — in `tests/unit/test_assembly_service.py` (FR-012a, FR-026a, SC-009)
 - [ ] T050 [US1] Implement `src/marchamp/assembly/service.py`
-- [ ] T051 [US1] Write failing contract tests for `POST /api/assemblies`, `GET /api/assemblies/{id}`, `GET /api/assemblies/{id}/packs`, `POST /api/assemblies/{id}/pack`, `POST /api/assemblies/{id}/confirmation`, and `GET /api/assemblies/{id}/document` in `tests/contract/test_assembly_contract.py`, including `If-Match` and the `409` on a stale version
+- [ ] T051 [US1] Write failing contract tests for `POST /api/assemblies`, `GET /api/assemblies/{run_id}`, `GET /api/assemblies/{run_id}/packs`, `POST /api/assemblies/{run_id}/pack`, `POST /api/assemblies/{run_id}/confirmation`, and `GET /api/assemblies/{run_id}/document` in `tests/contract/test_assembly_contract.py`, including `If-Match` and the `409` on a stale version
 - [ ] T052 [US1] Add the request and response models from contracts/openapi.yaml to `src/marchamp/api/schemas.py`
 - [ ] T053 [US1] Implement those routes in `src/marchamp/api/routes.py`, with both named paths validated when named and refused specifically (FR-006), and T009 now green for them
 - [ ] T054 [US1] Write failing test that a user-selected pack is recorded as such and is **not** customization under FR-026i, in `tests/integration/test_pack_selection.py` (FR-012b, SC-009a)
@@ -165,7 +176,7 @@ with the identity card, the nemesis set, and the decklist card.
 
 ### Interface
 
-- [ ] T057 [US1] Extend `src/marchamp/web/index.html`, `app.js`, and `styles.css` — name the library root and hero folder, show the identified pack with its evidence and wait for confirmation, show progress, offer the download
+- [ ] T057 [US1] Extend `src/marchamp/web/index.html`, `app.js`, and `styles.css` — name the library root and hero folder, show the identified pack with its evidence and wait for confirmation, show the proposed decklist card and wait for acceptance or a different pick (FR-013d), show progress, offer the download
 - [ ] T058 [US1] Write the end-to-end integration test for `cap` over the fixture library in `tests/integration/test_assemble_cap.py` — every card resolved, the eight Core Set reprints recovered, one PDF, `MARCHAMP_IMAGE_DIR` and `MARCHAMP_CATALOG` unset throughout (SC-003a)
 
 **Checkpoint**: a user can print one hero's whole pack from a folder they name, with nothing
@@ -232,19 +243,19 @@ themselves, rather than being told the run failed and left to work out why.
 **Independent test**: Assemble a hero whose library is missing one card. It succeeds when the tool
 names that card, accepts a file the user chooses for it, and prints the pack.
 
-- [ ] T081 [US4] Write failing contract test for `POST /api/assemblies/{id}/cards/{card_code}/image` in `tests/contract/test_assembly_contract.py`, including the `side` field for a double-sided card
+- [ ] T081 [US4] Write failing contract test for `POST /api/assemblies/{run_id}/cards/{card_code}/image` in `tests/contract/test_assembly_contract.py`, including the `side` field for a double-sided card
 - [ ] T082 [US4] Implement the upload route in `src/marchamp/api/routes.py`, streaming to a temporary file under the T011 byte ceiling **before** decode, then storing under the content SHA-256 in `runs/<id>/uploads/`
 - [ ] T083 [US4] Write failing tests that an upload is rejected with a specific reason when it is not a decodable image or is below the print-resolution floor, and that the card **remains unresolved**, in `tests/integration/test_upload.py` (FR-028)
 - [ ] T084 [US4] Implement upload validation in `src/marchamp/api/routes.py` by reusing `validate_source` from `src/marchamp/render/images.py` — manual choice bypasses discovery, never validation
 - [ ] T085 [US4] Write failing tests that a manual resolution is distinguishable from every automatic one, and that **only the uploaded file's own name** is recorded — no path from outside the named library root reaches the report or the log — in `tests/integration/test_upload.py` (FR-027, FR-029, SC-006c)
 - [ ] T086 [US4] Implement manual provenance recording in `src/marchamp/assembly/resolve.py` and `src/marchamp/store/runs.py`
 - [ ] T087 [US4] Write failing tests that a run resolved with an uploaded file still prints that card after the source file is moved or deleted on disk, because the run holds the bytes, in `tests/integration/test_upload.py` (FR-026e, SC-006b, US4 scenario 4)
-- [ ] T088 [US4] Write failing contract test for `POST /api/assemblies/{id}/cards/{card_code}/omission`, asserting the explicit `acknowledged` flag and the **`409` when the run has not yet reported which cards are unresolved**, in `tests/contract/test_assembly_contract.py` (FR-030, FR-030a)
+- [ ] T088 [US4] Write failing contract test for `POST /api/assemblies/{run_id}/cards/{card_code}/omission`, asserting the explicit `acknowledged` flag and the **`409` when the run has not yet reported which cards are unresolved**, in `tests/contract/test_assembly_contract.py` (FR-030, FR-030a)
 - [ ] T089 [US4] Implement the omission route in `src/marchamp/api/routes.py` and its state guard in `src/marchamp/assembly/service.py`. A blanket permission offered up front is refused rather than honoured, and the run still stops on the first card it cannot resolve
 - [ ] T090 [US4] Write failing test that an omitted card is named in the report, counted against the pack listing's card count, and written to the run's log, in `tests/integration/test_incomplete.py` (FR-030b, SC-006e)
 - [ ] T091 [US4] Implement omission reporting in `src/marchamp/assembly/report.py` and the log record in `src/marchamp/observability/logging.py`
-- [ ] T092 [US4] Write failing contract test for `POST /api/assemblies/{id}/decklist`, and a test that a hero folder with no decklist scan names the gap and offers the Hall of Heroes address while the application **never fetches it**, in `tests/integration/test_decklist.py` (FR-013b, FR-013c, SC-006j)
-- [ ] T093 [US4] Implement the decklist route in `src/marchamp/api/routes.py` and the `decklist_printed` / `decklist_source_url` fields in `src/marchamp/assembly/report.py`. A missing decklist never refuses the run
+- [ ] T092 [US4] Write failing contract test for the **upload** half of `POST /api/assemblies/{run_id}/decklist`, and a test that a hero folder with no decklist scan — Hulk's and Phoenix's real case — names the gap and offers the Hall of Heroes address while the application **never fetches it**, in `tests/integration/test_decklist.py` (FR-013c, SC-006j)
+- [ ] T093 [US4] Implement the decklist upload path in `src/marchamp/api/routes.py`, reusing T084's validation. Detection, the decision endpoint, and the report fields are US1's (T048a–T048d); a missing decklist never refuses the run
 - [ ] T094 [US4] Extend `src/marchamp/web/app.js` to present each unresolved card individually with an upload control and an explicit omit action — never a failed run the user must diagnose (FR-026d)
 - [ ] T095 [US4] Write failing test that supplying a file for the first of two unresolved cards keeps the folder, the pack, and every earlier choice, and asks only about the second, in `tests/integration/test_upload.py` (US4 scenario 8)
 
@@ -268,14 +279,15 @@ folder, the pack, and the first card's resolution intact.
 - [ ] T100 [US5] Write failing test that a resumed run whose library folder has moved or been unmounted reports that **against the run**, naming the folder — not as a wave of newly missing cards — and that a *finished* run downloads its PDF regardless, in `tests/integration/test_resume.py` (FR-026f, SC-006h)
 - [ ] T101 [US5] Implement the moved-folder report in `src/marchamp/assembly/service.py`, checked on resume rather than during resolution
 - [ ] T102 [US5] Write failing test that a resumed run keeps the snapshot revision it started with, so an explicit refresh cannot silently change composition or quantities under resolutions already made, in `tests/integration/test_snapshots.py` (FR-044b, FR-045)
-- [ ] T103 [US5] [P] Write failing contract tests for `DELETE /api/assemblies/{id}`, `GET /api/pdfs`, `DELETE /api/pdfs/{id}`, and `GET /api/pdfs/{id}/document` in `tests/contract/test_pdfs_contract.py`
+- [ ] T103 [US5] [P] Write failing contract tests for `DELETE /api/assemblies/{run_id}`, `GET /api/pdfs`, `DELETE /api/pdfs/{pdf_id}`, and `GET /api/pdfs/{pdf_id}/document` in `tests/contract/test_pdfs_contract.py`
 - [ ] T104 [US5] Implement those routes in `src/marchamp/api/routes.py`
 - [ ] T105 [US5] Write failing tests that deleting a run reclaims **only** its uploads and a saved PDF it named, that a standard PDF survives and other runs still download it, and that deleting a standard PDF from the stored-PDF list reclaims the space and the next assembly rebuilds, in `tests/integration/test_retention.py` (FR-026g, FR-026g1, US5 scenarios 6, 6a, 6b)
 - [ ] T106 [US5] Implement deletion in `src/marchamp/store/pdfs.py` and `src/marchamp/store/runs.py`. Assert the **freed bytes**, not just the absent file, and never touch the scan library (FR-001)
 - [ ] T107 [US5] Write failing contract test that `save_as` is required when a run was customized and forbidden when it was not, in `tests/contract/test_assembly_contract.py` (FR-026h, FR-026i, US5 scenario 7)
 - [ ] T108 [US5] Implement the standard-versus-saved decision in `src/marchamp/assembly/service.py`, tracking a `customized` flag on the run in `src/marchamp/store/runs.py`
 - [ ] T109 [US5] Extend `src/marchamp/web/app.js` with the run list and the stored-PDF list, showing total bytes so reclaiming is an informed choice
-- [ ] T110 [US5] Write the failing contract test for `GET` and `POST /api/packs/{pack_code}/snapshot` in `tests/contract/test_pdfs_contract.py`, then implement both in `src/marchamp/api/routes.py`, so FR-044b's manual refresh is reachable without a browser
+- [ ] T110a [US5] Write the failing contract test for `GET` and `POST /api/packs/{pack_code}/snapshot` in `tests/contract/test_packs_contract.py`
+- [ ] T110b [US5] Implement both in `src/marchamp/api/routes.py`, so FR-044b's manual refresh is reachable without a browser
 
 **Checkpoint**: no user who leaves the wizard loses work, and storage grows only with PDFs they
 chose to keep.
@@ -285,12 +297,14 @@ chose to keep.
 ## Phase 8: Polish & Cross-Cutting Concerns
 
 - [ ] T111 Write the determinism test in `tests/integration/test_determinism.py` — assemble twice from the same library and snapshot **with reuse disabled** and compare bytes. Serving a stored PDF twice proves nothing, and FR-045 requires this to be verifiable independently of FR-026h (SC-007)
-- [ ] T112 [P] Write the egress hardening test in `tests/integration/test_egress.py` — no request to any host other than `marvelcdb.com`, no redirect followed, private and link-local ranges refused after resolution, and the `User-Agent` naming the application (FR-003, FR-041, constitution egress gate)
-- [ ] T113 [P] Write the request-count test in `tests/integration/test_snapshots.py` — assembling a 34-card pack issues **two** requests and not 34, and a second run against a snapshot inside `max-age` issues **zero** (FR-040, SC-006d)
+- [ ] T112 [P] Write the egress hardening test in `tests/integration/test_egress.py` — no request to any host other than `marvelcdb.com`, **every request path one of the three allowlisted JSON endpoints**, no response body consumed as image bytes, and `imagesrc` absent from every captured snapshot; plus no redirect followed, private and link-local ranges refused after resolution, and the `User-Agent` naming the application. The host allowlist alone cannot discharge FR-002 — MarvelCDB serves card art from the same host (FR-002, FR-003, FR-041, FR-038a, constitution egress gate)
+- [ ] T113 [P] Write the request-count test in `tests/integration/test_snapshots.py` — assembling `cap` issues **three** requests (the pack index, `cards/cap`, and `cards/core` for its seven reprint links) and not 34, so the count follows the number of *distinct packs referenced* and never the card count; and a second run against a snapshot still inside `max-age` issues **zero** (FR-040, SC-006d, research R4)
 - [ ] T114 [P] Extend `src/marchamp/observability/logging.py` with the assembly run record — pack, identified or user-selected, snapshot revision, resolutions with provenance, omissions, outcome — and test that it carries no path from outside the named library root (FR-009, FR-030b, Principle V)
-- [ ] T115 Write the acceptance test for all ten heroes over the fixture library in `tests/integration/test_acceptance_heroes.py` (SC-002, SC-003, SC-003c)
-- [ ] T116 Write `specs/002-starter-deck-assembly/physical-uat.md` and the `physical`-marked test in `tests/integration/test_physical_pack.py` covering quickstart V12 — print, cut, sort from the report alone, build the starter deck from the printed decklist card, play it (SC-002a, SC-002b)
-- [ ] T117 [P] Update `CLAUDE.md` — feature 002's state, the new packages, `MARCHAMP_STATE_DIR`, and that `MARCHAMP_IMAGE_DIR`/`MARCHAMP_CATALOG` are not required for the 002 paths
+- [ ] T115 Write the acceptance test for all ten heroes over the fixture library in `tests/integration/test_acceptance_heroes.py`, asserting that Hulk and Phoenix report the FR-013c gap with the Hall of Heroes address and still print, while the other eight print a decklist card — a run over Hulk that reported a decklist card would be silently wrong (SC-002, SC-002a, SC-003, SC-003c, SC-006j)
+- [ ] T116 Write `specs/002-starter-deck-assembly/physical-uat.md` and the `physical`-marked test in `tests/integration/test_physical_pack.py` covering quickstart V12 — print, cut, sort from the report alone, build the starter deck from the printed decklist card, play it. Record the finished PDF's byte size and the wall-clock time from naming the folder to holding the PDF, against SC-001's five minutes of user time — the one criterion no automated test can carry (SC-001, SC-002a, SC-002b)
+- [ ] T120 [P] Write the library-immutability test in `tests/integration/test_library_readonly.py` — capture the library root's file set, sizes, and mtimes, drive a full run through it (identify, confirm, upload for one card, omit another, render, then delete the run), and assert every one of them unchanged. The library is a synced Drive folder, which is what makes this the highest-consequence guarantee in the feature (FR-001, FR-008)
+- [ ] T121 Write the `physical`-marked real-library acceptance test in `tests/integration/test_real_library.py` — the ten heroes against the mounted Drive folder, local only, never in CI. This is SC-002/SC-003's acceptance evidence; T115's fixture run is the regression guard, not a substitute (SC-003b)
+- [ ] T117 [P] Update `CLAUDE.md` — feature 002's state, the new packages, `MARCHAMP_STATE_DIR`, that `MARCHAMP_IMAGE_DIR`/`MARCHAMP_CATALOG` are not required for the 002 paths, and that `SC-007` names 001's render target and 002's determinism criterion, which are different things
 - [ ] T118 Run `uv run ruff check . && uv run ruff format --check .` and `uv run pytest -m "not physical"` — both clean
 - [ ] T119 Write the security review notes for the PR body. The constitution requires **written** notes, not a checked box, when a change touches an outbound network call, image or PDF parsing, the asset adapter, the content store, or dependency additions — this change touches all five
 
@@ -353,7 +367,8 @@ Track C (library):        T034 → T035 → T036 → T037, then T038 → T039
 **Phase 4** — `T067` and `T069` are `[P]`: both add cases to `tests/unit/test_report.py` in
 different sections, and neither depends on the other's implementation task.
 
-**Phase 8** — `T112`, `T113`, `T114`, and `T117` are all `[P]`.
+**Phase 8** — `T112`, `T113`, `T114`, `T117`, and `T120` are all `[P]`. `T121` is `physical` and
+runs only on the user's machine, as does the measurement half of `T116`.
 
 ---
 

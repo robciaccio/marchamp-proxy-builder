@@ -72,11 +72,20 @@ uv run pytest tests/integration/test_acceptance_heroes.py     # fixtures, in CI
 uv run pytest -m physical tests/integration/test_real_library.py   # real scans, local only
 ```
 
-| Set | Heroes | What it proves |
-|---|---|---|
-| SC-002 | Captain America, Star-Lord, Wasp, Hulk | Resolve cleanly from their own folders plus reprint links |
-| SC-003 | Thor, Black Widow, Ant-Man, Ms. Marvel | Need whole-library search and the name fallback |
-| SC-003c | Phoenix, Wonder Man | **Carry no usable positions at all** — the copy-counting filename convention |
+| Set | Heroes | Decklist scan | What it proves |
+|---|---|---|---|
+| SC-002 | Captain America, Star-Lord, Wasp | ✓ | Resolve cleanly from their own folders plus reprint links |
+| SC-002 | Hulk | **none** | The same, plus the FR-013c gap inside the no-manual-intervention set |
+| SC-003 | Thor, Black Widow, Ant-Man, Ms. Marvel | ✓ | Need whole-library search and the name fallback |
+| SC-003c | Wonder Man | ✓ | **Carries no usable positions at all** — the copy-counting filename convention |
+| SC-003c | Phoenix | **none** | The copy-counting convention **and** the FR-013c gap |
+
+Decklist presence measured 2026-08-17: eight of the ten hold a scan; Hulk and Phoenix do not.
+Hulk is why SC-002a is conditional rather than absolute — it sits in the set that must print with
+**no manual intervention**, and supplying a decklist is an upload, so an absolute SC-002a made
+SC-002 and SC-002a jointly unsatisfiable for a hero the spec already names. Both heroes still
+print, both report the gap and offer the Hall of Heroes address, and neither is refused (FR-013c,
+SC-006j).
 
 SC-003c is the one that decides whether the design is right. Those two folders resolve almost
 nothing under positional matching, so they exercise FR-023's name fallback as the *primary*
@@ -278,12 +287,13 @@ invariant someone maintains — the test asserts the freed bytes, not just the a
 *Discharges: FR-003, FR-038, FR-038a, FR-039, FR-040, FR-041, FR-042, FR-043, FR-044a, FR-046, SC-006d*
 
 ```bash
-uv run pytest tests/unit/test_upstream.py tests/integration/test_snapshots.py
+uv run pytest tests/unit/test_upstream_models.py tests/unit/test_upstream_client.py \
+              tests/integration/test_snapshots.py tests/integration/test_egress.py
 ```
 
 | Assertion | Requirement |
 |---|---|
-| Assembling a 34-card pack issues **2** requests (pack index, pack cards) — not 34 | FR-040, SC-006d |
+| Assembling `cap` issues **3** requests — the pack index, `cards/cap`, and `cards/core` for its seven reprint links — not 34. The count follows distinct packs referenced, never card count (R4) | FR-040, SC-006d |
 | A second run against a snapshot inside `max-age` issues **zero** | FR-039, SC-006d |
 | Past `max-age`, one conditional `If-Modified-Since`; a `304` keeps the revision | FR-039, R8 |
 | No request is ever made to a host other than `marvelcdb.com` | FR-003 |
@@ -325,17 +335,24 @@ uv run pytest -m physical tests/integration/test_physical_pack.py
 empty, and the identity card, nemesis set, and decklist cost no more pages than their card
 count requires (SC-002b).
 
-For a hero folder holding no decklist scan (25 of 60), the run names the gap and offers the
-Hall of Heroes address, the user downloads the image and uploads it, and **the application
-never fetches it** (FR-013c). A pack printed without one still prints, and says so (SC-006j).
+For a hero folder holding a decklist scan, the tool finds it by filename and **proposes** it — the
+user accepts before it is printed, which costs one click and catches a wrong file at one page
+instead of forty (FR-013d). Accepting is not customization, so the run still produces the pack's
+standard PDF (FR-013e).
+
+For a hero folder holding no decklist scan (25 of 60, including Hulk and Phoenix), the run names
+the gap and offers the Hall of Heroes address, the user downloads the image and uploads it, and
+**the application never fetches it** (FR-013c). A pack printed without one still prints, and says
+so (SC-006j).
 
 ---
 
 ## What this quickstart deliberately does not test
 
-- **Render time.** Feature 001's SC-007 and SC-007a are knowingly missed — 48.9 s and 202 MB
-  against a 30 s target, measured, reviewed, and accepted. This feature does not reopen them and
-  no scenario here asserts a duration.
+- **Render time.** **001's** SC-007 and SC-007a are knowingly missed — 48.9 s and 202 MB against a
+  30 s target, measured, reviewed, and accepted. This feature does not reopen them and no scenario
+  here asserts a duration. 002's own SC-007 is byte-identical regeneration, verified in V8; the
+  identifier is reused across features and is always qualified here.
 - **Deck size.** Nothing checks for 40 cards, or any total. Pre-built decks measured 40, 41, and
   42; pack sizes vary independently. FR-018 forbids expecting a total and forbids warning on one,
   and `pack.total` from the upstream index was measured to disagree with the summed quantity for

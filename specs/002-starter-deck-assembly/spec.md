@@ -661,13 +661,42 @@ for why one term could not serve.
   supplies it through the same upload path an unresolved card uses (FR-026e). A missing
   decklist MUST NOT refuse the run — the rest of the pack still prints, reported as printed
   without one. This preserves FR-002 and keeps the egress allowlist at a single host.
+- **FR-013d**: The decklist scan MUST be located by **filename within the hero folder** — a
+  normalised filename stem containing `deck`, optionally followed by whitespace, then `list`,
+  matched case-insensitively. Observed forms are `<hero name> decklist.<ext>` and
+  `<hero name> deck list.<ext>` with `.jpg`, `.tif`, and `.tiff` extensions, measured 2026-08-17.
+  The hero name in the filename MUST NOT be required to agree with the folder's: the hero folder
+  already bounds the search, and the library's own casing does not track its folder names. This
+  match MUST NOT be treated as a card name match under FR-023, and the decklist MUST NOT be
+  resolved through the card cascade (FR-020–FR-025), which keys on a position, a pack code, and a
+  canonical name the decklist card has no entry for.
+
+  The tool MUST propose the candidate it found and MUST NOT print it without the user accepting
+  it: a confidently wrong decklist card is the failure FR-012a exists to catch, at one page
+  instead of forty. Zero candidates is FR-013c's gap. Candidates differing only by file extension
+  are one candidate — a duplicate rendition resolved deterministically and reported (FR-034),
+  never a question for the user, since `.tif`/`.tiff` pairs occur throughout the library.
+  Candidates with **different stems** MUST be reported as a conflict the user resolves by picking,
+  never by arbitrary choice (FR-033).
+
+  A file matched as the decklist MUST NOT also be reported as unused or uninterpretable (FR-031,
+  FR-032) — it was used. Without this clause every decklist scan in the library is an
+  uninterpretable file, because none of them matches any of the three filename conventions.
+- **FR-013e**: Accepting the decklist candidate the tool proposed MUST NOT count as customization
+  under FR-026i, exactly as confirming an identified pack does not (FR-012b): what is printed
+  follows from the folder's own contents. Picking a *different* file, uploading one (FR-013c), or
+  skipping the decklist MUST count as customization, because each changes what is printed. Without
+  this distinction every run needs a decklist decision, every run is customized, and the standard
+  PDF reuse of FR-026h never applies once.
 - **FR-014**: A pack card absent from the hero folder that carries a reprint link MUST still be
   printed, with its image sourced from the printing it duplicates. Reprint links MUST be
   followed wherever they point, not only to the Core Set.
 - **FR-015**: The output MUST be organised into four reported groups: the pack's player cards,
   the identity card (FR-015a), the nemesis and obligation set (FR-015b), and the decklist card
-  (FR-013b). Every group MUST be produced; none is optional, and a player card on its own is not
-  a hero anyone can play.
+  (FR-013b). The decklist card is the one conditional member — printed when the hero folder holds
+  a scan the user accepts, and its absence reported rather than refusing the run (FR-013b,
+  FR-013c, FR-013d, FR-015c). The other three MUST be produced; none of them is optional, and a
+  player card on its own is not a hero anyone can play.
 - **FR-015a**: Assembling a hero MUST produce the hero's identity card. Its faces MUST be read
   from the card data and MUST NOT be assumed to number two, since a hero may have more.
 - **FR-015f**: A pack card the card data marks as double-sided MUST be printed with both faces,
@@ -976,8 +1005,12 @@ for why one term could not serve.
   library's filenames and folder layout, so a resolver regression is caught without the real
   scans present.
 - **SC-002a**: Each acceptance hero produces one PDF carrying its player cards, an identity card
-  with every face its card data records, its nemesis set, and its decklist card, in that order.
-  A user can print one hero, build the starter deck from the printed decklist, and play it
+  with every face its card data records, its nemesis set, and — **where the hero folder holds a
+  scan of one** — its decklist card, in that order. 25 of 60 folders hold none, and supplying one
+  is an upload (FR-013c), which SC-002's "no manual intervention" excludes; the two criteria are
+  written to agree rather than to be traded off against each other. Hulk and Phoenix were measured
+  to hold no decklist scan; the other eight acceptance heroes do. For a hero whose folder holds
+  one, a user can print that hero, build the starter deck from the printed decklist, and play it
   without owning the pack.
 - **SC-002b**: That PDF occupies the fewest pages its card count allows: no page before the
   last is partly empty, and adding the identity card, nemesis set, and decklist card costs no

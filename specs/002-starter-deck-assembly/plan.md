@@ -60,8 +60,10 @@ and no MarvelCDB card text (FR-038a).
 **Performance Goals**: SC-001 (a printable pack in under five minutes of *user* time) and
 SC-006d (upstream requests do not grow with card count; a fresh snapshot issues none).
 SC-006i sets the reuse target: a second assembly of an unchanged pack skips the ~49 s render
-but still resolves. **Feature 001's SC-007/SC-007a render-time targets are knowingly missed and
-are not reopened here** — a real deck measures 48.9 s and 202 MB, reviewed and accepted.
+but still resolves. **001 SC-007/SC-007a (render time) are knowingly missed and are not reopened
+here** — a real deck measures 48.9 s and 202 MB, reviewed and accepted. Note that 002's own SC-007
+is byte-identical regeneration and is a different criterion entirely; the identifier is reused
+across features and is always qualified here.
 
 **Constraints**: Outbound access limited to `marvelcdb.com` and to metadata only (FR-002,
 FR-003). Byte-identical regeneration against the same library and snapshot (FR-045). Every
@@ -70,7 +72,8 @@ record or log (FR-009). Loopback binding only. A run must survive an application
 
 **Scale/Scope**: One human user, one library of ~4,447 images, hero packs of 32–46 card records
 and 56–60 physical cards. Run counts in the tens to low hundreds over the application's life —
-an assumption ADR 0001 states rather than verifies. Roughly 7 pages per pack PDF, ~202 MB each.
+an assumption ADR 0001 states rather than verifies. Roughly 7 pages per pack PDF. 001 measured ~202 MB for a 41-card deck; a pack is ~60 faces, so
+**at least that and probably more** — measured for real in T116.
 
 ## Constitution Check
 
@@ -87,7 +90,7 @@ worth reading.
 | **III. Content and Assets Are External Data** | PASS, and **strengthened** | The catalog stops being an authored file for this path: a pack listing is fetched, validated at capture (FR-047), versioned by revision (FR-044), and reversible by refresh (FR-044b) — Principle III's three content clauses, satisfied by the snapshot rather than by a file the user maintains. `compose()` and `validate_source()` move from `image_dir: Path` to `assets.Store` (research R8), which closes a standing gap where `render/` knew binaries were files. |
 | **IV. Simplicity & YAGNI** | PASS with two justified items | No database, no queue, no cache tier, no auth, no plugin system. Two new runtime dependencies and one new storage seam, all in Complexity Tracking against requirements that exist today. HTTP caching is hand-rolled rather than adding `hishel` — the snapshot store already is the cache, and must be, because runs pin revisions. `pack.total` was available as a completeness cross-check and is deliberately **not** wired in (research R12). |
 | **V. Observability & Reproducibility** | PASS | The run record is the log record: pack, whether identified or user-selected, snapshot revision, every resolution with its provenance, omissions, outcome. Determinism carries over from 001 and gains an ordering rule (research R10), and FR-045 is verified with reuse disabled so a served PDF cannot fake agreement. |
-| **Security — egress allowlisted** | **Newly in force** | 001 made no outbound call and recorded that as deliberate so this moment would bring the requirement back. One host, `marvelcdb.com`; redirects not followed; the resolved address re-checked against loopback, link-local, and private ranges before connecting. Two endpoints, both documented in the contract. No credentials exist to send (FR-003). |
+| **Security — egress allowlisted** | **Newly in force** | 001 made no outbound call and recorded that as deliberate so this moment would bring the requirement back. One host, `marvelcdb.com`; redirects not followed; the resolved address re-checked against loopback, link-local, and private ranges before connecting. Three endpoints, all documented in research R1 and R4: `cards/{pack_code}.json`, `packs/`, and `card/{code}.json` as the prefix-map fallback — bounded per unknown pack prefix, never per card (FR-040). No credentials exist to send (FR-003). |
 | **Security — untrusted binaries** | PASS, **widened** | Uploaded files (FR-026e) are a new ingestion path and get the identical treatment: content-sniffed, decoded, checked against the byte, pixel, and resolution ceilings, rejected with a specific reason (FR-028). Manual choice bypasses discovery, never validation. Upstream JSON is validated on capture and on read (FR-047). |
 | **Security — isolated parsing** | PASS | Decode and render keep 001's `ProcessPoolExecutor` with `RLIMIT_AS`/`RLIMIT_CPU`. Both store implementations pickle across that boundary. The HTTP client runs in the request process and parses only JSON. |
 | **Security — expensive work bounded** | PASS | 001's per-generation ceilings apply unchanged. New bounds this feature owes: upload byte size, library scan file count, and a cap on concurrent renders. Retention is bounded by the user (FR-026g) rather than by policy, which the spec states and accepts. |
@@ -156,7 +159,8 @@ src/marchamp/
 │   └── snapshots.py          + capture, revision hash, freshness, refresh (FR-044, FR-044a/b)
 ├── library/                  + reading the scan library
 │   ├── filenames.py          + the three conventions; unparseable is reported (FR-032)
-│   ├── index.py              + one os.walk per resolve; position and name indexes (FR-021)
+│   ├── index.py              + one os.walk per resolve; position, name, and decklist
+│   │                           indexes (FR-021, FR-013d)
 │   └── identify.py           + rank the pack index, verify one pack, score (FR-010, FR-011)
 ├── assembly/                 + the feature's core
 │   ├── faces.py              + linked chain + double_sided -> faces; groups (FR-015a/b/f)
@@ -222,13 +226,13 @@ specific card or file at fault" answerable without tracing.
 | `upstream/snapshots.py` | FR-039, FR-044, FR-044a, FR-044b, FR-046, FR-047 |
 | `upstream/models.py` | FR-038a, FR-047 |
 | `library/filenames.py` | FR-032, FR-033, FR-034 |
-| `library/index.py` | FR-020, FR-021, FR-031 |
+| `library/index.py` | FR-013d, FR-020, FR-021, FR-031 |
 | `library/identify.py` | FR-010, FR-011, FR-012 |
 | `assembly/faces.py` | FR-015, FR-015a, FR-015b, FR-015e, FR-015f, FR-018 |
 | `assembly/resolve.py` | FR-013, FR-013a, FR-014, FR-016, FR-017, FR-020–FR-025, FR-030 |
 | `assembly/catalog.py` | FR-015d, FR-048 |
 | `assembly/report.py` | FR-012, FR-018, FR-024, FR-029, FR-030b, FR-031–FR-037 |
-| `assembly/service.py` | FR-012a, FR-012b, FR-026a, FR-030a, FR-036, FR-045 |
+| `assembly/service.py` | FR-012a, FR-012b, FR-013e, FR-026a, FR-030a, FR-036, FR-045 |
 | `store/layout.py` | FR-001, FR-008, FR-009 |
 | `store/atomic.py` | FR-026b, FR-026f |
 | `store/runs.py` | FR-026b, FR-026c, FR-026e, FR-044, FR-045 |
@@ -237,7 +241,7 @@ specific card or file at fault" answerable without tracing.
 | `render/document.py`, `render/images.py` | FR-004, FR-028, FR-048 |
 | `api/` | FR-005, FR-006, FR-026, FR-026c, FR-026d, FR-027, FR-036, FR-037, FR-049 |
 | `config.py` | FR-005, FR-007 |
-| `web/` | FR-012a, FR-012b, FR-013c, FR-026c, FR-026d, FR-026e |
+| `web/` | FR-012a, FR-012b, FR-013c, FR-013d, FR-026c, FR-026d, FR-026e |
 
 ## Artifact Update Rule
 
