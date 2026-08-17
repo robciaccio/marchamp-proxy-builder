@@ -25,7 +25,7 @@
 
 ## Feature Readiness
 
-- [ ] All functional requirements have clear acceptance criteria — **37 scenarios for 69
+- [ ] All functional requirements have clear acceptance criteria — **48 scenarios for 75
       requirements**, see C
 - [x] User scenarios cover primary flows
 - [ ] Feature meets measurable outcomes defined in Success Criteria — not assessable before
@@ -54,8 +54,8 @@ Both are consequential — FR-023 in particular, since too strict a rule leaves 
 deferred to the plan below, and that deferral is what makes these boxes fail. If either
 becomes user-visible, it belongs back in the spec.
 
-**C. Acceptance coverage is partial.** 37 acceptance scenarios against 69 functional
-requirements, after two clarification sessions on 2026-08-16 added to both. Covered: deck
+**C. Acceptance coverage is partial.** 48 acceptance scenarios against 75 functional
+requirements, after four clarification sessions on 2026-08-16 added to both. Covered: deck
 composition, quantities, borrowing, folder selection, manual resolution, run durability, PDF
 retention and reuse, pack confirmation, the identity and nemesis outputs, and the failure
 paths — the correctness-critical parts. Uncovered:
@@ -219,3 +219,39 @@ spec still names MarvelCDB, FR-011 and FR-023 are still the two ambiguous requir
 acceptance coverage is still partial and still thinnest over the reporting and conduct blocks.
 Item C is marginally worse in absolute terms: the pivot added FR-013a, FR-013b, and FR-013c and
 retired none, while adding three acceptance scenarios.
+
+### Resolved by a fourth clarification session, 2026-08-16
+
+Five questions, all closing gaps the pivot to pack printing opened or left behind.
+
+- **Rejecting the identified pack (FR-012b).** FR-012a made confirmation mandatory but never said
+  what "no" does. It now opens pack selection — ranked candidates or a search by name — and the
+  same path serves an FR-011 refusal and an unidentifiable folder. Both of the spec's most
+  carefully guarded failure modes previously terminated with the user holding a good folder and
+  no way to print it. FR-011's threshold can now stay strict without stranding anyone.
+- **What the standard PDF's reuse is keyed on (FR-026h).** Pack and snapshot revision were not
+  enough: FR-005 lets each run name a different folder, so a second library would have been
+  served the first one's PDF. The key now includes the identity of the images actually resolved —
+  not the folder's path, which would break reuse whenever the Drive mount moves (SC-006h) and
+  would retain a path against FR-009. Consequence recorded in SC-006i: reuse skips the render,
+  not the resolve. New SC-006k asserts the negative case.
+- **Who owns a stored PDF (FR-026g1).** US5's "its stored PDF" was wrong for a file FR-026h makes
+  shared. A standard PDF belongs to the pack; deleting a run reclaims only its uploads and any
+  PDF it saved by name. The rejected alternatives were unpredictable (reference counting, so the
+  user cannot tell whether deleting a run frees 202 MB) and unsafe (deleting the producer's PDF,
+  which revokes FR-026f for every other run).
+- **How far report accountability extends (FR-031, FR-032, SC-004).** "Folders consulted" was
+  written for one hero folder and, against FR-021's whole-library search, demanded a per-file
+  accounting of 4,447 images. Bounded to the named folder, with files elsewhere named only when
+  used or in conflict. FR-032 narrows to match.
+- **Double-sided player cards (FR-015f).** FR-015a covered the identity card only, leaving room
+  to print a double-sided player card front-only and report the run clean. Both faces are now
+  required and a missing back stops the run, consistent with feature 001's existing rule. FR-018
+  counts cards, not faces, because the pack listing does; the face count is reported alongside.
+
+**Checkbox states were re-evaluated against the updated spec and none changed: 11/16 before,
+11/16 after.** Items A, B, and C all survive this session. FR-011 gained a recourse but not a
+threshold, so B is unchanged; C improved in ratio (37/69 → 48/75) but the **conduct block
+FR-038 to FR-043 is still entirely unasserted**, which remains the gap most worth closing before
+planning ends.
+
