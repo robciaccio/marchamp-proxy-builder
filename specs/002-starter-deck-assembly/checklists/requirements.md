@@ -183,3 +183,39 @@ is to narrow SC-003 and report the gap, not to loosen FR-019.
 
 No [NEEDS CLARIFICATION] markers were needed. Questions that came up during drafting were
 settled against measurement, and are recorded in the spec's Clarifications section.
+
+### Superseded by a third clarification session, 2026-08-16
+
+**Read this before the three sections above it — parts of them are now false.** The feature
+pivoted from assembling a starter deck to printing a whole pack, so several notes recorded
+earlier describe a design that no longer exists. They are left in place as the record of how the
+decision was reached; what follows corrects them.
+
+- **"Corrected after review → Deck size was overstated" is itself now overstated.** It reports
+  the evidence for 40 as "real but partial". It is neither: pre-built decks were read directly
+  off the physical decklist cards and measured at 40 (Captain America, War Machine, Valkyrie),
+  **41** (Vision), and **42** (Psylocke). No 40-card expectation survives. FR-018 no longer warns
+  on a total and no longer names 40.
+- **"Evidence behind the rewrite → Copy counts differ between printings" was true but not the
+  whole truth.** Copy counts also differ between *the pack and the pre-built deck within that
+  pack*: War Machine's pack holds two copies of Two Against the World and its starter deck uses
+  one. MarvelCDB's `quantity` is a pack count. The earlier design would have printed War Machine
+  as a 41-card deck with nothing able to detect it.
+- **"Hall of Heroes was investigated and rejected" is reversed in effect.** The rejection was
+  sound for *reading* a decklist and is irrelevant now that nothing reads one: the decklist is
+  printed as a card, so Hall of Heroes is the fallback image source when the user's library has
+  no scan — fetched by the user, never by the application (FR-013c).
+- **"Resolved by clarification → nemesis and encounter cards get their own output" still
+  holds**, but there are now four groups rather than three; the decklist card is the fourth.
+- **"Open risk worth naming → SC-003 is asserted, not yet demonstrated" is superseded and
+  enlarged.** The 37/39/36/37 figures measured deck reconstruction, which the feature no longer
+  performs. The live risk is bigger: printing a whole pack requires resolving the pack's extra
+  aspect cards under `Aspects/` as well, so more cards must resolve than before, and two folders
+  (Phoenix, Wonder Man) carry no usable positions at all (SC-003c).
+
+**Checkbox states were re-evaluated against the rewritten spec and none changed: 11/16 before,
+11/16 after.** The three failing items A, B, and C survive the pivot unchanged in kind — the
+spec still names MarvelCDB, FR-011 and FR-023 are still the two ambiguous requirements, and
+acceptance coverage is still partial and still thinnest over the reporting and conduct blocks.
+Item C is marginally worse in absolute terms: the pivot added FR-013a, FR-013b, and FR-013c and
+retired none, while adding three acceptance scenarios.

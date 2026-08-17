@@ -1,4 +1,4 @@
-# Feature Specification: Starter Deck Assembly from a Scan Library
+# Feature Specification: Hero Pack Printing from a Scan Library
 
 **Feature Branch**: `002-starter-deck-assembly`
 
@@ -9,9 +9,15 @@
 **Status**: Draft
 
 **Input**: User description: "Point it at a hero folder in the scan library and get that
-hero's starter deck as a print-ready PDF. Card identity and quantities come from
-marvelcdb.com; images come from the library, including the ones the scanner skipped because
-they were already in the Core Set."
+hero's whole pack as a print-ready PDF — every card, plus the decklist card — so the starter
+deck can be built by hand from what comes off the printer. Card identity and quantities come
+from marvelcdb.com; images come from the library, including the ones the scanner skipped
+because they were already in the Core Set."
+
+> **Note on the directory name.** This feature is still filed under
+> `002-starter-deck-assembly` because renaming it would break the branch-to-spec correspondence
+> the constitution requires. The name is now historical: the feature prints a pack, and the
+> user assembles the starter deck from it.
 
 ## Why this exists
 
@@ -23,51 +29,75 @@ be unrecoverable.
 
 They are not. MarvelCDB publishes the complete card list for every pack, with the number of
 copies of each card the pack contains, under a public JSON API that needs no credentials.
-What it does *not* publish is which of a pack's cards form the pre-built starter deck — that
-is not a field, and it cannot be computed from pack contents. But the scan library already
-encodes it: the person who scanned these cards put the starter-deck cards in the hero's
-folder and everything else under `Aspects/`.
+That is enough to print a pack, and printing the pack is what this feature does.
 
-So the two halves fit together. The library says *which cards*; MarvelCDB says *what they
-are and how many*. Neither alone is enough, and the user should not have to supply either.
+Earlier drafts tried to do something harder: work out which of a pack's cards form the
+pre-built starter deck, and print only those. MarvelCDB does not record deck membership, so
+the folder structure of the scan library was pressed into service as a proxy for it. That
+approach was abandoned on 2026-08-16 after two measurements disproved its foundations
+(see Clarifications). The decisive one: **MarvelCDB's `quantity` is the number of copies in
+the *pack*, not the number in the *deck***, and the two genuinely differ — War Machine's pack
+holds two copies of Two Against the World and its starter deck uses one. A tool that derived
+the deck and took counts from MarvelCDB would have printed a deck with one card too many and
+had no way to notice.
 
-What makes this safe is that the tool can check its own work — but not, as an earlier draft
-of this spec claimed, by requiring the deck to total 40. The deckbuilding rules permit 40 to
-50 cards, and while every pre-built deck examined so far contains exactly 40, that has been
-observed rather than proven across the whole card pool.
+Printing the whole pack dissolves the problem rather than solving it. Every quantity question
+has a correct answer, because the pack listing is exactly a description of a pack. Nothing has
+to be inferred from folder structure. And the pack's own decklist card — the printed card that
+says which of those cards form the starter deck — is itself just a card, so the tool prints it
+alongside the rest and the user reads it off paper.
 
-So the check is completeness, not arithmetic: every card the tool decides belongs in the deck
-must resolve to an image, and one that does not stops the run by name. The total is reported
-alongside, and a total other than 40 is flagged as a strong signal that something did not
-resolve — because in every case measured so far, it was. That is a warning the user can
-judge, not a gate that would refuse a legitimately larger deck.
-
-Stopping is the default, not the last word. A user who knows a card is missing and wants the
-other thirty-nine on paper anyway can say so and print. What the tool owes them is that the
-gap is never invisible — named when it happens, and still named in the report and the log
-afterwards. The failure this feature exists to prevent is a deck that is quietly wrong, not a
-deck the user knowingly chose to print short.
+What the tool still owes the user is completeness. Every card in the pack must resolve to an
+image, and one that does not stops the run by name. Stopping is the default, not the last
+word: a user who knows a card is missing and wants the rest on paper anyway can say so and
+print. What the tool owes them is that the gap is never invisible — named when it happens, and
+still named in the report and the log afterwards. The failure this feature exists to prevent
+is a pack that is quietly incomplete, not one the user knowingly chose to print short.
 
 ## Clarifications
 
 ### Session 2026-08-16
 
-- **Q: Which cards belong in the deck, given MarvelCDB does not record deck membership?**
-  A: The hero folder's own contents say which. This was measured: summing a pack's hero set,
-  main aspect, and basic cards yields 43, 43, 43, 43, 40, 43, 43, 43, 43, 43, 42, and 37
-  across twelve packs, so membership is not derivable from pack contents. Official starter
-  decklists exist on MarvelCDB only for the five Core Set heroes. This answers membership
-  only — *how many* of each card and *where its image lives* are separate questions, answered
-  below.
-- **Q: How many copies of each card?**
-  A: From MarvelCDB's `quantity` for the printing being assembled (FR-016). The scanner made
-  one scan per distinct card, never one per physical copy, so the count can never come from
-  counting files.
+- **Q: Which cards does the tool print?**
+  A: **Every card in the pack** (FR-013). Deck membership is not derived at all. Two earlier
+  answers here — that the hero folder's contents define membership, and that MarvelCDB's
+  `quantity` gives the number of copies to print — were both superseded on 2026-08-16 by the
+  measurements recorded in the next two bullets. Printing the pack makes every quantity
+  question answerable from the pack listing alone.
+- **Q: Is a pre-built starter deck always 40 cards?**
+  A: **No — measured, not assumed.** Read directly off the physical decklist cards in the scan
+  library: Vision's starter deck is **41** cards and Psylocke's is **42**. Both are legal; the
+  deckbuilding rules permit 40 to 50. The earlier claim that all evidence pointed at 40 rested
+  on eight hero folders that happen to be early packs. No 40-card expectation survives anywhere
+  in this spec, and nothing warns against one.
+- **Q: Does MarvelCDB's `quantity` give the number of copies in the starter deck?**
+  A: **No. It is the number of copies in the pack**, and the two differ. War Machine's decklist
+  card lists `24 Two Against the World` once, while MarvelCDB reports `quantity: 2` for that
+  position; Valkyrie's lists `23 The Power of Aggression` once against a reported `quantity: 2`.
+  A tool that derived the starter deck and took its counts from MarvelCDB would have printed
+  41 cards for War Machine and had no way to detect it, because 41 is a legal deck size. This
+  single finding is why the feature prints packs rather than decks. For printing a *pack*,
+  `quantity` is exactly the right number and needs no correction (FR-016).
+- **Q: Where does the decklist card come from?**
+  A: From the user's own library when it holds a scan of one — 35 of the 60 hero folders do —
+  and it is printed as a card alongside the rest (FR-013b). When the folder has none, the run
+  names the gap and offers the Hall of Heroes URL; the user downloads the image and supplies it
+  through the same upload path an unresolved card uses (FR-013c, FR-026e). The application
+  never fetches it. This keeps FR-002's prohibition on downloading images intact and keeps the
+  egress allowlist at a single host.
+- **Q: Does a pack card that resolves to no image still stop the run?**
+  A: Yes, and every pack card is held to the same bar (FR-017). With membership derivation gone
+  the tool has no basis for calling one pack card more important than another, so a two-tier
+  rule would be arbitrary. The consequence is accepted: runs will stop more often than a
+  deck-only tool would, because the pack's extra aspect cards are scattered across `Aspects/`
+  and may not all be scanned. The explicit override (FR-030) is unchanged.
 - **Q: What about cards the scanner skipped because they were already in the Core Set?**
   A: MarvelCDB records that two printings are the same card, so a pack card absent from the
-  hero folder is recognised as belonging to the deck and its image is taken from the printing
-  it duplicates (FR-014, FR-022). For Captain America that recovers Make the Call, The Power
-  of Leadership, Mockingbird, Energy, Genius, and Strength — eight physical cards.
+  hero folder still gets printed and its image is taken from the printing it duplicates
+  (FR-014, FR-022). For Captain America that recovers Make the Call, The Power of Leadership,
+  Mockingbird, Energy, Genius, and Strength — eight physical cards. Reprint links are not
+  confined to the Core Set: Wasp's `13020` duplicates a card in Ant-Man's pack and its `13025`
+  one in Black Widow's, so the link is followed wherever it points.
 - **Q: How are a file and a MarvelCDB card matched?**
   A: On `(pack_code, position)`. The trailing number in the filename is exactly MarvelCDB's
   `position`. Card *names* in filenames are unreliable and MUST NOT be parsed cold.
@@ -75,16 +105,13 @@ deck the user knowingly chose to print short.
   A: From the printing being assembled, never from the printing the image came from.
 - **Q: Does the application download card art from MarvelCDB?**
   A: No. MarvelCDB supplies metadata only; every image comes from the user's library.
-- **Q: Is a pre-built starter deck always 40 cards?**
-  A: Not established. The rules permit 40 to 50. All five official starter decklists on
-  MarvelCDB are 40, and all eight hero folders reconstructed to 40, but that is thirteen
-  observations against roughly sixty released packs. The spec therefore treats 40 as an
-  expectation to report against, never as a gate (FR-017, FR-018).
-- **Q: Can Hall of Heroes supply official pre-built contents instead?**
-  A: No. It publishes each pack's starter deck as a photograph of the decklist card
-  (`capamericadeck-1.jpg`), so using it would require the same optical recognition the
-  library's own scanned decklist photos would. Investigated 2026-08-16 and rejected on that
-  basis, not on quality.
+- **Q: Can Hall of Heroes supply official pre-built contents?**
+  A: It publishes each pack's starter deck as a photograph of the decklist card
+  (`capamericadeck-1.jpg`). An earlier answer rejected this because *reading* the photograph
+  would require optical recognition. That objection no longer applies, because nothing reads
+  it: the photograph is printed as a card and the user reads it off paper. Hall of Heroes is
+  therefore the fallback *source of the image* when the library has no decklist scan — fetched
+  by the user, not by the application (FR-013c).
 - **Q: How does the user say which library to read?**
   A: By naming a folder when they ask for a deck. No environment variable, no pre-configured
   root (FR-005).
@@ -98,13 +125,11 @@ deck the user knowingly chose to print short.
   are therefore durable, which feature 001's generation registry deliberately was not — and
   the assembly report lives on the run record, so an incomplete deck stays legible as
   incomplete without depending on a browser tab staying open (FR-030b).
-- **Q: Does assembling a hero produce anything besides the 40-card deck?**
-  A: Yes. A printed player deck alone cannot be played: the hero and alter-ego identity card
-  and the hero's nemesis and obligation cards are not part of the 40, and without them the
-  output is not a hero you can sit down with. Assembling produces all three — the player deck,
-  the identity card, and the nemesis set — resolved by the same rules and held to the same
-  completeness check. They remain excluded from the deck total, so the expectation of 40 is
-  unaffected (FR-015, FR-015a, FR-015b).
+- **Q: What does the printed output contain?**
+  A: Everything the pack contains, in four groups the report names: the pack's player cards
+  (every copy, ~52 for a typical hero pack), the identity card with every face its data
+  records, the nemesis and obligation set, and the decklist card. All four are resolved by the
+  same rules and held to the same completeness check (FR-015, FR-015a, FR-015b, FR-013b).
 - **Q: How are the eight named heroes verified, given the card art is not in the repository?**
   A: Against the real library, at the mounted Drive path the user will actually point the
   application at — a folder under its `Heros/` directory. Those runs are the acceptance
@@ -126,12 +151,13 @@ deck the user knowingly chose to print short.
   PDF is produced only on a final confirmation (FR-026a). A request to print incomplete that
   arrives before the run has reported cannot be honoured, because it would be made before the
   gap it authorises is known (FR-030a).
-- **Q: Does the user get one PDF or three?**
-  A: One, packed into as few pages as it will go. The player deck, the identity card, and the
-  nemesis set follow one another with no page break between them: a page carrying the last
-  deck cards and the first nemesis cards is the intended result. Paper is the cost being
-  minimised, and separate files or padded page boundaries both spend it for nothing. What
-  keeps the three distinguishable is the report, not the layout (FR-015d, FR-015e, FR-048).
+- **Q: Does the user get one PDF or several?**
+  A: One, packed into as few pages as it will go. The player cards, the identity card, the
+  nemesis set, and the decklist card follow one another with no page break between them: a page
+  carrying the last player cards and the first nemesis cards is the intended result. Paper is
+  the cost being minimised, and separate files or padded page boundaries both spend it for
+  nothing. What keeps the groups distinguishable is the report, not the layout (FR-015d,
+  FR-015e, FR-048).
 - **Q: By what mechanism does the user supply that file — a path or an upload?**
   A: An upload through the browser, with the run keeping the uploaded bytes. Naming the library
   folder stays a matter of naming a path (FR-005), but an individual replacement card is
@@ -172,106 +198,115 @@ deck the user knowingly chose to print short.
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Print a hero's starter deck (Priority: P1) 🎯 MVP
+### User Story 1 - Print a hero's whole pack (Priority: P1) 🎯 MVP
 
-Someone points the application at a hero's folder and receives that hero print-ready — the
-40-card starter deck, the identity card, and the nemesis set — without writing a catalog,
-typing a quantity, or knowing that six of the cards were never scanned.
+Someone points the application at a hero's folder and receives that entire pack print-ready —
+every player card in the quantities the pack ships, the identity card, the nemesis set, and the
+decklist card — without writing a catalog, typing a quantity, or knowing that several of the
+cards were never scanned. They cut the sheets and build the starter deck by reading the printed
+decklist.
 
 **Why this priority**: This is the entire barrier. Today the application is unusable by
 anyone who has not hand-authored a catalog, which is almost nobody.
 
 **Independent Test**: Point the tool at `Heros/Steve Rogers_Captain America/` with no catalog
-present. It succeeds when the deck contains 40 cards, in the right quantities, including the
-six sourced from the Core Set, and the identity card and nemesis set are produced alongside it
-without being counted in the 40.
+present. It succeeds when every card the `cap` pack contains is printed in the pack's
+quantities — including the eight physical cards sourced from the Core Set — together with the
+identity card, the nemesis set, and the decklist card.
 
 **Acceptance Scenarios**:
 
-1. **Given** a hero folder and no catalog, **When** the user assembles, **Then** a deck is
-   produced in which every card resolved to an image and each card appears as many times as
-   the pack contains it, and the deck's total is reported.
+1. **Given** a hero folder and no catalog, **When** the user prints the pack, **Then** every
+   card the pack listing records is produced, each appearing as many times as the pack contains
+   it, and every card resolved to an image.
 2. **Given** a card the scanner omitted because it is a Core Set reprint, **When** the user
-   assembles, **Then** its image is taken from the Core Set and it appears in the deck.
-3. **Given** a card whose copies number more than one, **When** the user assembles, **Then**
+   prints, **Then** its image is taken from the Core Set and it appears in the output.
+3. **Given** a card whose copies number more than one, **When** the user prints, **Then**
    the single scanned image appears once per copy the pack contains.
 4. **Given** a borrowed image whose own printing ships a different number of copies, **When**
-   the user assembles, **Then** the count follows the pack being assembled, not the pack the
+   the user prints, **Then** the count follows the pack being printed, not the pack the
    image came from.
-5. **Given** a completed assembly, **When** the user opens the report, **Then** every card is
+5. **Given** a completed run, **When** the user opens the report, **Then** every card is
    accounted for and every borrowed image is named alongside the printing it came from.
 6. **Given** no library configured anywhere and no environment variable set, **When** the user
-   names a folder and asks for a deck, **Then** the deck is assembled from that folder.
-7. **Given** a second request naming a different folder, **When** the user assembles, **Then**
+   names a folder and asks for a pack, **Then** it is printed from that folder.
+7. **Given** a second request naming a different folder, **When** the user prints, **Then**
    it reads that folder, with no restart and no reconfiguration.
-8. **Given** a hero folder, **When** the user assembles, **Then** one PDF is produced carrying
-   the player deck, then the identity card, then the nemesis set, packed into the fewest pages
-   that hold them, and neither the identity card nor the nemesis set is counted in the deck
-   total.
+8. **Given** a hero folder, **When** the user prints, **Then** one PDF is produced carrying
+   the player cards, then the identity card, then the nemesis set, then the decklist card,
+   packed into the fewest pages that hold them.
 9. **Given** that PDF, **When** the user inspects it, **Then** no page is left part-empty to
-   start one of the three on a fresh page, and the report says which cards belong to which.
-10. **Given** a hero with more than two faces, **When** the user assembles, **Then** every face
+   start one of the groups on a fresh page, and the report says which cards belong to which
+   group.
+10. **Given** a hero with more than two faces, **When** the user prints, **Then** every face
     the card data records is produced, rather than the first two.
-11. **Given** a nemesis card that resolves to no image, **When** the user assembles, **Then**
-    the run stops naming that card, exactly as it would for a missing deck card.
+11. **Given** a nemesis card that resolves to no image, **When** the user prints, **Then**
+    the run stops naming that card, exactly as it would for a missing player card.
 12. **Given** a folder whose pack the tool identifies confidently, **When** the user starts the
     run, **Then** the pack and its evidence are shown and nothing is resolved until the user
     confirms.
-13. **Given** a pack whose standard PDF was already produced by an earlier clean run against
-    the same snapshot, **When** a user assembles that pack again with no customization,
+13. **Given** a hero folder holding a decklist scan, **When** the user prints, **Then** the
+    decklist card is printed with the rest, so the starter deck can be built from paper alone.
+14. **Given** a hero folder holding no decklist scan, **When** the user prints, **Then** the
+    run names that gap and offers the Hall of Heroes address, and the user can supply the image
+    by upload — the application never fetches it.
+15. **Given** a pack whose standard PDF was already produced by an earlier clean run against
+    the same snapshot, **When** a user prints that pack again with no customization,
     **Then** the stored PDF is served rather than regenerated.
-14. **Given** that pack's snapshot has since been refreshed, **When** a user assembles it
-    again, **Then** the stored PDF is not served and the deck is rebuilt against the new
+16. **Given** that pack's snapshot has since been refreshed, **When** a user prints it
+    again, **Then** the stored PDF is not served and the pack is rebuilt against the new
     revision.
 
 ---
 
 ### User Story 2 - Be told exactly what could not be resolved (Priority: P1)
 
-An assembly that cannot resolve every card says which are missing and where it looked, rather
-than producing a deck that is quietly short.
+A run that cannot resolve every card says which are missing and where it looked, rather
+than producing a pack that is quietly short.
 
 **Why this priority**: Shares P1 with User Story 1 because it is not a separate feature but
-the other half of the same one. A deck that is silently 37 cards is worse than no deck: the
-user discovers it at the table, having already paid to print it.
+the other half of the same one. A pack that is silently missing three cards is worse than no
+pack: the user discovers it at the table, having already paid to print it — and with no deck
+total to check against, the report is the *only* thing that can tell them.
 
-**Independent Test**: Assemble a hero whose folder omits a starter-deck card that exists in
-no other printing. It succeeds when the run fails, names that card, and prints nothing.
+**Independent Test**: Print a hero whose folder omits a pack card that exists in
+no other printing. It succeeds when the run stops, names that card, and prints nothing.
 
 **Acceptance Scenarios**:
 
-1. **Given** a card with no image anywhere in the library, **When** the user assembles,
-   **Then** the run fails naming that card, and no PDF is written.
-2. **Given** a reconstruction that does not total 40, **When** the user assembles, **Then**
-   the total is reported against that expectation as a warning, and every unplaced card is
-   named — but the count alone does not refuse the run.
-3. **Given** a file the naming convention cannot parse, **When** the user assembles, **Then**
+1. **Given** a card with no image anywhere in the library, **When** the user prints,
+   **Then** the run stops naming that card, and no PDF is written.
+2. **Given** a run that could not place every pack card, **When** the user prints, **Then**
+   every unplaced card is named individually, and the count of cards printed is reported
+   against the count the pack listing records.
+3. **Given** a file the naming convention cannot parse, **When** the user prints, **Then**
    that file is named in the report rather than silently ignored.
-4. **Given** two files in one folder claiming the same position, **When** the user assembles,
+4. **Given** two files in one folder claiming the same position, **When** the user prints,
    **Then** both are named as a conflict and neither is chosen arbitrarily.
 
 ---
 
 ### User Story 3 - Find a card that is not where it should be (Priority: P2)
 
-A starter-deck card that lives in another hero's folder, or under `Aspects/`, is found
-anyway.
+A pack card that lives in another hero's folder, or under `Aspects/`, is found anyway.
 
-**Why this priority**: Without it, four of the eight heroes measured cannot be assembled at
-all, because the library does not consistently place a hero's cards in that hero's folder.
-With it, they can. It is second only because User Story 1 is demonstrable without it.
+**Why this priority**: Without it almost no pack can be printed complete, because the library
+does not consistently place a hero's cards in that hero's folder — and printing the whole pack
+makes this *more* load-bearing than it was, since the pack's extra aspect cards live under
+`Aspects/` by design rather than by accident. It is second only because User Story 1 is
+demonstrable without it.
 
-**Independent Test**: Assemble Black Widow, whose `Quincarrier` is filed under Wasp. It
-succeeds when the card is found and the deck reaches 40.
+**Independent Test**: Print Black Widow, whose `Quincarrier` is filed under Wasp. It
+succeeds when the card is found and every pack card resolves.
 
 **Acceptance Scenarios**:
 
-1. **Given** a starter-deck card filed under another hero's folder, **When** the user
-   assembles, **Then** it is found and its origin is named in the report.
-2. **Given** a starter-deck card filed under `Aspects/`, **When** the user assembles, **Then**
+1. **Given** a pack card filed under another hero's folder, **When** the user
+   prints, **Then** it is found and its origin is named in the report.
+2. **Given** a pack card filed under `Aspects/`, **When** the user prints, **Then**
    it is found and its origin is named in the report.
 3. **Given** a card found by a name match rather than by position, **When** the user
-   assembles, **Then** the match is reported as such, so a wrong match is visible rather than
+   prints, **Then** the match is reported as such, so a wrong match is visible rather than
    invisible.
 
 ---
@@ -306,8 +341,8 @@ tool names that card, accepts a file the user chooses for it, and prints the dec
 6. **Given** a card the user declines to resolve, **When** they take no further action,
    **Then** the run stops rather than printing a deck with that card missing.
 7. **Given** a card the user declines to resolve, **When** they explicitly ask to print
-   without it, **Then** the deck prints, and the omitted card is named in the report, counted
-   against the expected total, and recorded in the run's log.
+   without it, **Then** the pack prints, and the omitted card is named in the report, counted
+   against the pack listing's card count, and recorded in the run's log.
 8. **Given** a run that reported two unresolved cards, **When** the user supplies a file for
    the first, **Then** the run keeps the folder, the identified pack, and every earlier
    choice, and asks only about the second.
@@ -360,6 +395,20 @@ folder, the pack, and the first card's resolution intact.
 - **A second filename convention.** One folder numbers files
   `{position}_{set_position}.{set_total}`. Both forms must parse, and a form matching neither
   is reported.
+- **A third convention, where the number counts physical copies rather than positions.**
+  Observed in the Phoenix and Wonder Man folders on 2026-08-16:
+  `2_Active Altruism_Event.tif`, `3_Active Altruism_Event.tif`, and
+  `4_Active Altruism_Event.tif` are three files for one card, numbered by copy. This disproves
+  the earlier assumption that the scanner made one scan per distinct card; for these folders,
+  the leading number is not a MarvelCDB `position` and must not be read as one. Both folders
+  resolve to almost nothing under position matching alone and depend entirely on the name
+  fallback (FR-023).
+- **A filename carrying the wrong position.** Observed: Vision's `Vision_Vivian_Ally_2.tiff` —
+  Vivian is position 3 — which additionally collides with the double-sided `Intangible` filed
+  as `_2a` and `_2b`. A position conflict in real data, not a hypothetical one (FR-033).
+- **A hero folder with no decklist scan.** 25 of 60 folders have none. Reported as a named gap
+  with the Hall of Heroes address offered, never fetched by the application, and never a reason
+  to refuse the run — the rest of the pack still prints (FR-013c).
 - **The same card present as both `.tif` and `.tiff`.** One is chosen deterministically and
   the duplication is reported; the card is not printed twice.
 - **Two files in one folder claiming the same position.** Reported as a conflict, not
@@ -385,8 +434,9 @@ folder, the pack, and the first card's resolution intact.
   naming the folder and the reason — never surfacing later as a missing card.
 - **A named folder containing no card images at all.** Reported as empty rather than
   identified as some pack on no evidence.
-- **A deck totalling more than 40.** Permitted by the rules, so reported and printed rather
-  than refused. Only a card that resolves to no image stops a run.
+- **A pack whose card count differs from its neighbours.** Pack sizes vary and no total is
+  expected, so the count is reported and printed rather than checked. Only a card that resolves
+  to no image stops a run.
 - **A saved run whose folder has moved or been deleted by the time it is resumed.** Reported
   against the run when it is reopened, naming the folder — not surfaced as a wave of newly
   missing cards. This affects only a run still resolving cards; a finished run holds its own
@@ -443,51 +493,69 @@ folder, the pack, and the first card's resolution intact.
   about and wrong about, which yields a deck that is entirely plausible and entirely wrong. The
   cost is one confirmation per run against forty misprinted cards.
 
-### Composing the deck
+### Composing the output
 
-- **FR-013**: Deck composition MUST be derived from the hero folder's contents together with
-  MarvelCDB's pack listing. The tool MUST NOT attempt to compute composition from pack
-  contents alone, which is not possible.
-- **FR-014**: A pack card absent from the hero folder that carries a reprint link MUST be
-  treated as part of the deck and sourced from the printing it duplicates.
-- **FR-015**: Encounter cards, obligation cards, nemesis cards, and the hero's identity card
-  MUST be excluded from the player deck and from the deck total FR-018 reports. They MUST be
-  produced alongside it (FR-015a, FR-015b), because a player deck on its own is not a hero
-  anyone can play.
+- **FR-013**: The tool MUST print **every card the pack listing records**, in the quantities it
+  records. Composition MUST NOT be derived from the hero folder's contents, from card
+  positions, or from any other inference about which cards form the pre-built starter deck. The
+  folder determines *where images are found* (FR-020, FR-021), never *what is printed*.
+- **FR-013a**: The tool MUST NOT attempt to identify the pre-built starter deck. Selecting the
+  starter deck from the printed cards is the user's task, performed against the printed decklist
+  card. This is a deliberate reversal: deriving membership was attempted, measured, and found to
+  produce a silently wrong deck (see Clarifications).
+- **FR-013b**: The pack's decklist card MUST be printed alongside the pack's cards when the
+  named folder holds a scan of it, because it is what makes the printed pack usable — without
+  it the user has the cards but not the instructions for building the deck. It MUST be reported
+  as its own group (FR-015e) and MUST NOT be counted among the pack's cards.
+- **FR-013c**: When the named folder holds no decklist scan, the run MUST name that gap
+  specifically and MUST offer the address at which Hall of Heroes publishes that pack's
+  decklist photograph. The application MUST NOT fetch it: the user downloads the image and
+  supplies it through the same upload path an unresolved card uses (FR-026e). A missing
+  decklist MUST NOT refuse the run — the rest of the pack still prints, reported as printed
+  without one. This preserves FR-002 and keeps the egress allowlist at a single host.
+- **FR-014**: A pack card absent from the hero folder that carries a reprint link MUST still be
+  printed, with its image sourced from the printing it duplicates. Reprint links MUST be
+  followed wherever they point, not only to the Core Set.
+- **FR-015**: The output MUST be organised into four reported groups: the pack's player cards,
+  the identity card (FR-015a), the nemesis and obligation set (FR-015b), and the decklist card
+  (FR-013b). Every group MUST be produced; none is optional, and a player card on its own is not
+  a hero anyone can play.
 - **FR-015a**: Assembling a hero MUST produce the hero's identity card. Its faces MUST be read
   from the card data and MUST NOT be assumed to number two, since a hero may have more.
-- **FR-015b**: Assembling a hero MUST produce that hero's nemesis and obligation cards, kept
-  distinct from the player deck in the report and excluded from its total, so the user can
-  separate them into the decks they are after cutting. They are not separated on the page —
-  FR-015d packs everything as tightly as it will go.
-- **FR-015d**: The player deck, the identity card, and the nemesis set MUST be delivered as one
-  PDF, in that order, packed into as few pages as possible. Every page MUST be filled to its
-  card capacity before the next is started, and the three MUST NOT be padded apart onto
-  separate pages — a page carrying the last deck cards and the first nemesis cards together is
-  the intended result, not a defect. Paper is the cost being minimised. They MUST NOT be split
-  across separate files either: one file keeps the wizard's final step to a single download.
-  "Distinct outputs" throughout this spec means distinct in the report and in the deck total,
-  never distinct files and never distinct pages.
-- **FR-015e**: Because FR-015d lets one page carry cards from more than one of the three, the
-  report MUST be what tells them apart. It MUST state which cards form the player deck, which
-  is the identity card, and which form the nemesis set, so the user can sort the cut cards
-  without recognising them by sight.
-- **FR-015c**: The identity card and the nemesis set MUST be resolved by the same rules as the
-  deck — the same matching, the same reporting of substitutions, and the same completeness
-  check (FR-017). A card missing from either MUST stop the run by name exactly as a missing
-  deck card does, subject to the same explicit override (FR-030).
-- **FR-016**: The number of copies of a card MUST come from the printing being assembled,
-  never from the printing an image was borrowed from.
-- **FR-017**: Every card the tool places in the deck MUST resolve to an image. A card that
-  does not MUST stop the run by name, subject to the user's explicit override (FR-030).
-  Completeness of resolution, not the card total, is what the tool verifies.
-- **FR-018**: The tool MUST report the assembled deck's total, counting the player deck alone —
-  the identity card and the nemesis set are separate outputs and MUST NOT be added to it
-  (FR-015). A total other than 40 MUST be
-  reported as a warning, because a pre-built deck is expected to be 40 and every shortfall
-  measured so far was an unresolved card. A total outside the legal 40-to-50 range MUST be
-  reported more strongly still. Neither MUST refuse the run on the count alone — the rules
-  permit up to 50, and no exhaustive check of released packs has been made.
+- **FR-015b**: Printing a pack MUST produce that hero's nemesis and obligation cards, kept
+  distinct from the player cards in the report so the user can separate them after cutting.
+  They are not separated on the page — FR-015d packs everything as tightly as it will go.
+- **FR-015d**: All four groups MUST be delivered as one PDF, in the order player cards,
+  identity card, nemesis set, decklist card, packed into as few pages as possible. Every page
+  MUST be filled to its card capacity before the next is started, and the groups MUST NOT be
+  padded apart onto separate pages — a page carrying the last player cards and the first nemesis
+  cards together is the intended result, not a defect. Paper is the cost being minimised. They
+  MUST NOT be split across separate files either: one file keeps the wizard's final step to a
+  single download. "Distinct outputs" throughout this spec means distinct in the report, never
+  distinct files and never distinct pages.
+- **FR-015e**: Because FR-015d lets one page carry cards from more than one group, the
+  report MUST be what tells them apart. It MUST state which cards are player cards, which is
+  the identity card, which form the nemesis set, and which is the decklist card, so the user can
+  sort the cut cards without recognising them by sight.
+- **FR-015c**: Every group MUST be resolved by the same rules — the same matching, the same
+  reporting of substitutions, and the same completeness check (FR-017). A card missing from any
+  group MUST stop the run by name, subject to the same explicit override (FR-030). The decklist
+  card is the single exception: its absence is reported and the run proceeds (FR-013c).
+- **FR-016**: The number of copies of a card MUST come from the pack being printed, never from
+  the printing an image was borrowed from. MarvelCDB's `quantity` is the number of copies **in
+  the pack**, which is exactly what printing a pack requires. It is *not* the number of copies
+  in the pre-built starter deck, and MUST NOT be used as though it were — that mistake is what
+  this feature's earlier design made (see Clarifications).
+- **FR-017**: Every card the tool prints MUST resolve to an image. A card that does not MUST
+  stop the run by name, subject to the user's explicit override (FR-030). Completeness of
+  resolution is the whole of what the tool verifies; there is no card total to check against.
+  Every pack card is held to this bar equally — with membership derivation gone, the tool has no
+  basis for treating one pack card as more important than another.
+- **FR-018**: The tool MUST report how many cards it printed against how many the pack listing
+  records, so an incomplete run is visible as a number as well as a list. The tool MUST NOT
+  expect any particular total and MUST NOT warn on one. Pre-built deck sizes were measured to
+  vary — Vision's is 41 cards and Psylocke's is 42 — and pack sizes vary independently of that,
+  so any expected total would produce false alarms.
 - **FR-019**: The tool MUST NOT invent a card, a quantity, or a substitution to reach any
   particular total.
 
@@ -575,9 +643,9 @@ folder, the pack, and the first card's resolution intact.
   NOT be inferred from silence. It MUST NOT be granted in advance of the run reporting which
   cards are unresolved: a decision taken before the gap is known is not an informed one, and
   the tool MUST refuse a blanket permission offered up front rather than honouring it.
-- **FR-030b**: An incomplete deck MUST be legible as incomplete after the fact. The report
-  MUST name every omitted card, the deck total MUST be stated against what was expected, and
-  the omission MUST appear in the log record for the run. The report MUST be retrievable from
+- **FR-030b**: An incomplete pack MUST be legible as incomplete after the fact. The report
+  MUST name every omitted card, the number of cards printed MUST be stated against the number
+  the pack listing records (FR-018), and the omission MUST appear in the log record for the run. The report MUST be retrievable from
   the run record itself on a later visit (FR-026b), not only from the response that produced
   it. A user who prints one and returns to it a week later MUST NOT have to rediscover what is
   missing.
@@ -665,8 +733,14 @@ folder, the pack, and the first card's resolution intact.
 
 - **Scan library**: The user's directory of card images, organised by someone else and not
   rearranged. Its folder structure is the only record of which cards form a starter deck.
-- **Hero folder**: One folder under `Heros/`, holding that hero pack's starter-deck cards,
-  deduplicated, with the Core Set reprints absent and nemesis cards in a subfolder.
+- **Hero folder**: One folder under `Heros/`, holding most of that hero pack's cards, usually
+  deduplicated, with the Core Set reprints absent, nemesis cards in a subfolder, and the pack's
+  extra aspect cards filed under `Aspects/` instead. It is a place to look for images, not a
+  statement about what belongs in a deck.
+- **Decklist card**: The card printed in the pack listing which cards form the pre-built starter
+  deck and in what numbers. The only authoritative record of that, and the reason the tool can
+  stop trying to derive it. Present as a scan in 35 of 60 hero folders; otherwise supplied by
+  the user from Hall of Heroes (FR-013b, FR-013c).
 - **Pack listing**: MarvelCDB's record of a pack — every card, its position, its type, and how
   many copies the pack contains. The authority on identity and quantity.
 - **Pack snapshot**: One pack's listing as captured at a point in time, with a revision. The
@@ -686,37 +760,42 @@ folder, the pack, and the first card's resolution intact.
   needed no user input, named from the pack, and served to later requests for that pack against
   the same snapshot (FR-026h) — or *saved*, produced by a run the user customized, named by
   them, and listed separately (FR-026i). Both are deletable to reclaim space (FR-026g).
-- **Assembly report**: What a run produced — the pack identified, cards placed, images
-  borrowed, files unused or uninterpretable, conflicts, low-resolution warnings, and the
-  card total with a warning when it is not the expected 40.
+- **Assembly report**: What a run produced — the pack identified, cards placed by group, images
+  borrowed, files unused or uninterpretable, conflicts, low-resolution warnings, whether a
+  decklist card was printed, and the number of cards printed against the number the pack
+  listing records.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: A user with a scan library and no catalog can produce a printable starter deck
+- **SC-001**: A user with a scan library and no catalog can produce a printable pack
   in under five minutes, against the half-day it takes to author a catalog by hand.
-- **SC-002**: Captain America, Star-Lord, Wasp, and Hulk each assemble with every card
-  resolved and no manual intervention, and each totals 40. These four were measured to
-  reconstruct cleanly and are the acceptance set.
-- **SC-003**: Thor, Black Widow, Ant-Man, and Ms. Marvel each assemble with every card
-  resolved, and each totals 40. These four require whole-library search and name fallback, and
-  are the harder acceptance set. Their totals were 37, 39, 36, and 37 with a resolver confined
-  to the hero folder.
+- **SC-002**: Captain America, Star-Lord, Wasp, and Hulk each print with every card in the pack
+  listing resolved and no manual intervention. These four were measured to resolve cleanly from
+  their own folders plus reprint links, and are the acceptance set.
+- **SC-003**: Thor, Black Widow, Ant-Man, and Ms. Marvel each print with every card in the pack
+  listing resolved. These four require whole-library search and name fallback, and are the
+  harder acceptance set.
+- **SC-003c**: Phoenix and Wonder Man each print with every card resolved. These two use the
+  copy-counting filename convention and carry no usable positions at all, so they are the
+  acceptance case for the name-match path (FR-023) and for the third convention recorded in Edge
+  Cases. Under position matching alone they resolve almost nothing.
 - **SC-003a**: The user MUST be able to assemble a deck by naming a folder, with no
   environment variable set and no library configured in advance.
 - **SC-003b**: SC-002 and SC-003 are verified against the real library — the mounted Drive
   folder, one directory per hero under `Heros/` — on the user's own machine, since neither the
-  card art nor that folder is available to automated verification elsewhere. The same eight
-  heroes MUST also assemble against fixtures derived from that library's filenames and folder
-  layout, so a resolver regression is caught without the real scans present.
-- **SC-002a**: Each of the eight acceptance heroes produces one PDF carrying its deck, an
-  identity card with every face its card data records, and a nemesis set, in that order — and
-  neither the identity card nor the nemesis set appears in the deck total. A user can print one
-  hero and play it without owning the pack.
+  card art nor that folder is available to automated verification elsewhere. The same heroes,
+  plus Phoenix and Wonder Man (SC-003c), MUST also print against fixtures derived from that
+  library's filenames and folder layout, so a resolver regression is caught without the real
+  scans present.
+- **SC-002a**: Each acceptance hero produces one PDF carrying its player cards, an identity card
+  with every face its card data records, its nemesis set, and its decklist card, in that order.
+  A user can print one hero, build the starter deck from the printed decklist, and play it
+  without owning the pack.
 - **SC-002b**: That PDF occupies the fewest pages its card count allows: no page before the
-  last is partly empty, and adding the identity card and nemesis set to a deck costs no more
-  pages than their card count requires.
+  last is partly empty, and adding the identity card, nemesis set, and decklist card costs no
+  more pages than their card count requires.
 - **SC-004**: 100% of files in the folders consulted are either used or named in the report.
   Zero are silently ignored.
 - **SC-005**: 100% of images resolved by anything other than an exact positional match are
@@ -726,8 +805,11 @@ folder, the pack, and the first card's resolution intact.
   prints with a card missing and no one having said so.
 - **SC-006e**: 100% of decks printed with a card omitted name that card in the report and in
   the run's log. An incomplete deck is never indistinguishable from a complete one.
-- **SC-006a**: A deck whose total is not 40 is reported as such 100% of the time, whether or
-  not the run succeeds.
+- **SC-006a**: Every run reports the number of cards printed against the number the pack listing
+  records, 100% of the time, whether or not the run succeeds. No run reports an expected total
+  of 40 or warns against one.
+- **SC-006j**: Every run states whether a decklist card was printed. A pack printed without one
+  is never indistinguishable from a pack printed with one.
 - **SC-006b**: A deck missing exactly one card from the library can be completed by the user
   uploading one file, and prints. No card the user can point at is unprintable, and the deck
   still reprints identically after that file is moved or deleted on disk.
@@ -745,8 +827,8 @@ folder, the pack, and the first card's resolution intact.
   returns that PDF without regenerating it, so the second and later requests for a pack avoid
   the ~49 s build entirely. A customized deck never overwrites a pack's standard PDF.
 - **SC-009**: No deck is resolved against a pack the user has not confirmed, 100% of the time.
-- **SC-006d**: Assembling a full deck issues a number of upstream requests that does not grow
-  with the number of cards in the deck, and a second deck from a pack whose snapshot is still
+- **SC-006d**: Printing a full pack issues a number of upstream requests that does not grow
+  with the number of cards in it, and a second run against a pack whose snapshot is still
   fresh issues none at all.
 - **SC-007**: Assembling twice from the same library and snapshot produces a byte-identical
   PDF.
@@ -758,18 +840,23 @@ folder, the pack, and the first card's resolution intact.
 - **The library is not rearranged.** Its structure is what it is, including the
   inconsistencies. The tool adapts to the library; the user does not adapt the library to the
   tool.
-- **A hero folder holds that hero's starter-deck cards.** Verified across eight heroes. Where
-  a card is filed elsewhere, whole-library search recovers it (FR-021) rather than the
-  assumption being abandoned.
-- **The trailing number in a filename is MarvelCDB's `position`.** Verified 18/18 for the
-  Captain America pack and across eight hero folders. Files not matching are reported, not
-  guessed at (FR-032).
-- **A pre-built starter deck is expected to be 40 cards, but this is not assumed.** The
-  deckbuilding rules permit 40 to 50. Thirteen observations support 40 — the five official
-  starter decklists published on MarvelCDB, and eight hero folders that each reconstruct to
-  40 — against roughly sixty released packs, so it is an expectation the tool reports against
-  (FR-018) rather than a rule it enforces. If a pack ships a larger pre-built deck, the tool
-  warns and proceeds; it does not refuse.
+- **A hero folder holds many of that hero pack's cards, but not all of them and not only
+  them.** The pack's extra aspect cards are filed under `Aspects/` by design, and individual
+  cards are misfiled under other heroes. Whole-library search (FR-021) is what makes the pack
+  resolvable; the folder is a starting point, not a boundary.
+- **The trailing number in a filename is usually MarvelCDB's `position`.** Verified 18/18 for
+  the Captain America pack and across eight hero folders — but *not* universal: the Phoenix and
+  Wonder Man folders number by physical copy instead, and Vision carries at least one number
+  that is simply wrong. Files not matching are reported, not guessed at (FR-032), and the name
+  fallback (FR-023) carries the folders where positions are unusable.
+- **No deck size is expected, because deck sizes vary.** The deckbuilding rules permit 40 to 50,
+  and pre-built decks measured from their own printed decklist cards include 40 (Captain
+  America, War Machine, Valkyrie), 41 (Vision), and 42 (Psylocke). The tool prints packs and
+  never asserts a deck size, so no total needs defending (FR-018).
+- **MarvelCDB's `quantity` is pack copies, not deck copies.** Measured 2026-08-16 against the
+  physical decklist cards. This is safe for this feature precisely because the feature prints
+  packs; it would be unsafe for any later feature that tries to produce a starter deck directly,
+  and such a feature MUST take its counts from the decklist card rather than from MarvelCDB.
 - **MarvelCDB's public card endpoints are available and stable.** This feature uses only the
   documented card and pack endpoints; it does not depend on the undocumented decklist
   endpoints, and does not require an account.
@@ -814,8 +901,13 @@ folder, the pack, and the first card's resolution intact.
   An editor needs a mutable deck that outlives one run, an interface for browsing the whole
   card pool, and rules for what a deck may contain — none of which this feature needs and all
   of which would make it undeliverable. Manual resolution (User Story 4) is deliberately *not*
-  that: it is bounded to cards the tool already decided belong in the deck and could not find,
-  and it changes no membership decision.
-- **Reading the pack's physical decklist card was considered and excluded.** The scanned
-  decklist photos are the only printed record of deck composition, but the folder structure
-  already carries the same information without optical recognition.
+  that: it is bounded to pack cards the tool could not find an image for, and it changes nothing
+  about what is printed. **The pivot to printing packs raises the value of that editor**: a user
+  who wants only the starter deck on paper, rather than the whole pack, needs one — and any such
+  feature MUST take its card counts from the decklist card, never from MarvelCDB's `quantity`.
+- **The pack's physical decklist card is the only authoritative record of deck composition, and
+  the tool prints it rather than reading it.** An earlier draft excluded it on the grounds that
+  reading it would require optical recognition, and asserted the folder structure carried the
+  same information. The second half of that was disproved on 2026-08-16. The resolution is not
+  to read the card but to put it in the user's hands: nothing parses it, so no recognition is
+  needed, and the one source that is actually authoritative ends up where it is useful.
