@@ -10,6 +10,13 @@ dependencies = [
     "pillow>=11.0",
     "pypdfium2>=4.30",
     "pydantic>=2.9",
+    # Runtime as of feature 002: the MarvelCDB client. Chosen over urllib because
+    # follow_redirects=False and an explicit timeout are its defaults rather than something
+    # a subclass has to remember (research R2).
+    "httpx>=0.28",
+    # Not a choice: FastAPI refuses to start a route declaring UploadFile without it, and
+    # FR-026e requires uploads (research R9).
+    "python-multipart>=0.0.20",
 ]
 
 [project.scripts]
@@ -20,7 +27,6 @@ dev = [
     "pytest>=8.3",
     "pypdf>=6.15.0",
     "ruff>=0.8",
-    "httpx>=0.28",
     # Reads contracts/openapi.yaml in the contract test. Dev-only on purpose: the service
     # never parses YAML at runtime.
     "pyyaml>=6.0",

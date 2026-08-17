@@ -47,14 +47,18 @@ packages — `upstream/`, `library/`, `assembly/`, `store/` — plus changes to 
 
 **Purpose**: Dependencies, source tree, and the fixture library every later phase asserts against
 
-- [ ] T001 Promote `httpx` from `[dependency-groups] dev` to `[project] dependencies` and add `python-multipart` in `pyproject.toml` (research R2, R9)
-- [ ] T002 Regenerate `uv.lock` and confirm `uv sync --locked` fails if the lockfile would change
-- [ ] T003 Create source tree `src/marchamp/{upstream,library,assembly,store}/` with `__init__.py` in each
-- [ ] T004 Write `scripts/derive_library_fixture.py` — reads the real library with `Path.rglob` (BSD `find` does not traverse the Drive mount, research R13) and writes filenames and folder layout over **generated** placeholder images, covering the ten hero folders, the Core Set folder, and the `Aspects/` subtree
+- [X] T001 Promote `httpx` from `[dependency-groups] dev` to `[project] dependencies` and add `python-multipart` in `pyproject.toml` (research R2, R9)
+- [X] T002 Regenerate `uv.lock` and confirm `uv sync --locked` fails if the lockfile would change
+- [X] T003 Create source tree `src/marchamp/{upstream,library,assembly,store}/` with `__init__.py` in each
+- [X] T004 Write `scripts/derive_library_fixture.py` — reads the real library with `Path.rglob` (BSD `find` does not traverse the Drive mount, research R13) and writes filenames and folder layout over **generated** placeholder images, covering the ten hero folders, the Core Set folder, and the `Aspects/` subtree
 - [ ] T005 Run T004 and commit `tests/fixtures/library/` for the ten acceptance heroes **plus the Core Set folder and the `Aspects/` subtree** — without the first the reprint path has no image to borrow (T043, T058), and without the second the whole-library search has nothing to find (T079). Preserve the real awkwardness verbatim: the three filename conventions, the typos, missing positions, `.tif`/`.tiff` pairs, Ant-Man's duplicate position, Quincarrier filed under Wasp, and the decklist scans **under their real filenames** (`captain america decklist.tif`, `iceman deck list.tiff` — both spellings must survive derivation) with Hulk's and Phoenix's folders left without one
-- [ ] T006 [P] Commit reduced upstream fixtures in `tests/fixtures/snapshots/` for the ten packs plus `core`, carrying only the fields in data-model.md § PackCard (FR-038a)
-- [ ] T007 [P] Write `tests/unit/test_fixtures_carry_no_card_data.py` asserting no fixture holds card text, flavour, traits, `imagesrc`, or a real image — this repository is public and FR-038a governs fixtures as much as runtime
-- [ ] T008 [P] Extend `tests/conftest.py` with a temporary state directory, a fixture `library_root`, and an offline `httpx` transport that serves the T006 fixtures and fails on any unstubbed host
+
+> **Deferred to the Phase 3 PR.** Needs the mounted Drive, which only the maintainer's
+> machine has, and its output is first consumed by T043, T058, and T079 — all Phase 3. The
+> generator (T004) is committed and ready; nothing in Phases 1-2 reads its output.
+- [X] T006 [P] Commit reduced upstream fixtures in `tests/fixtures/snapshots/` for the ten packs plus `core`, carrying only the fields in data-model.md § PackCard (FR-038a)
+- [X] T007 [P] Write `tests/unit/test_fixtures_carry_no_card_data.py` asserting no fixture holds card text, flavour, traits, `imagesrc`, or a real image — this repository is public and FR-038a governs fixtures as much as runtime
+- [X] T008 [P] Extend `tests/conftest.py` with a temporary state directory, a fixture `library_root`, and an offline `httpx` transport that serves the T006 fixtures and fails on any unstubbed host
 
 **Checkpoint**: `uv run pytest` green, and T007 proves the fixtures are clean.
 
@@ -69,6 +73,10 @@ packages — `upstream/`, `library/`, `assembly/`, `store/` — plus changes to 
 ### The contract test must merge two documents first
 
 - [ ] T009 Change `tests/contract/test_openapi_matches.py` to load **both** `specs/001-*/contracts/openapi.yaml` and `specs/002-*/contracts/openapi.yaml`, union their `paths` and `components`, and compare that union against the live document. Today it compares 001's file alone with `set(live["paths"]) == set(contract["paths"])`, so the first 002 route breaks CI. Observe it fail (002's paths are absent from the live app) — that failure is the red state every route task below turns green.
+
+> **Deferred to the Phase 3 PR.** This task's red state stays red until the first 002 route
+> exists, so landing it before then merges a knowingly failing CI. It belongs with the route
+> work that turns it green.
 
 ### Configuration
 
