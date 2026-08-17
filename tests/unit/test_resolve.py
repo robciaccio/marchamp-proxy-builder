@@ -11,8 +11,10 @@ The measured shape of `cap` against the fixture library, which is what these tes
     34 records; 24 resolve by folder position and 7 by reprint — 6 into the Core Set
     (8 physical copies) and 1 backwards into Star-Lord's pack — leaving 3 for later
     steps. `Enraged` and `Expert Defense` sit under the root `Aspects/` tree with no
-    usable position and need step 4's name match; `Followed` is in no folder of the
-    library at all, which is a genuine FR-017 gap rather than a resolver shortfall.
+    usable position and need step 4's name match (Phase 5). `Followed` is unresolvable
+    *against this fixture only*: it resolves by reprint into Spider-Ham's pack, whose
+    folder T005 does not derive because Spider-Ham is not one of the ten acceptance
+    heroes. Driven against the real library it resolves here and now.
 """
 
 from __future__ import annotations

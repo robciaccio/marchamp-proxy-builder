@@ -108,3 +108,84 @@ def test_changing_a_setting_invalidates_the_displayed_preview(script):
     for control in ("page_size", "fit_mode"):
         handler = script[script.index(f'input[name="{control}"]') :][:400]
         assert "invalidatePreview()" in handler, control
+
+
+# ----------------------------------------------------- feature 002: pack assembly (T057)
+
+
+def test_the_assembly_flow_asks_for_both_paths(markup):
+    """FR-005, SC-003a — neither path is configured in advance, so both must be asked for."""
+    assert 'id="library-root"' in markup
+    assert 'id="hero-folder"' in markup
+
+
+def test_the_identified_pack_is_shown_with_its_evidence_before_confirming(markup, script):
+    """FR-012. The sentence-level requirement: a user confirms against *evidence*.
+
+    A confidence percentage alone is not something anyone can check, and the case the
+    threshold structurally cannot catch is an identification that is confident and wrong
+    (SC-009). This is the wording that would get edited away first.
+    """
+    assert 'id="pack-evidence"' in markup
+    assert "Is this the right pack?" in markup
+    assert 'id("pack-evidence")' in script or '$("pack-evidence")' in script
+
+
+def test_a_refusal_offers_a_way_out_rather_than_a_dead_end(markup, script):
+    """FR-012b — the picker exists and an unidentified folder opens it unprompted."""
+    assert 'id="pack-picker"' in markup
+    assert 'id="pack-candidates"' in markup
+    assert "showPackPicker" in script
+
+
+def test_the_decklist_is_proposed_and_not_printed_until_accepted(markup, script):
+    """FR-013d — a proposal with an accept, a different pick, and a skip."""
+    assert 'id="decklist-step"' in markup
+    assert 'id="decklist-confirm"' in markup
+    assert 'id="decklist-skip"' in markup
+    assert '"select"' in script
+
+
+def test_a_folder_with_no_decklist_offers_the_hall_of_heroes_and_is_not_a_failure(markup):
+    """FR-013c, SC-006j — Hulk's and Phoenix's real case.
+
+    The address is offered to the *user*; the application never fetches it, which is what
+    keeps FR-002's egress allowlist at a single host.
+    """
+    assert 'id="decklist-missing"' in markup
+    assert "Hall of Heroes" in markup
+    assert "will print without one" in markup
+
+
+def test_every_mutating_call_carries_if_match(script):
+    """ADR 0001 at the wire — two tabs answering two questions is the lost update."""
+    assert '"If-Match"' in script
+    assert "assembly.run.version" in script
+
+
+def test_unresolved_cards_are_named_individually_with_where_the_tool_looked(markup, script):
+    """FR-026d, SC-008 — never a failed run the user has to diagnose."""
+    assert 'id="gaps-list"' in markup
+    assert "gap.searched" in script
+    assert "Cards that could not be found" in markup
+
+
+def test_substitutions_are_shown_so_a_wrong_match_is_visible(markup, script):
+    """FR-024, SC-005 — everything except an exact hit in the hero folder is listed."""
+    assert 'id="substitutions-list"' in markup
+    assert 'provenance !== "folder_position"' in script
+
+
+def test_the_pdf_is_produced_only_on_an_explicit_confirmation(markup, script):
+    """FR-026a — reaching `ready` does not print by itself."""
+    assert 'id="assembly-confirm"' in markup
+    assert "Make the PDF" in markup
+    assert 'run.state !== "ready"' in script
+
+
+def test_the_assembly_client_only_uses_the_public_api(script):
+    """Principle II — the wizard is a client of the HTTP API and reaches around it into
+    nothing. Every path it touches is one the contract declares."""
+    paths = set(re.findall(r"`(/api/assemblies[^`]*)`", script))
+    for path in paths:
+        assert path.startswith("/api/assemblies")

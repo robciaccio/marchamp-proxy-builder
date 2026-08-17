@@ -17,7 +17,22 @@
       (FR-003). Every step is present in the document and hidden with [hidden] rather than
       rebuilt, so returning to one restores it as it was rather than re-fetching it.
     -->
-    <nav class="steps" aria-label="Progress">
+    <!--
+      Two ways in, and they are genuinely different products rather than two routes to one
+      screen. Feature 001 prints a deck from a catalog someone authored. Feature 002 prints
+      a whole pack from a folder of scans, with no catalog at all — which is why it asks for
+      paths rather than offering a list (FR-005, SC-003a).
+    -->
+    <nav class="modes" aria-label="What to print">
+      <button type="button" class="modes__link is-current" data-mode="deck" aria-pressed="true">
+        Hero deck from the catalog
+      </button>
+      <button type="button" class="modes__link" data-mode="assembly" aria-pressed="false">
+        Whole pack from a scan library
+      </button>
+    </nav>
+
+    <nav class="steps" id="deck-steps" aria-label="Progress">
       <ol>
         <li><button type="button" class="steps__link" data-goto="1">1. Deck</button></li>
         <li><button type="button" class="steps__link" data-goto="2">2. Options</button></li>
@@ -150,6 +165,148 @@
           <button type="button" class="btn" data-goto="2">Back to options</button>
           <a id="download" class="btn btn--primary" hidden download>Download PDF</a>
         </div>
+      </section>
+
+      <!-- ================================================ feature 002: pack assembly ==
+        One section rather than a second step machine. An assembly run *is* a resource with
+        a lifecycle (FR-026a), so the interface follows the run's state rather than keeping
+        a step counter of its own — which is also what lets a user come back to an
+        unfinished run and find it where they left it (FR-026b).
+      -->
+      <section id="assembly" class="step" aria-labelledby="assembly-title" hidden>
+        <h2 id="assembly-title">Print a hero's whole pack</h2>
+        <p class="muted">
+          Point this at a folder of card scans. Nothing needs to be configured first, and the
+          scan library is never written to.
+        </p>
+
+        <form id="assembly-form" class="fields">
+          <label class="field">
+            <span class="field__label">Scan library folder</span>
+            <input
+              type="text"
+              id="library-root"
+              name="library_root"
+              required
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="/Users/you/Marvel Champions"
+            />
+            <span class="field__hint">
+              The whole library. Cards are searched for anywhere inside it.
+            </span>
+          </label>
+
+          <label class="field">
+            <span class="field__label">Hero folder</span>
+            <input
+              type="text"
+              id="hero-folder"
+              name="hero_folder"
+              required
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Heros/Steve Rogers_Captain America"
+            />
+            <span class="field__hint">Relative to the library folder above.</span>
+          </label>
+
+          <div class="actions">
+            <button type="submit" class="btn btn--primary" id="assembly-start">
+              Find the pack
+            </button>
+          </div>
+        </form>
+
+        <div id="assembly-error" class="banner banner--error" hidden role="alert"></div>
+
+        <!-- The identification, and the evidence behind it. FR-012 shows the user what the
+             figure rests on *before* they confirm, because the failure a confidence number
+             cannot catch is one that is confident and wrong (SC-009). -->
+        <section id="pack-step" class="panel" hidden aria-labelledby="pack-step-title">
+          <h3 id="pack-step-title">Is this the right pack?</h3>
+          <p class="pack__name">
+            <strong id="pack-name">—</strong>
+            <span id="pack-confidence" class="pack__confidence"></span>
+          </p>
+          <ul id="pack-evidence" class="evidence"></ul>
+          <div class="actions">
+            <button type="button" class="btn btn--primary" id="pack-confirm">
+              Yes, print this pack
+            </button>
+            <button type="button" class="btn" id="pack-other">No, choose another</button>
+          </div>
+          <!-- FR-012b: a refusal is a prompt, never a dead end. -->
+          <div id="pack-picker" hidden>
+            <label class="field">
+              <span class="field__label">Search every pack</span>
+              <input type="search" id="pack-search" autocomplete="off" placeholder="Wasp" />
+            </label>
+            <ul id="pack-candidates" class="decks"></ul>
+          </div>
+        </section>
+
+        <!-- FR-013d. Proposed, then accepted — the tool never prints a decklist the user
+             has not agreed to, and accepting its own suggestion is not a customization. -->
+        <section id="decklist-step" class="panel" hidden aria-labelledby="decklist-step-title">
+          <h3 id="decklist-step-title">Deck list card</h3>
+          <p id="decklist-found" hidden>
+            Found <code id="decklist-ref">—</code> in this folder. Print it with the pack?
+          </p>
+          <p id="decklist-missing" hidden>
+            This folder holds no deck list scan. The pack will print without one; you can get
+            a deck list from
+            <a id="decklist-url" href="#" rel="noreferrer noopener" target="_blank">
+              Hall of Heroes</a
+            >.
+          </p>
+          <ul id="decklist-alternatives" class="decks" hidden></ul>
+          <div class="actions">
+            <button type="button" class="btn btn--primary" id="decklist-confirm">
+              Print it
+            </button>
+            <button type="button" class="btn" id="decklist-skip">Print without one</button>
+          </div>
+        </section>
+
+        <!-- The report. FR-015d packs the groups onto as few pages as possible with no page
+             break between them, so this is what tells them apart when the user is sorting a
+             stack of cut cards (FR-015e, SC-002b). -->
+        <section id="assembly-report" class="panel" hidden aria-labelledby="report-title">
+          <h3 id="report-title">What will print</h3>
+          <dl class="tally">
+            <div><dt>Cards printing</dt><dd id="report-printed">—</dd></div>
+            <div><dt>Cards in the pack</dt><dd id="report-in-pack">—</dd></div>
+            <div><dt>Printed faces</dt><dd id="report-faces">—</dd></div>
+            <div><dt>Deck list</dt><dd id="report-decklist">—</dd></div>
+          </dl>
+
+          <section id="gaps" class="failures" hidden aria-labelledby="gaps-title">
+            <h4 id="gaps-title">Cards that could not be found</h4>
+            <p class="muted">
+              The pack will not print while these are missing — a pack that is quietly short
+              is worse than one that says so.
+            </p>
+            <ul id="gaps-list"></ul>
+          </section>
+
+          <section id="substitutions" class="subs" hidden aria-labelledby="substitutions-title">
+            <h4 id="substitutions-title">Where images came from</h4>
+            <p class="muted">
+              Anything not found at its own position in the hero folder is listed here, so a
+              wrong match is visible rather than invisible.
+            </p>
+            <ul id="substitutions-list"></ul>
+          </section>
+
+          <div class="actions">
+            <button type="button" class="btn btn--primary" id="assembly-confirm" hidden>
+              Make the PDF
+            </button>
+            <a id="assembly-download" class="btn btn--primary" hidden download>Download PDF</a>
+          </div>
+          <p id="assembly-progress" class="muted" role="status" aria-live="polite"></p>
+        </section>
       </section>
     </main>
 

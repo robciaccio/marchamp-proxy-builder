@@ -291,7 +291,23 @@ class AssemblyService:
         decklist = self._decklist_state(record, index)
 
         record.resolutions = [r.to_json() for r in outcome.resolutions]
-        record.report = self._report(record, cards, outcome.resolutions, decklist).to_json()
+        # The catalog is built here as well as at render time, and not only to save work
+        # later: it is what knows each card's FR-015 group and what the entries actually
+        # print. Without it a run waiting on a card reports every resolution as a player
+        # card and zero cards printed — and FR-030b requires an incomplete pack to stay
+        # legible as incomplete, which a report claiming nothing was found is not. In
+        # memory only, as always.
+        built = build_catalog(
+            pack_code=pack_code,
+            pack_name=identification.pack_name or pack_code,
+            cards=cards,
+            resolutions=outcome.resolutions,
+            snapshot_revision=record.snapshot_revision or "",
+            decklist=decklist,
+        )
+        record.report = self._report(
+            record, cards, outcome.resolutions, decklist, built=built
+        ).to_json()
         record.report["unresolved"] = [u.to_json() for u in outcome.unresolved]
         record.decklist = decklist.to_json()
 

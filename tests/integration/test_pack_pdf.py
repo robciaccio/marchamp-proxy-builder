@@ -9,12 +9,11 @@ defect — what keeps the groups distinguishable for the user is the report (FR-
 this is satisfied by *ordering the list*, and these tests assert that the ordering survives
 all the way into the document rather than only in `build_catalog`'s output.
 
-**Why these render a partial pack.** Cascade steps 2 and 4 are US3's (Phase 5), so on this
-library no hero resolves completely yet — and `cap` cannot resolve completely even then,
-because `Followed` is in no folder of the scan library at all. Layout is independent of
-completeness: the entries that resolved are ordered and paginated exactly as a full pack's
-would be, and rendering them is a true test of FR-015d. What is *not* tested here is a full
-pack's page count, which needs Phase 5 and is T115's.
+**Why these render a partial pack.** Cascade steps 2 and 4 are US3's (Phase 5), so no hero
+resolves completely yet. Layout is independent of completeness: the entries that resolved are
+ordered and paginated exactly as a full pack's would be, and rendering them is a true test of
+FR-015d. What is *not* tested here is a full pack's page count, which needs Phase 5 and is
+T115's.
 """
 
 from __future__ import annotations

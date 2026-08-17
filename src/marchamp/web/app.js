@@ -375,6 +375,289 @@ function renderFailures(generation) {
   }
 }
 
+
+/* ======================================================== feature 002: pack assembly ==
+ *
+ * An assembly run is a resource with a lifecycle (FR-026a), not a form submission that
+ * returns a PDF. So this half of the client has no step counter of its own: it renders
+ * whatever state the run is in, which is also what makes coming back to an unfinished run
+ * work without the browser remembering anything (FR-026b).
+ *
+ * Every mutating request carries `If-Match` with the version it last read. Two tabs
+ * answering two different questions is the lost update ADR 0001's reviewers named, and a
+ * 409 here means "re-read and try again" rather than "something broke".
+ */
+
+const assembly = {
+  run: null,
+  candidates: [],
+};
+
+function assemblyError(message) {
+  const box = $("assembly-error");
+  box.textContent = message;
+  box.hidden = !message;
+}
+
+async function assemblyRequest(path, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (options.body !== undefined) headers["Content-Type"] = "application/json";
+  /* Sent on every mutating call, never only on the ones that felt risky. */
+  if (options.method && options.method !== "GET" && assembly.run) {
+    headers["If-Match"] = String(assembly.run.version);
+  }
+  const response = await fetch(path, {
+    ...options,
+    headers,
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
+  if (!response.ok) {
+    let detail = `${response.status} ${response.statusText}`;
+    try {
+      const problem = await response.json();
+      /* The API's refusals name the card, the file, or the path at fault (FR-037, SC-008).
+       * Showing that instead of a status code is the whole reason they are worded that way. */
+      if (problem && problem.detail) detail = problem.detail;
+    } catch (err) {
+      /* A non-JSON error body is still an error; the status line stands in. */
+    }
+    throw new Error(detail);
+  }
+  return response.status === 204 ? null : response.json();
+}
+
+async function startAssembly(event) {
+  event.preventDefault();
+  assemblyError("");
+  assembly.run = null;
+  const button = $("assembly-start");
+  button.disabled = true;
+  try {
+    assembly.run = await assemblyRequest("/api/assemblies", {
+      method: "POST",
+      body: {
+        library_root: $("library-root").value.trim(),
+        hero_folder: $("hero-folder").value.trim(),
+      },
+    });
+    renderAssembly();
+  } catch (err) {
+    assemblyError(err.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function renderAssembly() {
+  const run = assembly.run;
+  if (!run) return;
+
+  const identified = run.identification && run.identification.pack_code;
+  const awaitingPack = run.state === "awaiting_pack" || run.state === "unidentified";
+
+  /* ---- the pack, and the evidence for it (FR-012) */
+  $("pack-step").hidden = !awaitingPack;
+  if (awaitingPack) {
+    $("pack-name").textContent = identified
+      ? `${run.identification.pack_name} (${run.identification.pack_code})`
+      : "No pack could be identified from this folder";
+    $("pack-confidence").textContent =
+      run.identification && run.identification.confidence != null
+        ? `${Math.round(run.identification.confidence * 100)}% of the files match`
+        : "";
+    const evidence = $("pack-evidence");
+    evidence.replaceChildren();
+    for (const line of (run.identification && run.identification.evidence) || []) {
+      const li = document.createElement("li");
+      li.textContent = line;
+      evidence.append(li);
+    }
+    $("pack-confirm").hidden = !identified;
+    /* An unidentified folder opens the picker straight away: there is nothing to confirm,
+     * and leaving the user to find the button would be a dead end (FR-012b). */
+    if (!identified) showPackPicker();
+  }
+
+  /* ---- the decklist card (FR-013c, FR-013d) */
+  const decklist = run.decklist_candidate;
+  const resolved = !awaitingPack && run.state !== "identifying" && run.state !== "resolving";
+  const noDecklist =
+    resolved && !decklist && run.report && !run.report.decklist_printed;
+  $("decklist-step").hidden = !(decklist || noDecklist);
+  $("decklist-found").hidden = !decklist;
+  $("decklist-missing").hidden = !noDecklist;
+  $("decklist-confirm").hidden = !decklist;
+  if (decklist) {
+    $("decklist-ref").textContent = decklist.ref;
+    const alternatives = $("decklist-alternatives");
+    alternatives.replaceChildren();
+    alternatives.hidden = !(decklist.alternatives && decklist.alternatives.length > 1);
+    /* Two different files matched, so the user picks — the tool does not (FR-033). */
+    for (const ref of decklist.alternatives || []) {
+      const li = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn";
+      button.textContent = ref;
+      button.addEventListener("click", () => decideDecklist("select", ref));
+      li.append(button);
+      alternatives.append(li);
+    }
+  }
+  if (noDecklist && run.report && run.report.decklist_source_url) {
+    $("decklist-url").href = run.report.decklist_source_url;
+  }
+
+  /* ---- the report */
+  const report = run.report;
+  $("assembly-report").hidden = !report;
+  if (report) {
+    $("report-printed").textContent = report.cards_printed;
+    $("report-in-pack").textContent = report.cards_in_pack;
+    $("report-faces").textContent = report.faces_printed;
+    $("report-decklist").textContent = report.decklist_printed ? "included" : "not included";
+
+    const gaps = run.unresolved || [];
+    $("gaps").hidden = gaps.length === 0;
+    const gapList = $("gaps-list");
+    gapList.replaceChildren();
+    for (const gap of gaps) {
+      const li = document.createElement("li");
+      /* Named individually with where the tool looked, so the user can act on the report
+       * alone rather than being handed a failed run to diagnose (FR-026d, SC-008). */
+      li.textContent = `${gap.card_name} (${gap.card_code}, ${gap.group}, ${gap.side}) — looked in: ${gap.searched.join("; ")}`;
+      gapList.append(li);
+    }
+
+    const subs = (report.resolutions || []).filter(
+      (r) => r.provenance !== "folder_position",
+    );
+    $("substitutions").hidden = subs.length === 0;
+    const subList = $("substitutions-list");
+    subList.replaceChildren();
+    for (const sub of subs) {
+      const li = document.createElement("li");
+      li.textContent = `${sub.card_name} (${sub.card_code}) — ${sub.provenance}: ${sub.file}`;
+      subList.append(li);
+    }
+
+    /* FR-026a: reaching `ready` does not print. The button is the confirmation. */
+    $("assembly-confirm").hidden = run.state !== "ready";
+    const download = $("assembly-download");
+    download.hidden = run.state !== "complete";
+    if (run.state === "complete") download.href = `/api/assemblies/${run.id}/document`;
+    $("assembly-progress").textContent =
+      run.state === "rendering" ? "Building the PDF…" : "";
+  }
+}
+
+async function showPackPicker() {
+  $("pack-picker").hidden = false;
+  await loadPackCandidates("");
+}
+
+async function loadPackCandidates(query) {
+  if (!assembly.run) return;
+  const url = new URL(`/api/assemblies/${assembly.run.id}/packs`, window.location.origin);
+  if (query) url.searchParams.set("q", query);
+  try {
+    const payload = await assemblyRequest(url.pathname + url.search);
+    assembly.candidates = payload.candidates || [];
+  } catch (err) {
+    assemblyError(err.message);
+    return;
+  }
+  const list = $("pack-candidates");
+  list.replaceChildren();
+  for (const candidate of assembly.candidates) {
+    const li = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn";
+    button.textContent = `${candidate.pack_name} (${candidate.pack_code})`;
+    button.addEventListener("click", () => setPack("select", candidate.pack_code));
+    li.append(button);
+    list.append(li);
+  }
+}
+
+async function setPack(action, packCode) {
+  assemblyError("");
+  try {
+    assembly.run = await assemblyRequest(`/api/assemblies/${assembly.run.id}/pack`, {
+      method: "POST",
+      body: action === "select" ? { action, pack_code: packCode } : { action },
+    });
+    $("pack-picker").hidden = true;
+    renderAssembly();
+  } catch (err) {
+    assemblyError(err.message);
+  }
+}
+
+async function decideDecklist(action, ref) {
+  assemblyError("");
+  try {
+    assembly.run = await assemblyRequest(`/api/assemblies/${assembly.run.id}/decklist`, {
+      method: "POST",
+      body: ref ? { action, ref } : { action },
+    });
+    renderAssembly();
+  } catch (err) {
+    assemblyError(err.message);
+  }
+}
+
+async function confirmAssembly() {
+  assemblyError("");
+  $("assembly-progress").textContent = "Building the PDF…";
+  try {
+    /* `save_as` is omitted deliberately: an uncustomized run produces the pack's standard
+     * PDF and the API refuses a name for it (FR-026h, FR-026i). A customized run is US4's
+     * and US5's, and will pass one here. */
+    assembly.run = await assemblyRequest(
+      `/api/assemblies/${assembly.run.id}/confirmation`,
+      { method: "POST", body: {} },
+    );
+    renderAssembly();
+  } catch (err) {
+    $("assembly-progress").textContent = "";
+    assemblyError(err.message);
+  }
+}
+
+function showMode(mode) {
+  const isAssembly = mode === "assembly";
+  $("assembly").hidden = !isAssembly;
+  $("deck-steps").hidden = isAssembly;
+  for (const id of ["step-1", "step-2", "step-3"]) {
+    /* 001's steps are driven by `showStep`; hiding them wholesale here would fight it, so
+     * the mode switch only ever hides, and returning to deck mode replays the step. */
+    if (isAssembly) $(id).hidden = true;
+  }
+  for (const link of document.querySelectorAll("[data-mode]")) {
+    const current = link.dataset.mode === mode;
+    link.classList.toggle("is-current", current);
+    link.setAttribute("aria-pressed", String(current));
+  }
+  if (!isAssembly) showStep(state.step);
+}
+
+function wireAssembly() {
+  $("assembly-form").addEventListener("submit", startAssembly);
+  $("pack-confirm").addEventListener("click", () => setPack("confirm"));
+  $("pack-other").addEventListener("click", showPackPicker);
+  $("pack-search").addEventListener("input", (event) =>
+    loadPackCandidates(event.target.value.trim()),
+  );
+  $("decklist-confirm").addEventListener("click", () => decideDecklist("confirm"));
+  $("decklist-skip").addEventListener("click", () => decideDecklist("skip"));
+  $("assembly-confirm").addEventListener("click", confirmAssembly);
+  for (const link of document.querySelectorAll("[data-mode]")) {
+    link.addEventListener("click", () => showMode(link.dataset.mode));
+  }
+}
+
 // ------------------------------------------------------------------------- start up
 
 function main() {
@@ -385,8 +668,10 @@ function main() {
     link.addEventListener("click", () => showStep(Number(link.dataset.goto)));
   }
   wireOptions();
+  wireAssembly();
   $("generate").addEventListener("click", generate);
   showStep(1);
+  showMode("deck");
   loadDecks();
 }
 

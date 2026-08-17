@@ -70,6 +70,14 @@ packages — `upstream/`, `library/`, `assembly/`, `store/` — plus changes to 
 >
 > The decklist filenames named in this task were corrected against the library at the same
 > time; see research.md § filename conventions.
+>
+> **A limitation worth knowing before T115.** The fixture covers the ten acceptance heroes,
+> the Core Set and `Aspects/`, so a reprint pointing into any *other* pack has no folder to
+> borrow from. `cap`'s `Followed` (03032) is the measured case: it resolves by reprint into
+> Spider-Ham's pack against the real library, and is unresolvable against the fixture. This
+> is a property of fixture coverage, not of the resolver — chasing it would mean deriving all
+> 61 packs. Expect fixture runs to report slightly more gaps than real ones, and do not
+> "fix" the resolver to close them.
 - [X] T006 [P] Commit reduced upstream fixtures in `tests/fixtures/snapshots/` for the ten packs plus `core`, carrying only the fields in data-model.md § PackCard (FR-038a)
 - [X] T007 [P] Write `tests/unit/test_fixtures_carry_no_card_data.py` asserting no fixture holds card text, flavour, traits, `imagesrc`, or a real image — this repository is public and FR-038a governs fixtures as much as runtime
 - [X] T008 [P] Extend `tests/conftest.py` with a temporary state directory, a fixture `library_root`, and an offline `httpx` transport that serves the T006 fixtures and fails on any unstubbed host
@@ -209,8 +217,8 @@ download-from-Hall-of-Heroes upload for folders that hold no scan.
 
 ### Interface
 
-- [ ] T057 [US1] Extend `src/marchamp/web/index.html`, `app.js`, and `styles.css` — name the library root and hero folder, show the identified pack with its evidence and wait for confirmation, show the proposed decklist card and wait for acceptance or a different pick (FR-013d), show progress, offer the download
-- [ ] T058 [US1] Write the end-to-end integration test for `cap` over the fixture library in `tests/integration/test_assemble_cap.py` — every card resolved, the eight Core Set reprints recovered, one PDF, `MARCHAMP_IMAGE_DIR` and `MARCHAMP_CATALOG` unset throughout (SC-003a)
+- [X] T057 [US1] Extend `src/marchamp/web/index.html`, `app.js`, and `styles.css` — name the library root and hero folder, show the identified pack with its evidence and wait for confirmation, show the proposed decklist card and wait for acceptance or a different pick (FR-013d), show progress, offer the download
+- [X] T058 [US1] Write the end-to-end integration test for `cap` over the fixture library in `tests/integration/test_assemble_cap.py` — every card resolved, the eight Core Set reprints recovered, one PDF, `MARCHAMP_IMAGE_DIR` and `MARCHAMP_CATALOG` unset throughout (SC-003a)
 
 **Checkpoint**: a user can print one hero's whole pack from a folder they name, with nothing
 configured. This is the MVP.

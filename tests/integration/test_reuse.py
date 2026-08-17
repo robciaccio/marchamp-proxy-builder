@@ -17,9 +17,8 @@ optimisation and the reason it is asserted here rather than assumed.
 
 **Scope note.** These drive `image_identity` and the PDF store directly rather than through
 `confirm()`. Reaching `ready` needs every card resolved, and cascade steps 2 and 4 are US3's
-(Phase 5); `cap` additionally has one card — `Followed` — that is in no folder of the scan
-library at all, so it needs US4's omission before any run of it can render. The reuse
-*decision* in `service.confirm` is exercised end to end by T115 once those land.
+(Phase 5). The reuse *decision* in `service.confirm` is exercised end to end by T115 once
+that lands.
 """
 
 from __future__ import annotations
