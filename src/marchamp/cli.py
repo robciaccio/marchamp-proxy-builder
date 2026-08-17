@@ -4,6 +4,14 @@ Configuration problems are reported here, before the server starts, rather than 
 the user to discover as an empty deck list. FR-019b's distinction is the point: "you have
 not set this yet" and "you set it to somewhere that does not exist" are different mistakes
 with different fixes, and a blank page tells you neither.
+
+**Feature 002 changed what those problems mean.** They used to stop the server, because
+`MARCHAMP_IMAGE_DIR` and `MARCHAMP_CATALOG` were the only way to reach any card at all.
+Pack assembly names its library per run and needs neither, so FR-005 forbids refusing to
+start over them and SC-003a requires an assembly with no environment variable set. They are
+now reported as what they became: feature 001's deck list is unavailable, and the rest of
+the application is not. Reporting them at all still matters — a user who *meant* to
+configure 001 would otherwise meet an empty list with no explanation.
 """
 
 from __future__ import annotations
@@ -16,7 +24,7 @@ from marchamp.config import Settings, settings_from_env
 
 
 def _report(settings: Settings, stream) -> bool:
-    """Print what is wrong, if anything. True when the service is usable."""
+    """Print what is wrong, if anything. True when feature 001's deck list is usable."""
     problems = settings.problems()
     if not problems:
         return True
@@ -27,22 +35,25 @@ def _report(settings: Settings, stream) -> bool:
     # anything sends them to fix the wrong thing.
     unset = [p for p in problems if p.kind.endswith("_unset")]
     if len(unset) == len(problems):
-        headline = "Cannot start — the application is not configured yet:"
+        headline = "The prebuilt deck list is not configured yet:"
     elif not unset:
-        headline = "Cannot start — the configuration points at something that is not there:"
+        headline = "The prebuilt deck list points at something that is not there:"
     else:
-        headline = "Cannot start — the configuration is incomplete:"
+        headline = "The prebuilt deck list is configured incompletely:"
 
     print(f"{headline}\n", file=stream)
     for problem in problems:
         print(f"  • {problem.detail}", file=stream)
     if unset:
         print(
-            "\nSet both, then run again:\n"
+            "\nSet both to use it:\n"
             '  export MARCHAMP_IMAGE_DIR="/path/to/card-images"\n'
             '  export MARCHAMP_CATALOG="/path/to/catalog.json"',
             file=stream,
         )
+    # Pack assembly names its library per run, so it is unaffected. Said out loud because
+    # the paragraph above otherwise reads as though nothing works.
+    print("\nPack assembly needs neither and is available.", file=stream)
     return False
 
 
@@ -77,10 +88,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             host=settings.host,
             port=args.port,
             limits=settings.limits,
+            state_dir=settings.state_dir,
+            upstream=settings.upstream,
         )
 
-    if not _report(settings, sys.stderr):
-        return 1
+    # Reported, never fatal (FR-005, SC-003a). The return value is deliberately ignored
+    # here rather than deleted: `_report` still distinguishes the two mistakes, and the
+    # boolean is what a caller that genuinely needs 001's catalog would branch on.
+    _report(settings, sys.stderr)
 
     import uvicorn
 

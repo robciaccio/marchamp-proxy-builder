@@ -25,25 +25,50 @@ def test_the_declared_entry_point_is_importable_and_callable():
     assert callable(getattr(importlib.import_module(module_name), attribute))
 
 
-def test_serve_refuses_and_explains_when_nothing_is_configured(monkeypatch, capsys):
-    # FR-019b — "not set yet" must not present as an empty deck list.
+@pytest.fixture
+def captured_uvicorn(monkeypatch):
+    """Stand in for the server so `serve` can be run to completion in a test."""
+    served: dict = {}
+
+    def fake_run(app, host, port):
+        served["app"], served["host"], served["port"] = app, host, port
+
+    monkeypatch.setattr("uvicorn.run", fake_run)
+    return served
+
+
+def test_serve_starts_and_explains_when_001_is_not_configured(
+    monkeypatch, capsys, captured_uvicorn
+):
+    """FR-005, SC-003a — pack assembly names its library per run and needs no variable.
+
+    This inverts feature 001's behaviour deliberately. Refusing to start was right while
+    `MARCHAMP_IMAGE_DIR` was the only route to any card; it became a bug the moment a user
+    could assemble a pack without one. FR-019b is not repealed — the explanation is still
+    required, because an unexplained empty deck list is the failure it exists to prevent.
+    """
     monkeypatch.delenv("MARCHAMP_IMAGE_DIR", raising=False)
     monkeypatch.delenv("MARCHAMP_CATALOG", raising=False)
 
-    assert cli.main(["serve"]) == 1
+    assert cli.main(["serve"]) == 0
+    assert captured_uvicorn["host"] == "127.0.0.1"
     err = capsys.readouterr().err
     assert "not configured" in err
     assert "MARCHAMP_IMAGE_DIR" in err and "MARCHAMP_CATALOG" in err
+    # And says what still works, or the message above reads as total failure.
+    assert "Pack assembly" in err
 
 
-def test_serve_distinguishes_a_wrong_path_from_an_unset_one(monkeypatch, capsys, tmp_path):
+def test_serve_distinguishes_a_wrong_path_from_an_unset_one(
+    monkeypatch, capsys, tmp_path, captured_uvicorn
+):
     # The two mistakes have different fixes, so they must not read the same — including in
     # the headline. Telling someone who mistyped a path that they have configured nothing
     # sends them to fix the wrong thing.
     monkeypatch.setenv("MARCHAMP_IMAGE_DIR", str(tmp_path / "nowhere"))
     monkeypatch.setenv("MARCHAMP_CATALOG", str(tmp_path / "absent.json"))
 
-    assert cli.main(["serve"]) == 1
+    assert cli.main(["serve"]) == 0
     err = capsys.readouterr().err
     assert "points at something that is not there" in err
     assert "not configured yet" not in err
@@ -53,13 +78,15 @@ def test_serve_distinguishes_a_wrong_path_from_an_unset_one(monkeypatch, capsys,
     assert "export MARCHAMP_IMAGE_DIR" not in err
 
 
-def test_serve_names_the_one_setting_that_is_missing(monkeypatch, capsys, image_dir, tmp_path):
+def test_serve_names_the_one_setting_that_is_missing(
+    monkeypatch, capsys, image_dir, captured_uvicorn
+):
     # One set correctly, one pointing nowhere: the report must not flatten to either
     # extreme, and must still name both the good news and the bad.
     monkeypatch.setenv("MARCHAMP_IMAGE_DIR", str(image_dir))
     monkeypatch.delenv("MARCHAMP_CATALOG", raising=False)
 
-    assert cli.main(["serve"]) == 1
+    assert cli.main(["serve"]) == 0
     err = capsys.readouterr().err
     assert "not configured yet" in err
     # Exactly one problem is reported: the catalog. The image directory is fine and must
