@@ -259,6 +259,43 @@ def library_root(tmp_path: Path) -> Path:
     return root
 
 
+#: The derived fixture library (T005) — the ten acceptance heroes, the Core Set, and
+#: `Aspects/`, carrying the real library's filenames over generated images.
+DERIVED_LIBRARY = FIXTURES / "library"
+
+#: Folder for each acceptance hero, keyed by the pack code identification must reach. Hand
+#: written rather than derived, so a test asserting identification cannot agree with a
+#: resolver bug by sharing its logic.
+ACCEPTANCE_HEROES = {
+    "ant": "Heros/Scott Lang_Ant-Man",
+    "bkw": "Heros/Natasha Romanoff_Black Widow",
+    "cap": "Heros/Steve Rogers_Captain America",
+    "hlk": "Heros/Bruce Banner_Hulk",
+    "msm": "Heros/Kamala Khan_Ms.Marvel",
+    "phoenix": "Heros/Jean Grey_Phoenix (u)",
+    "stld": "Heros/Peter Quill_Star-Lord",
+    "thor": "Heros/Odinson_Thor",
+    "wonder_man": "Heros/Simon Williams_Wonderman",
+    "wsp": "Heros/Nadia Van Dyne_Wasp",
+}
+
+
+@pytest.fixture(scope="session")
+def scan_library() -> Path:
+    """The committed derived library (T005), read-only.
+
+    Session-scoped and handed out as-is rather than copied per test: it is 678 files, every
+    test that touches it only reads, and FR-001's whole point is that this feature never
+    writes to a scan library. A test that needs to mutate one wants `library_root`.
+    """
+    if not DERIVED_LIBRARY.is_dir():
+        pytest.skip(
+            "tests/fixtures/library/ is missing — run scripts/derive_library_fixture.py "
+            "against the mounted scan library (T005)"
+        )
+    return DERIVED_LIBRARY
+
+
 def snapshot_fixture(pack_code: str) -> list[dict]:
     """The committed reduced listing for one pack (T006)."""
     return json.loads((SNAPSHOT_FIXTURES / f"{pack_code}.json").read_text())
@@ -311,6 +348,21 @@ def upstream_transport() -> httpx.MockTransport:
                 # cheaper than refetching and is asserted in the freshness tests.
                 return httpx.Response(304, headers=headers)
             return httpx.Response(200, json=json.loads(fixture.read_text()), headers=headers)
+
+        if path.startswith("/api/public/card/") and path.endswith(".json"):
+            # Research R4's third endpoint: which pack one card belongs to, asked only when
+            # a reprint link's two-digit prefix maps to no pack already held. Served from
+            # the same reduced fixtures, and only `pack_code` is ever read off it.
+            code = path.removeprefix("/api/public/card/").removesuffix(".json")
+            for fixture in sorted(SNAPSHOT_FIXTURES.glob("*.json")):
+                if fixture.stem == "packs":
+                    continue
+                for raw in json.loads(fixture.read_text()):
+                    if raw.get("code") == code:
+                        return httpx.Response(
+                            200, json={"code": code, "pack_code": fixture.stem}, headers=headers
+                        )
+            return httpx.Response(404, json={"error": "no such card"}, headers=headers)
 
         raise UnstubbedRequest(f"unstubbed MarvelCDB path {path}")
 

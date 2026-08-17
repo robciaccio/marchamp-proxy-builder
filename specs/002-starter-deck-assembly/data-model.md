@@ -230,14 +230,45 @@ the card prints once.
 |---|---|---|
 | `pack_code` | string? | Null when nothing could be identified. |
 | `source` | enum | `identified` or `user_selected`. Reported and distinguishable, exactly as a manual card resolution is (FR-012b, SC-009a). |
-| `confidence` | float | Share of the hero folder's *interpretable* files matching a card in the candidate pack, by position or name. |
+| `confidence` | float | Share of the hero folder's *interpretable* files whose filename matches the canonical **name** of a card in the candidate pack. See the correction below — this originally read "by position or name". |
 | `evidence` | string[] | What the figure rests on, shown to the user before they confirm (FR-012). |
 | `candidates` | ranked[] | Offered when the user declines or identification is refused (FR-012b). |
 
-**Threshold** — **provisional: ≥ 0.60 with at least 5 matched cards.** Calibrated in **T042**
-against the ten acceptance heroes, which is where the measured figure replaces this one — Phoenix
-and Wonder Man must clear it on name matches alone. Below it, the run is refused as too weak *and offered selection* (FR-011, FR-012b): a
-refusal is a prompt, never a dead end.
+**Threshold** — **≥ 0.75 with at least 5 matched cards**, measured in T042 and asserted by
+`test_the_threshold_sits_in_the_measured_gap`. Below it, the run is refused as too weak *and
+offered selection* (FR-011, FR-012b): a refusal is a prompt, never a dead end.
+
+### T042 calibration, measured 2026-08-17
+
+Every acceptance hero's folder scored against every pack holding a committed snapshot. `core` is
+excluded from the false-positive column: it is not a hero pack but the place a shared card's other
+printing lives, so a hero folder scoring against it is the reprint relationship working (FR-014).
+
+| | Score |
+|---|---|
+| Weakest correct identification | **0.87** — Wasp, 20 of 23 interpretable files |
+| Next weakest | 0.97 — Phoenix, 28 of 29 |
+| Strongest **incorrect** identification | **0.65** — Ant-Man's folder against the *Wasp* pack |
+| Fewest cards matched by a correct identification | 17 |
+
+0.75 sits inside that gap with margin either side. Two findings from the measurement changed the
+design, and both are recorded here because the original text is what a reader would otherwise
+trust:
+
+- **The provisional 0.60 was below the false-positive ceiling.** Ant-Man and Wasp each contain the
+  other hero as an ally and share basic cards, so Ant-Man's folder genuinely scores 0.65 against
+  the Wasp pack. A threshold of 0.60 would have admitted it.
+- **Position agreement is not evidence of pack identity, and the confidence figure no longer uses
+  it.** Every hero pack numbers its cards from 1, so every hero folder's positions match every
+  hero pack's positions: measured on positions, Star-Lord's folder verifies **100%** against Thor.
+  Name agreement separates the same pair completely (1.00 against Star-Lord, 0.00 against Thor).
+  Positions are still counted and shown as corroboration in the evidence list, because they are
+  meaningful to a human reading it, but they do not move the number.
+
+The identity card was evaluated as an additional hard requirement and **rejected**: Ant-Man's
+folder contains a card named "Wasp", which is the Wasp pack's identity card, so the check fires
+on exactly the false positive it was meant to catch. The name share alone is the cleaner
+discriminator.
 
 Confirmation is unconditional (FR-012a). No card is resolved from an unconfirmed identification,
 because the case the threshold structurally cannot catch is an identification that is confident

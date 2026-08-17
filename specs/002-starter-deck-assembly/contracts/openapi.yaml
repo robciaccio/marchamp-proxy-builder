@@ -515,14 +515,24 @@ components:
 
   schemas:
     Problem:
-      description: RFC 9457. Feature 001's shape, unchanged.
+      description: |
+        RFC 9457. Feature 001's shape, unchanged — and this file is the only place the shape
+        is repeated, so T009's merge asserts the two copies are byte-identical rather than
+        trusting this sentence. They were not, when that assertion was first written: this
+        copy omitted `type` from `required` and declared `detail` non-nullable, both of which
+        contradict the shipped 001 document. Corrected here, since 001 is what the service
+        actually emits.
       type: object
       properties:
         type: { type: string }
         title: { type: string }
         status: { type: integer }
-        detail: { type: string }
-      required: [title, status]
+        detail:
+          type: [string, "null"]
+          description: |
+            What went wrong, in a sentence a user can act on. Never a stack trace, a query,
+            or an internal hostname — the constitution's fail-closed clause forbids it.
+      required: [type, title, status]
 
     AssemblyRequest:
       type: object
@@ -540,7 +550,7 @@ components:
             A path relative to `library_root`, which it must resolve inside. What the pack is
             identified from (FR-010) and the folder the report accounts for file-by-file (FR-031).
         page_size: { type: string, enum: [LETTER, A4] }
-        fit_mode: { type: string, enum: [crop, fit, stretch] }
+        fit_mode: { type: string, enum: [CROP, FIT, STRETCH] }
       required: [library_root, hero_folder]
 
     AssemblyState:
@@ -595,10 +605,20 @@ components:
             mount has gone (FR-026b). Never part of the reuse key (FR-026h).
         hero_folder: { type: string }
         state: { $ref: "#/components/schemas/AssemblyState" }
-        outcome: { $ref: "#/components/schemas/AssemblyOutcome" }
+        # Nullable, and this was corrected in the Phase 3 PR: `AssemblyOutcome` already
+        # documents itself as "null until the run is terminal", but a bare `$ref` cannot
+        # carry null, so the schema contradicted its own prose and the service.
+        outcome:
+          oneOf:
+            - $ref: "#/components/schemas/AssemblyOutcome"
+            - type: "null"
         page_size: { type: string, enum: [LETTER, A4] }
-        fit_mode: { type: string, enum: [crop, fit, stretch] }
-        identification: { $ref: "#/components/schemas/PackIdentification" }
+        fit_mode: { type: string, enum: [CROP, FIT, STRETCH] }
+        # Null while the run is still `identifying` — nothing has been proposed yet.
+        identification:
+          oneOf:
+            - $ref: "#/components/schemas/PackIdentification"
+            - type: "null"
         snapshot_revision: { type: [string, "null"] }
         snapshot_stale:
           type: boolean
@@ -621,7 +641,12 @@ components:
           type: [boolean, "null"]
           description: A stored PDF was served rather than rendered again (FR-026h, SC-006i).
         pdf_id: { type: [string, "null"] }
-        report: { $ref: "#/components/schemas/AssemblyReport" }
+        # Null until the run has resolved. A run awaiting pack confirmation has nothing to
+        # report yet, and an empty report would claim a pack of zero cards.
+        report:
+          oneOf:
+            - $ref: "#/components/schemas/AssemblyReport"
+            - type: "null"
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
       required: [id, version, library_root, hero_folder, state, unresolved, created_at, updated_at]

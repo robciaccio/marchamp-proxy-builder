@@ -115,6 +115,16 @@ class RunRecord:
     report: dict[str, Any] = field(default_factory=dict)
     #: `{"kind": "standard"|"saved", "id": ...}`, or absent until the run has rendered.
     pdf: dict[str, Any] | None = None
+    #: Step 0's proposal and the user's answer to it (FR-013d). Lives on the run because an
+    #: undecided candidate holds the run in `awaiting_cards` across a restart.
+    decklist: dict[str, Any] | None = None
+    #: Whether the user changed anything (FR-026i). A customized run cannot produce the
+    #: pack's *standard* PDF, because two users pointed at the same folder would get
+    #: different documents. Selecting the pack is deliberately not customization, and
+    #: neither is confirming the decklist candidate the tool itself proposed (FR-013e).
+    customized: bool = False
+    #: Whether the last confirmation served a stored PDF instead of rendering (SC-006i).
+    reused: bool | None = None
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -134,6 +144,9 @@ class RunRecord:
             "resolutions": self.resolutions,
             "report": self.report,
             "pdf": self.pdf,
+            "decklist": self.decklist,
+            "customized": self.customized,
+            "reused": self.reused,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -157,6 +170,9 @@ class RunRecord:
                 resolutions=payload.get("resolutions") or [],
                 report=payload.get("report") or {},
                 pdf=payload.get("pdf"),
+                decklist=payload.get("decklist"),
+                customized=payload.get("customized", False),
+                reused=payload.get("reused"),
             )
         except (KeyError, ValueError, TypeError) as exc:
             raise UnreadableRunRecord(f"run record is malformed: {exc}") from exc

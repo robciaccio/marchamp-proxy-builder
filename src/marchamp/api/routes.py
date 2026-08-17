@@ -11,11 +11,13 @@ leave the contract naming types that describe nothing.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path as FilePath
 from typing import Annotated, Any
 
-from fastapi import FastAPI, HTTPException, Path, Query, Response
+from fastapi import FastAPI, Header, HTTPException, Path, Query, Response
 
 from marchamp.api import schemas
+from marchamp.assembly.service import AssemblyError, AssemblyService
 from marchamp.assets.local_dir import LocalDirectoryStore
 from marchamp.catalog.loader import CatalogError
 from marchamp.catalog.validation import validate
@@ -25,6 +27,11 @@ from marchamp.generations.service import GenerationService
 from marchamp.layout.geometry import PageSize
 from marchamp.layout.paginate import face_count
 from marchamp.render import preview
+from marchamp.render.images import FitMode
+from marchamp.store.layout import StateLayout, UnsafeIdentifier
+from marchamp.store.runs import RunNotFound, RunState
+from marchamp.upstream.client import MarvelCdbClient
+from marchamp.upstream.snapshots import SnapshotStore, SnapshotUnavailable
 
 # One generation is a couple of CPU-seconds of image work; a single local user will not
 # have many in flight. Bounded so an abandoned run cannot accumulate into a thread leak
@@ -341,3 +348,264 @@ def register_routes(app: FastAPI) -> None:
         from marchamp.render.calibration import calibration_pdf
 
         return Response(content=calibration_pdf(page_size), media_type="application/pdf")
+
+    # --------------------------------------------------------------- assemblies (002)
+    #
+    # Feature 002's routes. They share the app with 001's but almost nothing else: a run
+    # names its own library root and hero folder, so none of `MARCHAMP_IMAGE_DIR`,
+    # `MARCHAMP_CATALOG`, or the module-level generation service is involved (FR-005,
+    # SC-003a). `serve` starts with both unset and these endpoints work.
+
+    def assemblies() -> AssemblyService:
+        """One service per request, because a run's asset store is built per run.
+
+        The snapshot store and the client are cheap to construct and hold no connection
+        pool worth reusing across a local single-user session.
+        """
+        layout = StateLayout(settings.state_dir)
+        client = MarvelCdbClient(settings.upstream)
+        return AssemblyService(settings, SnapshotStore(layout, client), layout)
+
+    def _if_match(if_match: str | None) -> int | None:
+        """The run version the caller read, off the `If-Match` header.
+
+        A header rather than a body field so JSON and multipart requests carry it the same
+        way. A malformed value is refused rather than treated as "no precondition": silently
+        dropping a precondition is how a lost update happens (ADR 0001).
+        """
+        if if_match is None:
+            return None
+        try:
+            return int(if_match.strip().strip('"'))
+        except ValueError:
+            raise HTTPException(
+                status_code=400, detail=f"If-Match must be a run version, got {if_match!r}"
+            ) from None
+
+    def _run_response(record) -> schemas.AssemblyRun:
+        identification = record.identification or {}
+        report = dict(record.report or {})
+        unresolved = report.pop("unresolved", [])
+        decklist = record.decklist or {}
+
+        candidate = None
+        # Shown only while it is still a question. Once decided it is history, and the
+        # report carries whether a decklist was printed (FR-013d, SC-006j).
+        if decklist.get("candidate") and not decklist.get("decision"):
+            candidate = schemas.DecklistCandidate(ref=decklist["candidate"]["ref"])
+        elif decklist.get("conflict") and not decklist.get("decision"):
+            alternatives = [c["ref"] for c in decklist.get("candidates", [])]
+            candidate = schemas.DecklistCandidate(
+                ref=alternatives[0] if alternatives else "", alternatives=alternatives
+            )
+
+        return schemas.AssemblyRun(
+            id=record.id,
+            version=record.version,
+            library_root=str(record.library_root),
+            hero_folder=record.hero_folder,
+            state=record.state.value,
+            outcome=record.outcome.value if record.outcome else None,
+            page_size=record.page_size,
+            fit_mode=record.fit_mode,
+            identification=(
+                schemas.PackIdentification(
+                    source=identification.get("source", "identified"),
+                    evidence=identification.get("evidence", []),
+                    # A pack is confirmed once the run has moved past choosing one.
+                    confirmed=record.state
+                    not in (RunState.IDENTIFYING, RunState.AWAITING_PACK, RunState.UNIDENTIFIED),
+                    pack_code=identification.get("pack_code"),
+                    pack_name=identification.get("pack_name"),
+                    confidence=identification.get("confidence"),
+                )
+                if identification
+                else None
+            ),
+            snapshot_revision=record.snapshot_revision,
+            snapshot_stale=bool(report.get("snapshot_stale", False)),
+            decklist_candidate=candidate,
+            # Projected onto the contract's fields rather than splatted: the stored gap also
+            # carries both sides of an FR-033 conflict, which belongs in the report's
+            # `conflicts` section (Phase 4) and not on the card.
+            unresolved=[
+                schemas.UnresolvedCard(
+                    card_code=u["card_code"],
+                    card_name=u["card_name"],
+                    side=u["side"],
+                    group=u.get("group", "player"),
+                    searched=u.get("searched", []),
+                )
+                for u in unresolved
+            ],
+            reused=record.reused,
+            pdf_id=(record.pdf or {}).get("id"),
+            report=schemas.AssemblyReport(**report) if report else None,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+        )
+
+    @app.post(
+        "/api/assemblies",
+        tags=["assemblies"],
+        status_code=202,
+        response_model=schemas.AssemblyRun,
+        responses={
+            400: _problem("A named path was refused, and the reason names which one."),
+            503: _problem("Card data could not be retrieved and none is stored."),
+        },
+    )
+    def create_assembly(request: schemas.AssemblyRequest, response: Response):
+        """Start a run. Identifies the pack and stops — nothing resolves yet (FR-012a)."""
+        service = assemblies()
+        try:
+            record = service.create(
+                FilePath(request.library_root),
+                request.hero_folder,
+                page_size=(request.page_size or PageSize.LETTER).value
+                if hasattr(request.page_size or PageSize.LETTER, "value")
+                else str(request.page_size or "LETTER"),
+                fit_mode=str(
+                    getattr(request.fit_mode, "value", request.fit_mode) or FitMode.CROP.value
+                ),
+            )
+        except SnapshotUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except AssemblyError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+        response.headers["Location"] = f"/api/assemblies/{record.id}"
+        return _run_response(record)
+
+    @app.get(
+        "/api/assemblies/{run_id}",
+        tags=["assemblies"],
+        response_model=schemas.AssemblyRun,
+        responses={404: _problem("No such run.")},
+    )
+    def get_assembly(run_id: str):
+        return _run_response(_read_run(assemblies(), run_id))
+
+    def _read_run(service: AssemblyService, run_id: str):
+        try:
+            return service.get(run_id)
+        except (RunNotFound, UnsafeIdentifier) as exc:
+            raise HTTPException(status_code=404, detail=f"No run {run_id!r}") from exc
+
+    @app.get(
+        "/api/assemblies/{run_id}/packs",
+        tags=["packs"],
+        response_model=schemas.PackCandidateList,
+        responses={404: _problem("No such run.")},
+    )
+    def list_assembly_pack_candidates(run_id: str, q: str | None = Query(default=None)):
+        """FR-012b. The ranked candidates, or a name search across every pack.
+
+        The same path serves an FR-011 refusal and an unidentifiable folder, so neither
+        leaves the user holding a good folder and no way to print it.
+        """
+        service = assemblies()
+        _read_run(service, run_id)
+        return schemas.PackCandidateList(
+            candidates=[schemas.PackCandidate(**c) for c in service.candidates(run_id, q)]
+        )
+
+    @app.post(
+        "/api/assemblies/{run_id}/pack",
+        tags=["packs"],
+        status_code=202,
+        response_model=schemas.AssemblyRun,
+        responses={
+            404: _problem("No such run."),
+            409: _problem("The run is not awaiting a pack, or the version is stale."),
+        },
+    )
+    def set_assembly_pack(
+        run_id: str,
+        decision: schemas.PackDecision,
+        if_match: Annotated[str, Header(alias="If-Match")],
+    ):
+        service = assemblies()
+        _read_run(service, run_id)
+        try:
+            record = service.set_pack(
+                run_id, decision.action, decision.pack_code, version=_if_match(if_match)
+            )
+        except AssemblyError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+        return _run_response(record)
+
+    @app.post(
+        "/api/assemblies/{run_id}/decklist",
+        tags=["assemblies"],
+        # 200, not 202: a decision is applied synchronously, and the contract says so.
+        status_code=200,
+        response_model=schemas.AssemblyRun,
+        responses={
+            400: _problem("The decision, or the file it named, was refused."),
+            404: _problem("No such run."),
+            409: _problem("The run has not resolved yet, or the version is stale."),
+        },
+    )
+    def decide_assembly_decklist(
+        run_id: str,
+        decision: schemas.DecklistDecisionRequest,
+        if_match: Annotated[str, Header(alias="If-Match")],
+    ):
+        """FR-013d. `confirm` accepts the tool's candidate and is **not** customization.
+
+        Were acceptance itself customization, no run would ever be standard and FR-026h's
+        reuse would never fire once (FR-013e).
+        """
+        service = assemblies()
+        _read_run(service, run_id)
+        try:
+            record = service.decide_decklist(
+                run_id, decision.action, decision.ref, version=_if_match(if_match)
+            )
+        except AssemblyError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+        return _run_response(record)
+
+    @app.post(
+        "/api/assemblies/{run_id}/confirmation",
+        tags=["assemblies"],
+        status_code=202,
+        response_model=schemas.AssemblyRun,
+        responses={
+            404: _problem("No such run."),
+            409: _problem("The run is not ready, or the version is stale."),
+        },
+    )
+    def confirm_assembly(
+        run_id: str,
+        confirmation: schemas.AssemblyConfirmation,
+        if_match: Annotated[str, Header(alias="If-Match")],
+    ):
+        """The only place a PDF is produced (FR-026a)."""
+        service = assemblies()
+        _read_run(service, run_id)
+        try:
+            record = service.confirm(run_id, confirmation.save_as, version=_if_match(if_match))
+        except AssemblyError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+        return _run_response(record)
+
+    @app.get(
+        "/api/assemblies/{run_id}/document",
+        tags=["assemblies"],
+        response_class=Response,
+        responses={
+            200: _binary("application/pdf", "The PDF."),
+            404: _problem("No such run."),
+            409: _problem("The run has not produced a document. No partial output, ever."),
+        },
+    )
+    def get_assembly_document(run_id: str) -> Response:
+        """A finished run depends on nothing outside itself (FR-026f, SC-006h)."""
+        service = assemblies()
+        _read_run(service, run_id)
+        try:
+            data = service.document(run_id)
+        except AssemblyError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+        return Response(content=data, media_type="application/pdf")

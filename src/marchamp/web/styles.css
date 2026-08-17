@@ -383,3 +383,86 @@ progress {
   color: var(--ink-soft);
   font-size: 0.85rem;
 }
+
+/* ========================================================= feature 002: pack assembly */
+
+/* Two products, one page. The mode switch is deliberately not styled as a step, because
+   choosing between "a deck from the catalog" and "a whole pack from scans" is not progress
+   through a sequence — it is a different thing to print. */
+.modes {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0 1.5rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.modes__link {
+  font: inherit;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--line, #d0d3d8);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+}
+
+.modes__link.is-current {
+  background: var(--ink, #16181d);
+  color: var(--paper, #fff);
+  border-color: var(--ink, #16181d);
+}
+
+.modes__link:focus-visible {
+  outline: 2px solid var(--accent, #2f6fed);
+  outline-offset: 2px;
+}
+
+/* Each stage of a run is a panel rather than a page, so the user can see the pack they
+   confirmed while deciding about the deck list. */
+.panel {
+  margin-top: 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--line, #d0d3d8);
+  border-radius: 8px;
+}
+
+.panel > h3 {
+  margin-top: 0;
+}
+
+.pack__name {
+  font-size: 1.1rem;
+}
+
+.pack__confidence {
+  margin-left: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--muted, #5c6270);
+}
+
+/* FR-012 shows what the confidence figure rests on before the user confirms. Rendered as a
+   plain list because it is meant to be read, not skimmed past. */
+.evidence {
+  margin: 0.5rem 0 1rem;
+  padding-left: 1.2rem;
+}
+
+.evidence li {
+  margin: 0.2rem 0;
+}
+
+.banner--error {
+  border-color: var(--danger, #b3261e);
+  color: var(--danger, #b3261e);
+}
+
+.field__hint {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted, #5c6270);
+}
+
+#assembly code {
+  word-break: break-all;
+}

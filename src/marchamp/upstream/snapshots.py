@@ -148,6 +148,68 @@ class SnapshotStore:
         )
         return entries
 
+    # ------------------------------------------------------- finding one card by code
+
+    def card_by_code(self, code: str) -> PackCard | None:
+        """One card, wherever it lives — the lookup FR-022's reprint step needs.
+
+        Research R4's prefix→pack map. A card code's first two digits are its pack's
+        ordinal, but the reduced pack index keeps only code and name (T029), so the map
+        cannot be built up front from the index alone. It is learned instead from the
+        snapshots already on disk: every `cap` card's code starts `03`, so holding `cap`
+        teaches `03 -> cap` for free.
+
+        When a prefix is still unknown, one request asks which pack that single card is in
+        (`fetch_card_pack_code`) and a second fetches that pack. This is the one place the
+        feature spends a request it could not predict, and it stays bounded because the
+        answer is then cached with the snapshot: the request count per assembled pack
+        follows the number of **distinct packs referenced** — measured at two for `cap` —
+        never the card count (FR-040, SC-006d).
+        """
+        prefix = code[:2]
+        for pack_code in self._prefix_map().get(prefix, ()):
+            for card in self.get(pack_code).cards:
+                if card.code == code:
+                    return card
+
+        # The prefix is unknown, so ask which pack this one card is in and fetch that pack.
+        # Emphatically *not* a sweep of the 61 packs looking for a matching prefix: that
+        # costs 61 requests at the client's one-per-second floor, for an answer one request
+        # already has.
+        try:
+            pack_code = self.client.fetch_card_pack_code(code)
+        except UpstreamError:
+            return None
+        if not pack_code:
+            return None
+        try:
+            snapshot = self.get(pack_code)
+        except (SnapshotUnavailable, SnapshotInvalid):
+            return None
+        return next((c for c in snapshot.cards if c.code == code), None)
+
+    def _known_pack_codes(self) -> set[str]:
+        """Packs whose card listing is on disk.
+
+        `packs.json` lives in the same directory and is the pack *index*, not a pack — a
+        list of `{code, name}`, which `parse_snapshot_cards` rightly refuses. Excluding it
+        by name rather than by catching the refusal keeps a genuinely corrupt snapshot loud.
+        """
+        index_name = self.layout.pack_index().name
+        return {p.stem for p in self.layout.snapshots_dir().glob("*.json") if p.name != index_name}
+
+    def _prefix_map(self) -> dict[str, list[str]]:
+        """Two-digit code prefix to the packs on disk that use it."""
+        mapping: dict[str, list[str]] = {}
+        for pack_code in sorted(self._known_pack_codes()):
+            try:
+                snapshot = self._load(self.layout.snapshot(pack_code))
+            except (UnsafeIdentifier, SnapshotInvalid):
+                continue
+            if snapshot and snapshot.cards:
+                mapping.setdefault(snapshot.cards[0].code[:2], []).append(pack_code)
+        return mapping
+
     # --------------------------------------------------------------------- snapshots
 
     def get(self, pack_code: str, force_refresh: bool = False) -> PackSnapshot:
