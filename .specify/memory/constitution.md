@@ -12,13 +12,14 @@ Changed in 1.3.0:
     directory exactly. Written because feature 002 took five branches to refine one spec and
     the one-branch-per-feature assumption forced each to invent a descriptive name that said
     nothing about which feature it belonged to. Syntax lives in CONTRIBUTING.md.
-  Pull requests — "A PR that amends this constitution MUST change nothing else" is replaced
-    by a requirement that the amendment be its own commit and be called out in the PR
-    description. The protection being kept is that an amendment is seen and reviewed as one;
-    the separate-PR mechanism was judged to cost more than it returned, because it lands the
-    amendment apart from the work that motivates it and neither then explains the other.
-    Requested by the maintainer, who identified the separation requirement as process
-    overhead that would drag the project down. The size limit is untouched.
+  Pull requests — "A PR that amends this constitution MUST change nothing else" now applies to
+    MAJOR amendments only. A MAJOR invalidates existing compliant work and carries a migration
+    path, so it keeps its own PR and its own place in the history with nothing competing for
+    review. A MINOR or PATCH amendment MAY travel with the work that motivates it, provided it
+    is its own commit and is called out in the PR description — which is the protection the
+    old rule actually existed to give. Requested by the maintainer, who identified blanket
+    separation as process overhead that would drag the project down, and who scoped the
+    exception to MAJOR. The size limit is untouched.
 
   Note: this amendment is itself bundled with feature 002's planning artifacts, which 1.2.0
   prohibited. Recorded here rather than glossed — it is the maintainer's decision, taken
@@ -430,14 +431,19 @@ which are the authoritative source for exact syntax.
   gates from *Development Workflow & Quality Gates* as an explicit checklist.
 - A PR MUST be small enough to review in one sitting. Size is a review concern in its
   own right, and "it is all related" is not a defense.
-- A PR that amends this constitution MUST carry the amendment as its own commit, and MUST
-  call it out explicitly in the PR description. It MAY also contain other changes. What this
-  rule protects is that an amendment is *seen* and reviewed as an amendment rather than
-  passing unnoticed inside a diff; requiring a separate PR was one way to get that and cost
-  more than it returned, because the amendment and the work that motivates it then land
-  apart and neither explains the other. The size limit above still applies, and an amendment
-  bundled into a PR too large to review in one sitting is a violation of that clause rather
-  than an exception to it.
+- A PR that amends this constitution MUST carry the amendment as its own commit and MUST call
+  it out explicitly in the PR description. What this protects is that an amendment is *seen*
+  and reviewed as an amendment rather than passing unnoticed inside a diff.
+- **A MAJOR amendment MUST be its own PR and MUST change nothing else.** A MAJOR removes or
+  redefines a principle in a way that invalidates existing compliant work, so it carries a
+  migration path for work already in flight and deserves undivided attention and its own
+  record in the history. Nothing else in the PR competes with it for review.
+- A **MINOR or PATCH** amendment MAY travel with other changes, under the commit and callout
+  rules above. Requiring a separate PR for these cost more than it returned: the amendment
+  and the work motivating it landed apart, and neither then explained the other — a clause
+  admitting a branch-naming pattern is far easier to judge next to the branches that prompted
+  it. The size limit above still applies, and an amendment bundled into a PR too large to
+  review in one sitting violates that clause rather than gaining an exception to it.
 
 **History.**
 
