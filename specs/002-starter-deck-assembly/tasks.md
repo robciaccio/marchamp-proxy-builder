@@ -195,8 +195,8 @@ download-from-Hall-of-Heroes upload for folders that hold no scan.
 
 ### The run as a resource
 
-- [ ] T049 [US1] Write failing tests for the run lifecycle — `identifying` → `awaiting_pack` / `unidentified` → `resolving` → `awaiting_cards` / `ready` → `rendering` → `complete` / `failed`, that **nothing resolves before the pack is confirmed**, and that `ready` does not print by itself — in `tests/unit/test_assembly_service.py` (FR-012a, FR-026a, SC-009)
-- [ ] T050 [US1] Implement `src/marchamp/assembly/service.py`
+- [X] T049 [US1] Write failing tests for the run lifecycle — `identifying` → `awaiting_pack` / `unidentified` → `resolving` → `awaiting_cards` / `ready` → `rendering` → `complete` / `failed`, that **nothing resolves before the pack is confirmed**, and that `ready` does not print by itself — in `tests/unit/test_assembly_service.py` (FR-012a, FR-026a, SC-009)
+- [X] T050 [US1] Implement `src/marchamp/assembly/service.py`
 - [ ] T051 [US1] Write failing contract tests for `POST /api/assemblies`, `GET /api/assemblies/{run_id}`, `GET /api/assemblies/{run_id}/packs`, `POST /api/assemblies/{run_id}/pack`, `POST /api/assemblies/{run_id}/confirmation`, and `GET /api/assemblies/{run_id}/document` in `tests/contract/test_assembly_contract.py`, including `If-Match` and the `409` on a stale version
 - [ ] T052 [US1] Add the request and response models from contracts/openapi.yaml to `src/marchamp/api/schemas.py`
 - [ ] T053 [US1] Implement those routes in `src/marchamp/api/routes.py`, with both named paths validated when named and refused specifically (FR-006), and T009 now green for them

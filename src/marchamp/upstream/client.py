@@ -54,6 +54,11 @@ from marchamp.upstream.models import (
 #: should depend on the other having checked.
 PACK_CODE_RE = re.compile(r"^[a-z0-9_]{1,32}$")
 
+#: A MarvelCDB card code: a two-digit pack ordinal, a position, and an optional face letter
+#: — `03001a`, `01071`. Validated before it can become a URL, for the same reason a pack code
+#: is: shape is checked at the boundary rather than trusted from a reprint link.
+CARD_CODE_RE = re.compile(r"^[0-9]{4,8}[a-z]?$")
+
 #: The allowlist, as a constant rather than as configuration. `UpstreamSettings.host`
 #: records the same name so the rest of the application can read it, but the check below is
 #: against *this* — a guarantee that a settings object can widen is not a guarantee, and the
@@ -187,6 +192,37 @@ class MarvelCdbClient:
             # Aborts the capture and names the pack, rather than surfacing at print time.
             raise UpstreamUnavailable(f"pack {pack_code}: {exc}") from exc
         return UpstreamResponse(200, cards, last_modified, max_age, warnings)
+
+    def fetch_card_pack_code(self, card_code: str) -> str | None:
+        """`GET /api/public/card/{code}.json` — which pack one card belongs to.
+
+        The third and last allowlisted endpoint (research R4). It exists for exactly one
+        question: a reprint link points at a card code whose two-digit prefix maps to no pack
+        this application has fetched, and the prefix→pack map cannot answer it.
+
+        Only `pack_code` is read off the response. The rest of a card record is precisely the
+        card text, flavour, traits and `imagesrc` that FR-038a forbids retaining, and the
+        narrowest possible reading of the response is what keeps that guarantee cheap to
+        verify.
+
+        This is a per-*pack* cost, not a per-card one: the answer is cached with the
+        snapshot the caller then fetches, so a pack referenced by six reprints costs one of
+        these, not six (FR-040, SC-006d).
+        """
+        if not CARD_CODE_RE.match(card_code or ""):
+            raise UpstreamRefused(
+                f"card code {card_code!r} is not of the form {CARD_CODE_RE.pattern}, so no "
+                "URL is built from it"
+            )
+        response = self._get(f"/api/public/card/{card_code}.json")
+        if response.status_code != 200:
+            return None
+        try:
+            payload = response.json()
+        except (json.JSONDecodeError, ValueError):
+            return None
+        pack_code = payload.get("pack_code") if isinstance(payload, dict) else None
+        return pack_code if isinstance(pack_code, str) and PACK_CODE_RE.match(pack_code) else None
 
     # ------------------------------------------------------------------ validation
 

@@ -349,6 +349,21 @@ def upstream_transport() -> httpx.MockTransport:
                 return httpx.Response(304, headers=headers)
             return httpx.Response(200, json=json.loads(fixture.read_text()), headers=headers)
 
+        if path.startswith("/api/public/card/") and path.endswith(".json"):
+            # Research R4's third endpoint: which pack one card belongs to, asked only when
+            # a reprint link's two-digit prefix maps to no pack already held. Served from
+            # the same reduced fixtures, and only `pack_code` is ever read off it.
+            code = path.removeprefix("/api/public/card/").removesuffix(".json")
+            for fixture in sorted(SNAPSHOT_FIXTURES.glob("*.json")):
+                if fixture.stem == "packs":
+                    continue
+                for raw in json.loads(fixture.read_text()):
+                    if raw.get("code") == code:
+                        return httpx.Response(
+                            200, json={"code": code, "pack_code": fixture.stem}, headers=headers
+                        )
+            return httpx.Response(404, json={"error": "no such card"}, headers=headers)
+
         raise UnstubbedRequest(f"unstubbed MarvelCDB path {path}")
 
     return httpx.MockTransport(handler)
