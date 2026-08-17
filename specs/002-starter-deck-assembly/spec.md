@@ -46,12 +46,22 @@ can judge, not a gate that would refuse a legitimately larger deck.
 
 ### Session 2026-08-16
 
-- **Q: Where does deck composition come from, given MarvelCDB does not record it?**
-  A: From the library's own structure — the hero folder holds the starter-deck cards. This
-  was measured: summing a pack's hero set, main aspect, and basic cards yields 43, 43, 43,
-  43, 40, 43, 43, 43, 43, 43, 42, and 37 across twelve packs, so composition is not derivable
-  from pack contents. Official starter decklists exist on MarvelCDB only for the five Core
-  Set heroes.
+- **Q: Which cards belong in the deck, given MarvelCDB does not record deck membership?**
+  A: The hero folder's own contents say which. This was measured: summing a pack's hero set,
+  main aspect, and basic cards yields 43, 43, 43, 43, 40, 43, 43, 43, 43, 43, 42, and 37
+  across twelve packs, so membership is not derivable from pack contents. Official starter
+  decklists exist on MarvelCDB only for the five Core Set heroes. This answers membership
+  only — *how many* of each card and *where its image lives* are separate questions, answered
+  below.
+- **Q: How many copies of each card?**
+  A: From MarvelCDB's `quantity` for the printing being assembled (FR-016). The scanner made
+  one scan per distinct card, never one per physical copy, so the count can never come from
+  counting files.
+- **Q: What about cards the scanner skipped because they were already in the Core Set?**
+  A: MarvelCDB records that two printings are the same card, so a pack card absent from the
+  hero folder is recognised as belonging to the deck and its image is taken from the printing
+  it duplicates (FR-014, FR-022). For Captain America that recovers Make the Call, The Power
+  of Leadership, Mockingbird, Energy, Genius, and Strength — eight physical cards.
 - **Q: How are a file and a MarvelCDB card matched?**
   A: On `(pack_code, position)`. The trailing number in the filename is exactly MarvelCDB's
   `position`. Card *names* in filenames are unreliable and MUST NOT be parsed cold.
@@ -63,7 +73,7 @@ can judge, not a gate that would refuse a legitimately larger deck.
   A: Not established. The rules permit 40 to 50. All five official starter decklists on
   MarvelCDB are 40, and all eight hero folders reconstructed to 40, but that is thirteen
   observations against roughly sixty released packs. The spec therefore treats 40 as an
-  expectation to report against, never as a gate (FR-012, FR-012a).
+  expectation to report against, never as a gate (FR-017, FR-018).
 - **Q: Can Hall of Heroes supply official pre-built contents instead?**
   A: No. It publishes each pack's starter deck as a photograph of the decklist card
   (`capamericadeck-1.jpg`), so using it would require the same optical recognition the
@@ -71,7 +81,7 @@ can judge, not a gate that would refuse a legitimately larger deck.
   basis, not on quality.
 - **Q: How does the user say which library to read?**
   A: By naming a folder when they ask for a deck. No environment variable, no pre-configured
-  root (FR-033).
+  root (FR-005).
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -159,6 +169,34 @@ succeeds when the card is found and the deck reaches 40.
 
 ---
 
+### User Story 4 - Supply the last few cards by hand (Priority: P2)
+
+Where automatic resolution fails, the user picks a file for that specific card themselves,
+rather than being told the run failed and left to work out why.
+
+**Why this priority**: Without it, a single card the library genuinely lacks makes a whole
+deck unprintable with no recourse. With it, the automatic path can stay strict — it never has
+to guess, because there is somewhere for the hard cases to go.
+
+**Independent Test**: Assemble a hero whose library is missing one card. It succeeds when the
+tool names that card, accepts a file the user chooses for it, and prints the deck.
+
+**Acceptance Scenarios**:
+
+1. **Given** a card that resolved to nothing, **When** the user is asked, **Then** that card
+   is named specifically and the user can choose a file for it.
+2. **Given** a chosen file that is not a decodable image, or is below the required print
+   resolution, **When** the user chooses it, **Then** it is rejected with the specific reason
+   and the card remains unresolved.
+3. **Given** a chosen file outside the folder named for the run, **When** the user chooses it,
+   **Then** it is accepted and recorded as a manual choice from outside the boundary.
+4. **Given** a deck assembled with manual help, **When** the user opens the report, **Then**
+   every manually chosen card is distinguishable from every automatically resolved one.
+5. **Given** a card the user declines to resolve, **When** they proceed, **Then** the run
+   fails rather than printing a deck with that card missing.
+
+---
+
 ### Edge Cases
 
 - **A filename carrying no position at all.** Observed in the library
@@ -207,101 +245,139 @@ succeeds when the card is found and the deck reaches 40.
 
 ### Naming the library
 
-- **FR-033**: The user MUST be able to name any readable folder on their machine when asking
+- **FR-005**: The user MUST be able to name any readable folder on their machine when asking
   for a deck. The application MUST NOT require a library location to be configured in advance,
   and MUST NOT refuse to start because one is unset.
-- **FR-034**: The named folder MUST be validated when it is named — that it exists, is a
+- **FR-006**: The named folder MUST be validated when it is named — that it exists, is a
   directory, and is readable — and MUST fail immediately and specifically when it is not,
   rather than surfacing as a missing card later.
-- **FR-035**: For the duration of a run, the named folder MUST be the containment boundary:
+- **FR-007**: For the duration of a run, the named folder MUST be the containment boundary:
   every asset reference MUST resolve inside it, and a reference that escapes it MUST be
   refused. Feature 001's containment guarantee is preserved; what changes is that the boundary
   is chosen per run rather than fixed at startup.
-- **FR-036**: The named folder MUST NOT be written to, moved, renamed, or deleted from, which
+- **FR-008**: The named folder MUST NOT be written to, moved, renamed, or deleted from, which
   is FR-001 restated for a boundary the user picks each time.
-- **FR-037**: Diagnostic and log records MUST NOT carry absolute filesystem paths from outside
+- **FR-009**: Diagnostic and log records MUST NOT carry absolute filesystem paths from outside
   the named folder, preserving feature 001's FR-022b under per-run boundaries.
 
 ### Identifying the pack
 
-- **FR-005**: The tool MUST determine which pack a hero folder represents, from the folder's
+- **FR-010**: The tool MUST determine which pack a hero folder represents, from the folder's
   contents and MarvelCDB's card data, without a hand-maintained folder-to-pack table.
-- **FR-006**: Pack identification MUST be verified rather than assumed. The tool MUST check
+- **FR-011**: Pack identification MUST be verified rather than assumed. The tool MUST check
   the folder's positions against the identified pack and MUST refuse to proceed when
   agreement is too weak to be confident.
-- **FR-007**: The tool MUST state which pack it identified and on what evidence, so a wrong
+- **FR-012**: The tool MUST state which pack it identified and on what evidence, so a wrong
   identification is visible before a PDF is printed rather than after.
 
 ### Composing the deck
 
-- **FR-008**: Deck composition MUST be derived from the hero folder's contents together with
+- **FR-013**: Deck composition MUST be derived from the hero folder's contents together with
   MarvelCDB's pack listing. The tool MUST NOT attempt to compute composition from pack
   contents alone, which is not possible.
-- **FR-009**: A pack card absent from the hero folder that carries a reprint link MUST be
+- **FR-014**: A pack card absent from the hero folder that carries a reprint link MUST be
   treated as part of the deck and sourced from the printing it duplicates.
-- **FR-010**: Encounter cards, obligation cards, nemesis cards, and the hero's identity card
+- **FR-015**: Encounter cards, obligation cards, nemesis cards, and the hero's identity card
   MUST be excluded from the player deck. They MAY be offered as a separate output.
-- **FR-011**: The number of copies of a card MUST come from the printing being assembled,
+- **FR-016**: The number of copies of a card MUST come from the printing being assembled,
   never from the printing an image was borrowed from.
-- **FR-012**: Every card the tool places in the deck MUST resolve to an image. A card that
+- **FR-017**: Every card the tool places in the deck MUST resolve to an image. A card that
   does not MUST fail the run by name. Completeness of resolution, not the card total, is what
   the tool verifies.
-- **FR-012a**: The tool MUST report the assembled deck's total. A total other than 40 MUST be
+- **FR-018**: The tool MUST report the assembled deck's total. A total other than 40 MUST be
   reported as a warning, because a pre-built deck is expected to be 40 and every shortfall
   measured so far was an unresolved card. A total outside the legal 40-to-50 range MUST be
   reported more strongly still. Neither MUST refuse the run on the count alone — the rules
   permit up to 50, and no exhaustive check of released packs has been made.
-- **FR-013**: The tool MUST NOT invent a card, a quantity, or a substitution to reach any
+- **FR-019**: The tool MUST NOT invent a card, a quantity, or a substitution to reach any
   particular total.
 
 ### Resolving images
 
-- **FR-014**: A card MUST be matched to a file by `(pack_code, position)` wherever the
+- **FR-020**: A card MUST be matched to a file by `(pack_code, position)` wherever the
   filename carries a position and the folder's pack is known.
-- **FR-015**: When that fails, the tool MUST search the whole library, because the library
+- **FR-021**: When that fails, the tool MUST search the whole library, because the library
   does not reliably file a hero's cards under that hero.
-- **FR-016**: When that fails, the tool MUST follow reprint links in both directions and
+- **FR-022**: When that fails, the tool MUST follow reprint links in both directions and
   accept an image of any other printing of the same card.
-- **FR-017**: A name match MUST only ever be made against a specific card the tool is already
+- **FR-023**: A name match MUST only ever be made against a specific card the tool is already
   looking for, with its canonical name known from MarvelCDB. Parsing a card's identity out of
   a filename is prohibited.
-- **FR-018**: Every image resolved by anything other than an exact positional match in the
+- **FR-024**: Every image resolved by anything other than an exact positional match in the
   identified folder MUST be reported, naming the card, the file chosen, and why.
-- **FR-019**: A card with no image anywhere in the library MUST fail the run, naming the card.
-  Substituting a placeholder or omitting the card is prohibited.
+- **FR-025**: A card with no image anywhere in the library MUST NOT be silently omitted or
+  replaced by a placeholder. It MUST be reported by name and MUST either be supplied by the
+  user (FR-026) or fail the run.
+
+### Resolving the rest by hand
+
+- **FR-026**: When a card cannot be resolved automatically, the user MUST be able to choose a
+  file for it themselves, naming that card specifically rather than being told the run failed.
+- **FR-027**: A manually chosen file MAY lie outside the folder named for the run. Choosing it
+  is an explicit act by the person running the process, and MUST be recorded as such in the
+  report and the log — the containment boundary of FR-007 governs what the tool resolves on
+  its own, not what the user hands it.
+- **FR-028**: A manually chosen file MUST be validated as an image the application can decode
+  at the required print resolution, and MUST be rejected with a specific reason when it is
+  not. Manual choice bypasses discovery, never validation.
+- **FR-029**: Every manual choice MUST be reported and MUST be distinguishable from an
+  automatic resolution, so a deck assembled with human help is auditable as such.
+- **FR-030**: The user MUST be able to leave a card unresolved and proceed, in which case the
+  run MUST fail rather than print an incomplete deck. Declining to choose is not consent to a
+  short deck.
 
 ### Reporting
 
-- **FR-020**: Every file in the folders consulted MUST be either used, or named in the report
+- **FR-031**: Every file in the folders consulted MUST be either used, or named in the report
   as unused and why. Silent omission is prohibited.
-- **FR-021**: The tool MUST report every file whose name it could not interpret, naming each.
-- **FR-022**: The tool MUST report position conflicts, naming both sides, and MUST NOT resolve
+- **FR-032**: The tool MUST report every file whose name it could not interpret, naming each.
+- **FR-033**: The tool MUST report position conflicts, naming both sides, and MUST NOT resolve
   them by arbitrary choice.
-- **FR-023**: The tool MUST report duplicate renditions of one card, naming which was chosen.
-- **FR-024**: The tool MUST report scans below the resolution the application requires at
+- **FR-034**: The tool MUST report duplicate renditions of one card, naming which was chosen.
+- **FR-035**: The tool MUST report scans below the resolution the application requires at
   print size, as a warning rather than a refusal.
-- **FR-025**: The tool's exit status MUST distinguish "assembled cleanly" from "assembled with
+- **FR-036**: The tool's exit status MUST distinguish "assembled cleanly" from "assembled with
   warnings" from "refused", so it is usable from a script without parsing prose.
-- **FR-026**: Failures MUST name the specific card or file at fault, never a generic error
+- **FR-037**: Failures MUST name the specific card or file at fault, never a generic error
   (constitution principle V).
+
+### Conduct toward MarvelCDB
+
+- **FR-038**: The application MUST stay within the use MarvelCDB states its API is provided
+  for — tools that complement playing Marvel Champions. It MUST NOT be used to mirror,
+  republish, or redistribute their data, whose text is copyrighted by Fantasy Flight Games.
+- **FR-039**: The application MUST honour the HTTP caching MarvelCDB explicitly asks for. Its
+  public responses carry `max-age` and `last-modified`; the application MUST respect both and
+  MUST NOT re-request data it has been told is still fresh.
+- **FR-040**: The application MUST minimise requests by design, preferring one bulk fetch of
+  a pack or of the full card list over a request per card. Assembling a deck MUST NOT issue
+  one request per card in it.
+- **FR-041**: Requests MUST identify the application in a descriptive `User-Agent`, so the
+  operator can attribute and contact rather than only block.
+- **FR-042**: The application MUST back off when the service signals overload or throttling,
+  and MUST NOT retry in a way that increases load on a service already failing.
+- **FR-043**: MarvelCDB publishes no rate limit. Its absence MUST NOT be treated as
+  permission for unlimited requests; the application MUST behave conservatively regardless.
+  No specific numeric limit is specified here because none is published and inventing one
+  would misrepresent the operator's terms.
 
 ### Upstream data
 
-- **FR-027**: MarvelCDB responses MUST be captured as a snapshot with a recorded revision, so
+- **FR-044**: MarvelCDB responses MUST be captured as a snapshot with a recorded revision, so
   a generated PDF can be traced to the card data that produced it.
-- **FR-028**: Assembling twice from the same library and the same snapshot MUST produce a
+- **FR-045**: Assembling twice from the same library and the same snapshot MUST produce a
   byte-identical PDF (constitution principle V).
-- **FR-029**: The tool MUST NOT proceed when MarvelCDB is unreachable and no snapshot exists.
+- **FR-046**: The tool MUST NOT proceed when MarvelCDB is unreachable and no snapshot exists.
   It MUST say which is missing.
-- **FR-030**: Upstream data MUST be validated on capture, and a response that does not carry
+- **FR-047**: Upstream data MUST be validated on capture, and a response that does not carry
   the fields this feature depends on MUST fail loudly at that point rather than at print time.
 
 ### Output
 
-- **FR-031**: The resolved deck MUST be expressed in the catalog structures feature 001
+- **FR-048**: The resolved deck MUST be expressed in the catalog structures feature 001
   already defines, so page layout, resolution enforcement, and PDF generation are reused
   rather than reimplemented. This feature adds no new output format.
-- **FR-032**: The capability MUST be exposed through the HTTP API before any UI consumes it
+- **FR-049**: The capability MUST be exposed through the HTTP API before any UI consumes it
   (constitution principle II).
 
 ## Key Entities
@@ -343,6 +419,12 @@ succeeds when the card is found and the deck reaches 40.
   combination of inputs yields a deck that prints with a card missing.
 - **SC-006a**: A deck whose total is not 40 is reported as such 100% of the time, whether or
   not the run succeeds.
+- **SC-006b**: A deck missing exactly one card from the library can be completed by the user
+  choosing one file, and prints. No card the user can point at is unprintable.
+- **SC-006c**: 100% of manually chosen cards are distinguishable from automatically resolved
+  ones in the report.
+- **SC-006d**: Assembling a full deck issues a number of upstream requests that does not grow
+  with the number of cards in the deck.
 - **SC-007**: Assembling twice from the same library and snapshot produces a byte-identical
   PDF.
 - **SC-008**: A user whose library is missing a card can tell which card, and where the tool
@@ -354,16 +436,16 @@ succeeds when the card is found and the deck reaches 40.
   inconsistencies. The tool adapts to the library; the user does not adapt the library to the
   tool.
 - **A hero folder holds that hero's starter-deck cards.** Verified across eight heroes. Where
-  a card is filed elsewhere, whole-library search recovers it (FR-015) rather than the
+  a card is filed elsewhere, whole-library search recovers it (FR-021) rather than the
   assumption being abandoned.
 - **The trailing number in a filename is MarvelCDB's `position`.** Verified 18/18 for the
   Captain America pack and across eight hero folders. Files not matching are reported, not
-  guessed at (FR-021).
+  guessed at (FR-032).
 - **A pre-built starter deck is expected to be 40 cards, but this is not assumed.** The
   deckbuilding rules permit 40 to 50. Thirteen observations support 40 — the five official
   starter decklists published on MarvelCDB, and eight hero folders that each reconstruct to
   40 — against roughly sixty released packs, so it is an expectation the tool reports against
-  (FR-012a) rather than a rule it enforces. If a pack ships a larger pre-built deck, the tool
+  (FR-018) rather than a rule it enforces. If a pack ships a larger pre-built deck, the tool
   warns and proceeds; it does not refuse.
 - **MarvelCDB's public card endpoints are available and stable.** This feature uses only the
   documented card and pack endpoints; it does not depend on the undocumented decklist
@@ -376,12 +458,21 @@ succeeds when the card is found and the deck reaches 40.
   This is judged acceptable because the service is loopback-only by design (feature 001's
   FR-0A2) and the person naming the folder is the person running the process, so it grants
   them nothing they did not already have. The containment guarantee is preserved in kind
-  rather than dropped: it now binds to the folder named for that run (FR-035).
+  rather than dropped: it now binds to the folder named for that run (FR-007).
 - **Depends on feature 001** for the catalog structures, the validation rules, the resolution
   floor, and PDF generation. This feature introduces no new output format and relaxes none of
   those rules.
 - **Aspect cards and modular sets are out of scope.** The library files them separately and
   the user can print them as a later feature. This feature assembles starter decks.
+- **Editing an assembled deck is out of scope and belongs in its own feature.** Deleting a
+  card, swapping one for another, and adding cards that were never in the pack are all
+  wanted, but they are a different capability: this feature answers "what did this pack
+  contain and where are its images", while an editor answers "what do I want on the page".
+  An editor needs a mutable deck that outlives one run, an interface for browsing the whole
+  card pool, and rules for what a deck may contain — none of which this feature needs and all
+  of which would make it undeliverable. Manual resolution (User Story 4) is deliberately *not*
+  that: it is bounded to cards the tool already decided belong in the deck and could not find,
+  and it changes no membership decision.
 - **Reading the pack's physical decklist card was considered and excluded.** The scanned
   decklist photos are the only printed record of deck composition, but the folder structure
   already carries the same information without optical recognition.
