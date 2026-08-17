@@ -195,6 +195,56 @@ is a pack that is quietly incomplete, not one the user knowingly chose to print 
   a match too weak to trust; confirmation covers the case FR-011 structurally cannot — an
   identification the tool is confident about and wrong about, which yields a deck that is
   entirely plausible. One click against forty misprinted cards (FR-012a).
+- **Q: What happens when the user rejects the identified pack, or when identification is
+  refused as too weak?**
+  A: The user names the pack themselves. Declining the confirmation opens pack selection — the
+  tool's ranked candidates, or a search across all packs by name — and the run proceeds against
+  the chosen pack, recorded as user-selected (FR-012b). The same path is the remedy for an
+  FR-011 refusal, so a weak or absent match is a prompt rather than a dead end. Without this,
+  the two failure modes the spec is most careful about both terminate with the user holding a
+  perfectly good folder and no way to print it. Selecting a pack is not customization under
+  FR-026i: what gets printed follows from the pack and its snapshot, so a run that selected its
+  pack and then resolved every card automatically still produces that pack's standard PDF.
+- **Q: What must match before a stored standard PDF is served instead of being rebuilt?**
+  A: The pack, its snapshot revision, **and the identity of the images actually resolved**
+  (FR-026h). Keying on the pack and snapshot alone was wrong: FR-005 lets each run name a
+  different folder, so a second scan library would have been served the first library's PDF,
+  built from images the user never chose and with nothing in the report able to reveal it.
+  Keying on the resolved images rather than on the folder's path is deliberate — a path-based
+  key would break reuse every time the Drive mount moves, which SC-006h already treats as
+  routine, and would put a user's filesystem path into stored state against FR-009. The
+  consequence is that a run must resolve before it can decide to reuse, so reuse skips the
+  ~49 s render but not the resolve; SC-006i is worded accordingly.
+- **Q: Does deleting a run delete the standard PDF it produced, when other runs were served
+  that same PDF?**
+  A: No. A standard PDF belongs to the **pack**, not to the run that happened to build it
+  (FR-026g1). Deleting a run reclaims only what is private to that run — its uploaded files and
+  a *saved* PDF it named — and standard PDFs are deleted from the stored-PDF list instead. The
+  alternative readings both fail: making deletion reference-counted means the user cannot
+  predict whether discarding a run frees 202 MB, and deleting the producing run's PDF outright
+  breaks FR-026f for every other run that was served it. Deleting a deck attempt and reclaiming
+  disk space are different acts and the spec now keeps them apart.
+- **Q: How far does the report's file accountability extend once the tool searches the whole
+  library?**
+  A: To the **named folder**, in full, and no further (FR-031). Outside it, only files actually
+  used or in conflict with one are named. FR-031 was written when the tool looked in one hero
+  folder, and read literally against FR-021's whole-library search it would require a report for
+  one hero to account individually for 4,447 files that were never candidates for it —
+  unreadable for the user and untestable as SC-004. The harm FR-031 exists to prevent is bounded
+  to the folder the user pointed at: a scan sitting there, ignored, with no explanation. Files
+  under other heroes are index entries, not candidates. FR-032 narrows to match; outside the
+  named folder an unparseable filename reaches the user through the card that failed to resolve,
+  which is the thing they can act on.
+- **Q: Are both faces of a genuinely double-sided *player* card printed, and does a missing back
+  stop the run?**
+  A: Yes to both (FR-015f). FR-015a settled face count for the identity card and said nothing
+  about the rest, which left room to build a double-sided player card front-only — a proxy blank
+  where the real card carries game text, with FR-017 reporting the run clean. Feature 001
+  already rules that a double-sided card missing its second face cannot be printed usefully, and
+  FR-048 adopts 001's structures, so treating a missing back as a warning would contradict an
+  inherited rule rather than extend it. Counting stays in cards: the pack listing counts cards,
+  so FR-018 must, or the user's comparison against it breaks. The report states the face count
+  as well, which is what SC-002b's page-count claim needs.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -240,6 +290,10 @@ identity card, the nemesis set, and the decklist card.
    group.
 10. **Given** a hero with more than two faces, **When** the user prints, **Then** every face
     the card data records is produced, rather than the first two.
+10a. **Given** a double-sided player card, **When** the user prints, **Then** both its faces are
+    produced, and the report counts it as one card and two faces.
+10b. **Given** a double-sided player card whose back resolves to no image, **When** the user
+    prints, **Then** the run stops naming that card, exactly as it would for a missing front.
 11. **Given** a nemesis card that resolves to no image, **When** the user prints, **Then**
     the run stops naming that card, exactly as it would for a missing player card.
 12. **Given** a folder whose pack the tool identifies confidently, **When** the user starts the
@@ -251,11 +305,23 @@ identity card, the nemesis set, and the decklist card.
     run names that gap and offers the Hall of Heroes address, and the user can supply the image
     by upload — the application never fetches it.
 15. **Given** a pack whose standard PDF was already produced by an earlier clean run against
-    the same snapshot, **When** a user prints that pack again with no customization,
-    **Then** the stored PDF is served rather than regenerated.
+    the same snapshot and the same images, **When** a user prints that pack again with no
+    customization, **Then** the stored PDF is served rather than rendered again.
+15a. **Given** a second scan library whose folder resolves one card to a different image,
+    **When** the user prints that same pack from it, **Then** the stored PDF is not served and
+    the pack is rebuilt from the images this run resolved.
+15b. **Given** a library folder that has been moved or renamed since the standard PDF was
+    stored, **When** the user prints that pack from its new location and every image resolves
+    identically, **Then** the stored PDF is still served.
 16. **Given** that pack's snapshot has since been refreshed, **When** a user prints it
     again, **Then** the stored PDF is not served and the pack is rebuilt against the new
     revision.
+17. **Given** a folder whose pack the tool identifies wrongly, **When** the user declines the
+    confirmation, **Then** they can name the correct pack themselves and the run proceeds
+    against it, reported as a user-selected pack.
+18. **Given** a folder whose pack cannot be identified, or is identified too weakly to be
+    trusted, **When** the user is told so, **Then** they are offered the same pack selection
+    rather than a run that has ended.
 
 ---
 
@@ -279,8 +345,11 @@ no other printing. It succeeds when the run stops, names that card, and prints n
 2. **Given** a run that could not place every pack card, **When** the user prints, **Then**
    every unplaced card is named individually, and the count of cards printed is reported
    against the count the pack listing records.
-3. **Given** a file the naming convention cannot parse, **When** the user prints, **Then**
-   that file is named in the report rather than silently ignored.
+3. **Given** a file in the named folder that the naming convention cannot parse, **When** the
+   user prints, **Then** that file is named in the report rather than silently ignored.
+3a. **Given** a library of several thousand images searched to resolve one pack, **When** the
+   user opens the report, **Then** it accounts for every file in the named folder and lists
+   files from elsewhere only where they were used or conflicted.
 4. **Given** two files in one folder claiming the same position, **When** the user prints,
    **Then** both are named as a conflict and neither is chosen arbitrarily.
 
@@ -379,8 +448,15 @@ folder, the pack, and the first card's resolution intact.
    already resolved and what remains, so they can tell where they left off.
 5. **Given** a finished run whose library folder has since been moved or unmounted, **When**
    the user returns, **Then** its PDF still downloads, because the run retains it.
-6. **Given** a run the user no longer wants, **When** they delete it, **Then** its stored PDF
-   and uploaded files are reclaimed and the scan library is untouched.
+6. **Given** a run the user no longer wants, **When** they delete it, **Then** its uploaded
+   files and any PDF it saved under its own name are reclaimed, and the scan library is
+   untouched.
+6a. **Given** a run that produced a pack's standard PDF and other runs that were served it,
+   **When** the user deletes that run, **Then** the standard PDF survives and the other runs
+   still download it.
+6b. **Given** a standard PDF the user wants the space back from, **When** they delete it from
+   the stored-PDF list, **Then** the space is reclaimed and the next assembly of that pack
+   rebuilds it.
 7. **Given** a deck the user completed by supplying a file for one card, **When** they finish
    it, **Then** they are asked to name the PDF and it appears in the saved-PDF list under that
    name, not as the pack's standard PDF.
@@ -416,6 +492,9 @@ folder, the pack, and the first card's resolution intact.
 - **A hero with three faces.** Ant-Man has a tiny form, a giant form, and an alter-ego where
   every other hero has two. Face count is read from the data, never assumed to be two
   (FR-015a).
+- **A double-sided player card whose back was never scanned.** Vision's `Intangible` is filed as
+  `_2a` and `_2b`; a folder holding only the `a` face leaves a card that cannot be printed
+  usefully. The run stops naming it, like any other unresolved card (FR-015f, FR-017).
 - **A card name misspelled in the filename.** "Stength in Numbers", "Steve_s Apartament", and
   a type written "Upgarde" all occur. Display names come from MarvelCDB; the filename is
   never the authority on what a card is called.
@@ -427,9 +506,15 @@ folder, the pack, and the first card's resolution intact.
   run is refused naming the pack, even though other packs assemble fine from their own stored
   snapshots. Snapshots are per pack, not one global cache (FR-044a, FR-046).
 - **A folder that is not a hero pack.** Reported as unidentifiable rather than assembled
-  against a wrongly guessed pack.
-- **A pack identified with low confidence.** Reported and refused. A wrong pack produces a
-  deck that is entirely plausible and entirely wrong.
+  against a wrongly guessed pack, and the user is offered pack selection rather than an ended
+  run (FR-012b).
+- **A pack identified with low confidence.** Reported and refused, then offered for selection
+  (FR-011, FR-012b). A wrong pack produces a deck that is entirely plausible and entirely
+  wrong, so the tool never resolves the weak match itself — but the user, who knows which pack
+  they are holding, can say so.
+- **A pack identified confidently and wrongly.** Caught only by the user declining the
+  confirmation (FR-012a), which is what FR-012b's selection path exists to serve. The tool has
+  no way to detect this case on its own; that is why confirmation is unconditional.
 - **A named folder that does not exist, is a file, or cannot be read.** Refused when named,
   naming the folder and the reason — never surfacing later as a missing card.
 - **A named folder containing no card images at all.** Reported as empty rather than
@@ -483,7 +568,8 @@ folder, the pack, and the first card's resolution intact.
   contents and MarvelCDB's card data, without a hand-maintained folder-to-pack table.
 - **FR-011**: Pack identification MUST be verified rather than assumed. The tool MUST check
   the folder's positions against the identified pack and MUST refuse to proceed when
-  agreement is too weak to be confident.
+  agreement is too weak to be confident. A refusal MUST NOT end the run: it MUST offer pack
+  selection (FR-012b), so the threshold can stay strict without leaving the user stranded.
 - **FR-012**: The tool MUST state which pack it identified and on what evidence, so a wrong
   identification is visible before a PDF is printed rather than after.
 - **FR-012a**: The user MUST explicitly confirm the identified pack before the run resolves any
@@ -492,6 +578,16 @@ folder, the pack, and the first card's resolution intact.
   to trust; FR-012a covers the case FR-011 cannot — an identification the tool is confident
   about and wrong about, which yields a deck that is entirely plausible and entirely wrong. The
   cost is one confirmation per run against forty misprinted cards.
+- **FR-012b**: Rejecting the identified pack MUST NOT end the run. The user MUST be able to name
+  the pack themselves — choosing among the candidates the tool ranked, or searching all packs by
+  name — and the run MUST proceed against the pack they choose. This same path MUST be offered
+  when FR-011 refuses a match as too weak and when no pack can be identified at all, so neither
+  a confidently wrong identification nor an unidentifiable folder leaves the user with no way to
+  print. A user-selected pack MUST be recorded as such in the report and MUST be distinguishable
+  from one the tool identified, exactly as a manual card resolution is (FR-029). Selecting the
+  pack MUST NOT count as customization under FR-026i: what is printed follows from the pack
+  listing and its snapshot, so a run that selected its pack and then resolved every card
+  automatically still produces that pack's standard PDF (FR-026h).
 
 ### Composing the output
 
@@ -522,6 +618,12 @@ folder, the pack, and the first card's resolution intact.
   a hero anyone can play.
 - **FR-015a**: Assembling a hero MUST produce the hero's identity card. Its faces MUST be read
   from the card data and MUST NOT be assumed to number two, since a hero may have more.
+- **FR-015f**: A pack card the card data marks as double-sided MUST be printed with both faces,
+  whichever group it belongs to. This is not confined to the identity card: the library holds
+  genuinely double-sided player cards, filed as `_2a` and `_2b`. A back face that resolves to no
+  image MUST stop the run by name exactly as a missing front does (FR-017), subject to the same
+  explicit override (FR-030) — feature 001 already holds that a double-sided card missing its
+  second face cannot be printed usefully, and FR-048 adopts that rule rather than relaxing it.
 - **FR-015b**: Printing a pack MUST produce that hero's nemesis and obligation cards, kept
   distinct from the player cards in the report so the user can separate them after cutting.
   They are not separated on the page — FR-015d packs everything as tightly as it will go.
@@ -552,7 +654,10 @@ folder, the pack, and the first card's resolution intact.
   Every pack card is held to this bar equally — with membership derivation gone, the tool has no
   basis for treating one pack card as more important than another.
 - **FR-018**: The tool MUST report how many cards it printed against how many the pack listing
-  records, so an incomplete run is visible as a number as well as a list. The tool MUST NOT
+  records, so an incomplete run is visible as a number as well as a list. The unit MUST be
+  cards, not faces, because that is the unit the pack listing counts in — a double-sided card
+  (FR-015f) is one card and two faces. The report MUST state the face count as well, since that
+  is what the page count follows from (SC-002b). The tool MUST NOT
   expect any particular total and MUST NOT warn on one. Pre-built deck sizes were measured to
   vary — Vision's is 41 cards and Psylocke's is 42 — and pack sizes vary independently of that,
   so any expected total would produce false alarms.
@@ -611,12 +716,24 @@ folder, the pack, and the first card's resolution intact.
   saved by name (FR-026i), and deleting it MUST reclaim the space it held. Retention under
   FR-026f is otherwise unbounded, and feature 001 measured roughly 202 MB for a single deck's
   PDF. Deleting MUST NOT touch the scan library (FR-001).
+- **FR-026g1**: A standard PDF belongs to the pack, not to the run that produced it. Deleting a
+  run MUST reclaim only what is private to that run — the files uploaded to it (FR-026e) and a
+  *saved* PDF it named (FR-026i) — and MUST NOT delete a standard PDF, which is removed only
+  through the stored-PDF list (FR-026g). Otherwise deleting one run would revoke FR-026f's
+  guarantee for every other run that was served the same file, and the user could not tell
+  whether discarding a run reclaims 202 MB or nothing. Deleting a deck attempt and reclaiming
+  disk space are separate acts and MUST stay separate.
 - **FR-026h**: A run that resolved every card automatically, with no user customization of any
   kind, MUST store its PDF under a standard name derived from the pack. A later assembly of the
   same pack that likewise needs no customization MUST be served that stored PDF rather than
-  regenerating it. Reuse MUST be keyed on the pack's snapshot revision (FR-044a) as well as the
-  pack, so a refreshed snapshot (FR-044b) invalidates the stored PDF rather than serving one
-  built from superseded card data.
+  regenerating it. Reuse MUST be keyed on three things together: the pack, the pack's snapshot
+  revision (FR-044a), and the identity of the images the run resolved. A refreshed snapshot
+  (FR-044b) therefore invalidates the stored PDF rather than serving one built from superseded
+  card data, and a run whose named folder (FR-005) yields even one different image MUST rebuild
+  rather than be served a PDF assembled from scans it did not resolve. The key MUST NOT include
+  the named folder's path: reuse MUST survive that folder being moved or renamed (SC-006h), and
+  FR-009 forbids retaining such a path. It follows that a run MUST resolve its cards before it
+  can establish whether reuse applies; what reuse avoids is the render, not the resolve.
 - **FR-026i**: A run the user customized MUST NOT be stored as the pack's standard PDF. The
   user MUST be able to give it a name, and it MUST be kept under that name in a list of saved
   PDFs they can browse and retrieve on a later visit, separate from the standard per-pack PDFs.
@@ -652,9 +769,18 @@ folder, the pack, and the first card's resolution intact.
 
 ### Reporting
 
-- **FR-031**: Every file in the folders consulted MUST be either used, or named in the report
-  as unused and why. Silent omission is prohibited.
-- **FR-032**: The tool MUST report every file whose name it could not interpret, naming each.
+- **FR-031**: Every file in the folder named for the run MUST be either used, or named in the
+  report as unused and why. Silent omission is prohibited within that folder. Beyond it, the
+  whole-library search (FR-021) reaches files that were never candidates for this pack, and the
+  report MUST name only those it actually used or that conflicted with one it used (FR-033,
+  FR-034). Accounting individually for every file in a 4,447-image library would produce a
+  report no user can read and a criterion no test can assert; the harm this requirement exists
+  to prevent — a scan sitting in the folder the user pointed at, ignored and unexplained — is
+  bounded to that folder.
+- **FR-032**: The tool MUST report every file **within the named folder** whose name it could
+  not interpret, naming each. Outside that folder an uninterpretable filename MUST NOT be
+  listed on its own; it surfaces through the card that failed to resolve (FR-025), which is
+  what the user can act on.
 - **FR-033**: The tool MUST report position conflicts, naming both sides, and MUST NOT resolve
   them by arbitrary choice.
 - **FR-034**: The tool MUST report duplicate renditions of one card, naming which was chosen.
@@ -732,7 +858,8 @@ folder, the pack, and the first card's resolution intact.
 ## Key Entities
 
 - **Scan library**: The user's directory of card images, organised by someone else and not
-  rearranged. Its folder structure is the only record of which cards form a starter deck.
+  rearranged. It is a place to find images and nothing more: its folder structure carries no
+  record of which cards form a starter deck, which is what the decklist card is for (FR-013a).
 - **Hero folder**: One folder under `Heros/`, holding most of that hero pack's cards, usually
   deduplicated, with the Core Set reprints absent, nemesis cards in a subfolder, and the pack's
   extra aspect cards filed under `Aspects/` instead. It is a place to look for images, not a
@@ -758,12 +885,14 @@ folder, the pack, and the first card's resolution intact.
   off.
 - **Stored PDF**: A generated PDF kept for reuse. Either *standard* — produced by a run that
   needed no user input, named from the pack, and served to later requests for that pack against
-  the same snapshot (FR-026h) — or *saved*, produced by a run the user customized, named by
-  them, and listed separately (FR-026i). Both are deletable to reclaim space (FR-026g).
-- **Assembly report**: What a run produced — the pack identified, cards placed by group, images
-  borrowed, files unused or uninterpretable, conflicts, low-resolution warnings, whether a
-  decklist card was printed, and the number of cards printed against the number the pack
-  listing records.
+  the same snapshot revision and the same resolved images (FR-026h) — or *saved*, produced by a
+  run the user customized, named by them, and listed separately (FR-026i). Both are deletable to
+  reclaim space (FR-026g).
+- **Assembly report**: What a run produced — the pack, and whether the tool identified it or the
+  user selected it (FR-012b), cards placed by group, images
+  borrowed, files unused or uninterpretable within the named folder, conflicts, low-resolution
+  warnings, whether a decklist card was printed, and the number of cards printed against the
+  number the pack listing records, with the face count alongside it.
 
 ## Success Criteria *(mandatory)*
 
@@ -796,8 +925,9 @@ folder, the pack, and the first card's resolution intact.
 - **SC-002b**: That PDF occupies the fewest pages its card count allows: no page before the
   last is partly empty, and adding the identity card, nemesis set, and decklist card costs no
   more pages than their card count requires.
-- **SC-004**: 100% of files in the folders consulted are either used or named in the report.
-  Zero are silently ignored.
+- **SC-004**: 100% of files in the folder named for the run are either used or named in the
+  report. Zero are silently ignored. Files elsewhere in the library appear in the report when
+  they were used or conflicted, and are otherwise not listed (FR-031).
 - **SC-005**: 100% of images resolved by anything other than an exact positional match are
   reported as such. No substitution is silent.
 - **SC-006**: A deck containing a card that resolves to no image stops 100% of the time unless
@@ -806,8 +936,9 @@ folder, the pack, and the first card's resolution intact.
 - **SC-006e**: 100% of decks printed with a card omitted name that card in the report and in
   the run's log. An incomplete deck is never indistinguishable from a complete one.
 - **SC-006a**: Every run reports the number of cards printed against the number the pack listing
-  records, 100% of the time, whether or not the run succeeds. No run reports an expected total
-  of 40 or warns against one.
+  records, 100% of the time, whether or not the run succeeds, counting a double-sided card as
+  one card and reporting the face count alongside it. No run reports an expected total of 40 or
+  warns against one.
 - **SC-006j**: Every run states whether a decklist card was printed. A pack printed without one
   is never indistinguishable from a pack printed with one.
 - **SC-006b**: A deck missing exactly one card from the library can be completed by the user
@@ -822,11 +953,19 @@ folder, the pack, and the first card's resolution intact.
   still waiting on a card, from the site alone, without recording an identifier anywhere.
 - **SC-006h**: A finished run's PDF downloads again on a later visit with the library folder
   unmounted, and deleting it reclaims the space it held. Storage grows only with PDFs the user
-  has chosen to keep.
+  has chosen to keep. Deleting a run never removes a pack's standard PDF from under another run.
 - **SC-006i**: Assembling a pack whose standard PDF already exists against the current snapshot
-  returns that PDF without regenerating it, so the second and later requests for a pack avoid
-  the ~49 s build entirely. A customized deck never overwrites a pack's standard PDF.
+  and the same resolved images returns that PDF without rendering it again, so the second and
+  later requests for a pack avoid the ~49 s render — they still resolve, which is what
+  establishes that the images match. A customized deck never overwrites a pack's standard PDF.
+- **SC-006k**: A run naming a library folder that resolves any card to a different image than
+  the stored standard PDF was built from rebuilds rather than being served that PDF, 100% of the
+  time. No user is handed a PDF assembled from scans their run did not resolve.
 - **SC-009**: No deck is resolved against a pack the user has not confirmed, 100% of the time.
+- **SC-009a**: A user whose folder is identified as the wrong pack, identified too weakly to
+  proceed, or not identified at all can still print it by naming the pack themselves. No folder
+  the user can correctly name a pack for is unprintable, and every user-selected pack is
+  reported as user-selected.
 - **SC-006d**: Printing a full pack issues a number of upstream requests that does not grow
   with the number of cards in it, and a second run against a pack whose snapshot is still
   fresh issues none at all.
@@ -892,8 +1031,11 @@ folder, the pack, and the first card's resolution intact.
   generated PDFs must therefore outlive the process. Where they live is a plan decision; that
   they survive a restart is not. The storage cost is known and accepted — roughly 202 MB per
   deck, bounded by the user deleting what they no longer want (FR-026g).
-- **Aspect cards and modular sets are out of scope.** The library files them separately and
-  the user can print them as a later feature. This feature assembles starter decks.
+- **Printing aspect card pools and modular sets in their own right is out of scope.** The
+  library files them separately and the user can print them as a later feature. A hero pack's
+  own aspect cards are *not* excluded by this — they are pack cards and FR-013 prints them,
+  wherever in the library they are filed. What is out of scope is printing an aspect or a
+  modular set as the thing the user asked for.
 - **Editing an assembled deck is out of scope and belongs in its own feature.** Deleting a
   card, swapping one for another, and adding cards that were never in the pack are all
   wanted, but they are a different capability: this feature answers "what did this pack
