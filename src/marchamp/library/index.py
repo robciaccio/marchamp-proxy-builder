@@ -127,6 +127,12 @@ class LibraryIndex:
     _by_position: dict[tuple[str | None, int, str | None], list[LibraryEntry]] = field(
         default_factory=dict
     )
+    #: The same positions, keyed *without* a pack hint. `_by_position` answers "position 16 in
+    #: this pack's folder"; this answers "position 16 anywhere", which the caller then narrows
+    #: by folder or by the name of the specific card it is looking for. Two lookups need it
+    #: and neither can use `_by_position`: FR-021's whole-library search has no hint to give,
+    #: and FR-022's reprint knows a position in a *different* pack whose folder it cannot name.
+    _by_any_position: dict[tuple[int, str | None], list[LibraryEntry]] = field(default_factory=dict)
     _by_name: dict[str, list[LibraryEntry]] = field(default_factory=dict)
     _by_folder: dict[str, list[LibraryEntry]] = field(default_factory=dict)
 
@@ -140,6 +146,25 @@ class LibraryIndex:
         self, pack_hint: str | None, position: int, face_suffix: str | None = None
     ) -> Candidates:
         return Candidates(tuple(self._by_position.get((pack_hint, position, face_suffix), ())))
+
+    def positions_under(
+        self, folder: str | None, position: int, face_suffix: str | None = None
+    ) -> Candidates:
+        """Files at `position` inside `folder` **and its subfolders**, or anywhere if None.
+
+        Subfolders are not a convenience. The nemesis set lives in one — `Steve Rogers_Captain
+        America/Captain America Nemesis/` — so a lookup restricted to the named folder itself
+        finds no nemesis card at all, and FR-015b requires every one of them. `by_position`
+        keys on the *containing* folder and therefore cannot answer this; it stays as it is
+        because FR-020's "inside `hero_folder`" is a subtree, not a directory listing.
+        """
+        found = self._by_any_position.get((position, face_suffix), ())
+        if folder is None:
+            return Candidates(tuple(found))
+        prefix = f"{folder}/"
+        return Candidates(
+            tuple(e for e in found if e.folder == folder or e.folder.startswith(prefix))
+        )
 
     def by_name(self, canonical_name: str) -> Candidates:
         """Every file whose normalised key is within the bound of this card's name (FR-023).
@@ -234,9 +259,13 @@ def build_index(root: Path, file_cap: int = DEFAULT_FILE_CAP) -> LibraryIndex:
 
             # A position is recorded only when it is one. In a copy-counting folder the
             # number is a copy index, and a wrong answer is worse than none (R5).
-            if parsed.position is not None and hint is not None and not copy_counting:
-                key = (hint, parsed.position, parsed.face_suffix)
-                index._by_position.setdefault(key, []).append(entry)
+            if parsed.position is not None and not copy_counting:
+                index._by_any_position.setdefault((parsed.position, parsed.face_suffix), []).append(
+                    entry
+                )
+                if hint is not None:
+                    key = (hint, parsed.position, parsed.face_suffix)
+                    index._by_position.setdefault(key, []).append(entry)
 
             for name_key in parsed.name_keys:
                 index._by_name.setdefault(name_key, []).append(entry)

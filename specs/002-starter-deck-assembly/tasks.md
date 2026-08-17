@@ -175,9 +175,9 @@ with the identity card, the nemesis set, and the decklist card.
 
 ### Resolving and composing
 
-- [ ] T043 [US1] Write failing tests for cascade step 1 (`folder_position`) and step 3 (`reprint`), following `duplicate_of_code` and `duplicated_by` in both directions and wherever they point — not only to the Core Set — in `tests/unit/test_resolve.py` (FR-014, FR-020, FR-022, FR-024)
-- [ ] T044 [US1] Implement cascade steps 1 and 3 in `src/marchamp/assembly/resolve.py`, recording provenance and a content digest per resolution
-- [ ] T045 [US1] Write failing test that copy counts come from the pack being printed and never from the printing an image was borrowed from — `cap` `03016` Make the Call prints twice whatever the Core Set ships — in `tests/unit/test_resolve.py` (FR-016, US1 scenario 4)
+- [X] T043 [US1] Write failing tests for cascade step 1 (`folder_position`) and step 3 (`reprint`), following `duplicate_of_code` and `duplicated_by` in both directions and wherever they point — not only to the Core Set — in `tests/unit/test_resolve.py` (FR-014, FR-020, FR-022, FR-024)
+- [X] T044 [US1] Implement cascade steps 1 and 3 in `src/marchamp/assembly/resolve.py`, recording provenance and a content digest per resolution
+- [X] T045 [US1] Write failing test that copy counts come from the pack being printed and never from the printing an image was borrowed from — `cap` `03016` Make the Call prints twice whatever the Core Set ships — in `tests/unit/test_resolve.py` (FR-016, US1 scenario 4)
 - [ ] T046 [US1] Write failing test for the bridge to feature 001's structures: pack plus resolutions to an in-memory `Catalog` and one `HeroDeck`, entries ordered `(group, position, code)`, in `tests/unit/test_assembly_catalog.py` (FR-048)
 - [ ] T047 [US1] Implement `src/marchamp/assembly/catalog.py`. The synthesised catalog is in memory only and is never written to disk
 - [ ] T048 [US1] Write failing test that the PDF carries the groups in order, packed into the fewest pages the card count allows, with **no page break between groups**, in `tests/integration/test_pack_pdf.py`. Four groups for a hero whose folder holds a decklist scan and three for Hulk or Phoenix, which hold none (FR-013c, FR-015d, SC-002a, SC-002b)
