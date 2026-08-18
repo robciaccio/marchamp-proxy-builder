@@ -421,22 +421,22 @@ visit, finding it where they left it rather than starting again.
 application, and return. It succeeds when the run is listed as unfinished and resumes with the
 folder, the pack, and the first card's resolution intact.
 
-- [ ] T096 [US5] Write failing test that a run with cards unresolved survives an application restart and resumes with its library root, hero folder, confirmed pack, pinned snapshot revision, resolutions, and report intact, in `tests/integration/test_resume.py` (FR-026b, SC-006f)
-- [ ] T097 [US5] Implement resume in `src/marchamp/assembly/service.py`
-- [ ] T098 [US5] Write failing contract test for `GET /api/assemblies` distinguishing finished, waiting-on-a-card, and awaiting-confirmation runs without the caller recording an identifier, in `tests/contract/test_assembly_contract.py` (FR-026c, SC-006g)
-- [ ] T099 [US5] Implement the list route in `src/marchamp/api/routes.py`
-- [ ] T100 [US5] Write failing test that a resumed run whose library folder has moved or been unmounted reports that **against the run**, naming the folder — not as a wave of newly missing cards — and that a *finished* run downloads its PDF regardless, in `tests/integration/test_resume.py` (FR-026f, SC-006h)
-- [ ] T101 [US5] Implement the moved-folder report in `src/marchamp/assembly/service.py`, checked on resume rather than during resolution
-- [ ] T102 [US5] Write failing test that a resumed run keeps the snapshot revision it started with, so an explicit refresh cannot silently change composition or quantities under resolutions already made, in `tests/integration/test_snapshots.py` (FR-044b, FR-045)
-- [ ] T103 [US5] [P] Write failing contract tests for `DELETE /api/assemblies/{run_id}`, `GET /api/pdfs`, `DELETE /api/pdfs/{pdf_id}`, and `GET /api/pdfs/{pdf_id}/document` in `tests/contract/test_pdfs_contract.py`
-- [ ] T104 [US5] Implement those routes in `src/marchamp/api/routes.py`
-- [ ] T105 [US5] Write failing tests that deleting a run reclaims **only** its uploads and a saved PDF it named, that a standard PDF survives and other runs still download it, and that deleting a standard PDF from the stored-PDF list reclaims the space and the next assembly rebuilds, in `tests/integration/test_retention.py` (FR-026g, FR-026g1, US5 scenarios 6, 6a, 6b)
-- [ ] T106 [US5] Implement deletion in `src/marchamp/store/pdfs.py` and `src/marchamp/store/runs.py`. Assert the **freed bytes**, not just the absent file, and never touch the scan library (FR-001)
-- [ ] T107 [US5] Write failing contract test that `save_as` is required when a run was customized and forbidden when it was not, in `tests/contract/test_assembly_contract.py` (FR-026h, FR-026i, US5 scenario 7)
-- [ ] T108 [US5] Implement the standard-versus-saved decision in `src/marchamp/assembly/service.py`, tracking a `customized` flag on the run in `src/marchamp/store/runs.py`
-- [ ] T109 [US5] Extend `src/marchamp/web/app.js` with the run list and the stored-PDF list, showing total bytes so reclaiming is an informed choice
-- [ ] T110a [US5] Write the failing contract test for `GET` and `POST /api/packs/{pack_code}/snapshot` in `tests/contract/test_packs_contract.py`
-- [ ] T110b [US5] Implement both in `src/marchamp/api/routes.py`, so FR-044b's manual refresh is reachable without a browser
+- [X] T096 [US5] Write failing test that a run with cards unresolved survives an application restart and resumes with its library root, hero folder, confirmed pack, pinned snapshot revision, resolutions, and report intact, in `tests/integration/test_resume.py` (FR-026b, SC-006f)
+- [X] T097 [US5] Implement resume in `src/marchamp/assembly/service.py`
+- [X] T098 [US5] Write failing contract test for `GET /api/assemblies` distinguishing finished, waiting-on-a-card, and awaiting-confirmation runs without the caller recording an identifier, in `tests/contract/test_assembly_contract.py` (FR-026c, SC-006g)
+- [X] T099 [US5] Implement the list route in `src/marchamp/api/routes.py`
+- [X] T100 [US5] Write failing test that a resumed run whose library folder has moved or been unmounted reports that **against the run**, naming the folder — not as a wave of newly missing cards — and that a *finished* run downloads its PDF regardless, in `tests/integration/test_resume.py` (FR-026f, SC-006h)
+- [X] T101 [US5] Implement the moved-folder report in `src/marchamp/assembly/service.py`, checked on resume rather than during resolution
+- [X] T102 [US5] Write failing test that a resumed run keeps the snapshot revision it started with, so an explicit refresh cannot silently change composition or quantities under resolutions already made, in `tests/integration/test_snapshots.py` (FR-044b, FR-045)
+- [X] T103 [US5] [P] Write failing contract tests for `DELETE /api/assemblies/{run_id}`, `GET /api/pdfs`, `DELETE /api/pdfs/{pdf_id}`, and `GET /api/pdfs/{pdf_id}/document` in `tests/contract/test_pdfs_contract.py`
+- [X] T104 [US5] Implement those routes in `src/marchamp/api/routes.py`
+- [X] T105 [US5] Write failing tests that deleting a run reclaims **only** its uploads and a saved PDF it named, that a standard PDF survives and other runs still download it, and that deleting a standard PDF from the stored-PDF list reclaims the space and the next assembly rebuilds, in `tests/integration/test_retention.py` (FR-026g, FR-026g1, US5 scenarios 6, 6a, 6b)
+- [X] T106 [US5] Implement deletion in `src/marchamp/store/pdfs.py` and `src/marchamp/store/runs.py`. Assert the **freed bytes**, not just the absent file, and never touch the scan library (FR-001)
+- [X] T107 [US5] Write failing contract test that `save_as` is required when a run was customized and forbidden when it was not, in `tests/contract/test_assembly_contract.py` (FR-026h, FR-026i, US5 scenario 7)
+- [X] T108 [US5] Implement the standard-versus-saved decision in `src/marchamp/assembly/service.py`, tracking a `customized` flag on the run in `src/marchamp/store/runs.py`
+- [X] T109 [US5] Extend `src/marchamp/web/app.js` with the run list and the stored-PDF list, showing total bytes so reclaiming is an informed choice
+- [X] T110a [US5] Write the failing contract test for `GET` and `POST /api/packs/{pack_code}/snapshot` in `tests/contract/test_packs_contract.py`
+- [X] T110b [US5] Implement both in `src/marchamp/api/routes.py`, so FR-044b's manual refresh is reachable without a browser
 
 **Checkpoint**: no user who leaves the wizard loses work, and storage grows only with PDFs they
 chose to keep.

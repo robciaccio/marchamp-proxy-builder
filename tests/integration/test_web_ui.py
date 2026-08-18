@@ -272,3 +272,74 @@ def test_the_outcome_is_shown_once_the_run_is_finished(markup, script):
     """FR-036 — and only then: waiting on a card is not an outcome (and not a failure)."""
     assert 'id="assembly-outcome"' in markup
     assert "run.outcome" in script
+
+
+# ------------------------------------------------------------------ US5 (T109)
+#
+# FR-026c is worded from the user's side — "without remembering an identifier" — so the
+# wizard has to *show* the runs rather than accept one. And FR-026g's deletion is only a
+# real choice if the list says what each row costs, which is why `total_bytes` reaches the
+# markup rather than staying a field on the response.
+
+
+def test_unfinished_runs_can_be_found_and_resumed_without_an_identifier(markup, script):
+    """FR-026c, SC-006g. The list is the entry point, not a box to paste a run id into."""
+    assert 'id="runs-list"' in markup
+    assert '"/api/assemblies"' in script
+    assert "resumeRun(" in script
+    # No control anywhere asks the user for a run id.
+    assert "run id" not in markup.lower()
+
+
+def test_the_run_list_says_which_runs_are_waiting_and_which_are_printable(markup, script):
+    """The three states have three different next actions, so the list distinguishes them.
+
+    Asserted against the label map rather than against prose in the render function: the
+    failure being guarded is two states collapsing into one word, and a map is where that
+    would happen.
+    """
+    labels = script.split("const RUN_STATES = {")[1].split("};")[0]
+    for state in ("complete", "awaiting_cards", "awaiting_pack"):
+        assert f"{state}:" in labels, state
+    described = {line.split('"')[1] for line in labels.splitlines() if '"' in line}
+    assert len(described) == len([ln for ln in labels.splitlines() if '"' in ln]), (
+        "two run states share a label, so the list cannot tell them apart"
+    )
+
+    runs = script.split("function renderRuns(")[1].split("\nfunction ")[0]
+    assert "RUN_STATES[run.state]" in runs
+    assert "unresolved_count" in runs
+
+
+def test_a_run_whose_library_has_gone_says_so_rather_than_listing_missing_cards(script):
+    """FR-026f. One sentence naming the folder is actionable; forty card names are not."""
+    assert "library_problem" in script
+
+
+def test_the_stored_pdfs_are_listed_with_what_they_cost(markup, script):
+    """FR-026g. 001 measured ~202 MB for one deck, so reclaiming must be an informed act."""
+    assert 'id="pdfs-list"' in markup
+    assert 'id="pdfs-total"' in markup
+    assert '"/api/pdfs"' in script
+    assert "total_bytes" in script
+    assert "byte_size" in script
+
+
+def test_deleting_a_run_and_reclaiming_disk_are_offered_as_different_acts(markup, script):
+    """FR-026g1 — the separation is the requirement, so it has to survive into the UI.
+
+    A single "delete" control on a run row that also removed the pack's standard PDF would
+    read identically to the user and would revoke FR-026f for every other run of that pack.
+    The two live in two lists with two different verbs, and the run list says so in words.
+    """
+    assert "deleteRun(" in script
+    assert "deleteStoredPdf(" in script
+    assert "/api/pdfs/" in script
+    # The run list states what discarding a run does *not* do.
+    assert "standard" in markup.lower()
+
+
+def test_the_assembly_client_still_only_uses_the_public_api(script):
+    """Principle II, re-asserted over the routes US5 adds."""
+    for path in re.findall(r'"(/api/[^"]*)"', script):
+        assert path.startswith("/api/"), path

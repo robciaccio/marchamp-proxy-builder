@@ -62,15 +62,11 @@ _UNDECLARED_STATUS = {"422"}
 #: implemented` fails the moment one of these appears on the live app, which is what forces
 #: the entry to be deleted in the same PR that implements the route — the alternative is a
 #: list that silently outlives its contents and hides genuine drift behind stale entries.
-_PENDING_OPERATIONS = {
-    ("/api/assemblies", "get"): "T099 (US5, run list)",
-    ("/api/assemblies/{run_id}", "delete"): "T104 (US5, retention)",
-    ("/api/packs/{pack_code}/snapshot", "get"): "T110b (US5, manual refresh)",
-    ("/api/packs/{pack_code}/snapshot", "post"): "T110b (US5, manual refresh)",
-    ("/api/pdfs", "get"): "T104 (US5, stored PDFs)",
-    ("/api/pdfs/{pdf_id}", "delete"): "T104 (US5, stored PDFs)",
-    ("/api/pdfs/{pdf_id}/document", "get"): "T104 (US5, stored PDFs)",
-}
+#:
+#: **Empty as of Phase 7**: every operation 002's contract declares is now on the live app.
+#: The mechanism stays because the next feature will contract-first the same way, and an
+#: empty dict is the honest way to say the exemption has expired.
+_PENDING_OPERATIONS: dict[tuple[str, str], str] = {}
 
 #: Request media types a later phase adds to an operation that already exists. Same expiring
 #: contract as `_PENDING_OPERATIONS`, one level finer: `POST .../decklist` carries two shapes

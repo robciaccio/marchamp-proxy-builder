@@ -29,11 +29,12 @@ import os
 import secrets
 import tempfile
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 
 from marchamp.store.atomic import atomic_write_json, durable_fsync, fsync_dir
-from marchamp.store.layout import StateLayout
+from marchamp.store.layout import StateLayout, UnsafeIdentifier
 
 
 class PdfKind(StrEnum):
@@ -49,6 +50,28 @@ class StoredPdf:
     name: str
     path: Path
     byte_size: int
+
+    @property
+    def pack_code(self) -> str | None:
+        """The pack a *standard* PDF belongs to, read back off its key.
+
+        `None` for a saved PDF, and that is the substance of FR-026g1 rather than a missing
+        field: a saved PDF belongs to the run that named it, so no later run of any pack may
+        ever be served it.
+        """
+        return self.id.split("@")[0] if self.kind is PdfKind.STANDARD else None
+
+    @property
+    def snapshot_revision(self) -> str | None:
+        """The revision this PDF was built from — the second third of FR-026h's key."""
+        if self.kind is not PdfKind.STANDARD:
+            return None
+        parts = self.id.split("@")
+        return parts[1] if len(parts) > 1 else None
+
+    @property
+    def created_at(self) -> datetime:
+        return datetime.fromtimestamp(self.path.stat().st_mtime, tz=UTC)
 
 
 class PdfStore:
@@ -175,13 +198,80 @@ class PdfStore:
         saved_dir = self.layout.saved_pdfs()
         if saved_dir.is_dir():
             for p in sorted(saved_dir.glob("*.pdf")):
-                sidecar = p.with_suffix(".json")
-                name = p.stem
-                if sidecar.is_file():
-                    with contextlib.suppress(OSError, ValueError, KeyError):
-                        name = json.loads(sidecar.read_text())["name"]
-                out.append(StoredPdf(PdfKind.SAVED, p.stem, name, p, p.stat().st_size))
+                out.append(
+                    StoredPdf(PdfKind.SAVED, p.stem, self._saved_name(p), p, p.stat().st_size)
+                )
         return out
+
+    @staticmethod
+    def _saved_name(path: Path) -> str:
+        """The user's title from the sidecar, falling back to the id.
+
+        A missing or unreadable sidecar loses the title, never the PDF: the bytes are the
+        thing the user waited ~49 s for, and an untitled row they can still download beats
+        a row that is not there.
+        """
+        sidecar = path.with_suffix(".json")
+        if sidecar.is_file():
+            with contextlib.suppress(OSError, ValueError, KeyError):
+                return json.loads(sidecar.read_text())["name"]
+        return path.stem
+
+    # ---------------------------------------------------------- by id (FR-026g)
+
+    def find(self, pdf_id: str) -> StoredPdf | None:
+        """One stored PDF by the id the list gave out, of either kind.
+
+        The id *is* the discriminator: a standard PDF's is FR-026h's three-part reuse key
+        and carries two `@`, a saved PDF's is opaque hex. So there is no separate "which
+        kind is this" lookup to get out of step with the layout.
+
+        A malformed id returns `None` rather than raising. `StateLayout` refuses it before
+        it can become a path — which is the guarantee that matters — and to the caller a
+        refused identifier and an absent file are the same answer: 404. Distinguishing them
+        would tell an id-guessing caller which shapes are real, for no benefit to the user.
+        """
+        if not isinstance(pdf_id, str):
+            return None
+        parts = pdf_id.split("@")
+        try:
+            if len(parts) == 3:
+                pack_code, revision, identity = parts
+                return self.find_standard(pack_code, revision, identity)
+            if len(parts) == 1:
+                path = self.layout.saved_pdf(pdf_id)
+                if not path.is_file():
+                    return None
+                return StoredPdf(
+                    kind=PdfKind.SAVED,
+                    id=pdf_id,
+                    name=self._saved_name(path),
+                    path=path,
+                    byte_size=path.stat().st_size,
+                )
+        except UnsafeIdentifier:
+            return None
+        return None
+
+    def delete(self, pdf_id: str) -> bool:
+        """Remove a stored PDF and reclaim its space (FR-026g). `False` if there was none.
+
+        Reclamation is the kernel's: a run that produced this PDF still holds its own hard
+        link at `runs/<id>/output.pdf`, so the bytes go when the last name does. That is
+        also why deleting here can never break a *finished* run's FR-026f download — the
+        run keeps its own name for the same inode, and the file the operating system frees
+        is the one nothing points at any more.
+        """
+        stored = self.find(pdf_id)
+        if stored is None:
+            return False
+        if stored.kind is PdfKind.SAVED:
+            self.delete_saved(stored.id)
+        else:
+            with contextlib.suppress(FileNotFoundError):
+                stored.path.unlink()
+        fsync_dir(stored.path.parent)
+        return True
 
     # -------------------------------------------------------------------- interna
 
