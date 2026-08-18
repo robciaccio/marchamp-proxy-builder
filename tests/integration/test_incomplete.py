@@ -247,3 +247,151 @@ def test_the_run_stays_legible_as_incomplete_when_it_is_read_back(client, writab
         u["card_code"] for u in run["unresolved"]
     ]
     assert again["report"]["cards_printed"] < again["report"]["cards_in_pack"]
+
+
+# ------------------------------------------ T090: printing without a card, on the record
+
+
+def card_bytes() -> bytes:
+    """A generated card face as TIFF bytes. Never a real scan (FR-038a)."""
+    import io
+
+    from PIL import Image
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (IMAGE_W, IMAGE_H), (18, 32, 84)).save(buffer, format="TIFF")
+    return buffer.getvalue()
+
+
+def settle(client, run: dict) -> dict:
+    """Answer everything the run is still waiting on *except* what a test omitted.
+
+    Two things stand between a cap run and `ready`, neither of them what these tests are
+    about. The derived fixture library is short of `Followed` (03032) — a T005 coverage
+    limitation recorded in Phase 5's notes — and cap's folder holds a deck list scan, which
+    holds the run until it is accepted (FR-013d). Supplying a file for the first and
+    accepting the second leaves the omission under test as the only thing missing, which is
+    what makes the card counts below say something exact.
+    """
+    while run["unresolved"]:
+        gap = run["unresolved"][0]
+        response = client.post(
+            f"/api/assemblies/{run['id']}/cards/{gap['card_code']}/image",
+            files={"file": (f"{gap['card_code']}.tiff", card_bytes(), "image/tiff")},
+            data={"side": gap["side"]},
+            headers={"If-Match": str(run["version"])},
+        )
+        assert response.status_code == 200, response.text
+        run = response.json()
+    if run["decklist_candidate"] is not None:
+        decided = client.post(
+            f"/api/assemblies/{run['id']}/decklist",
+            json={"action": "confirm"},
+            headers={"If-Match": str(run["version"])},
+        )
+        assert decided.status_code == 200, decided.text
+        run = decided.json()
+    return run
+
+
+def omit(client, run: dict, card_code: str, side: str = "front"):
+    """The explicit act FR-030a requires, naming *this* card."""
+    return client.post(
+        f"/api/assemblies/{run['id']}/cards/{card_code}/omission",
+        json={"acknowledged": True, "side": side},
+        headers={"If-Match": str(run["version"])},
+    )
+
+
+def test_an_omitted_card_is_named_in_the_report(client, writable_library):
+    """FR-030b, SC-006e — an incomplete pack is legible as incomplete, not merely short.
+
+    Named in `omitted` and **nowhere else**: a card printed without is not a card printed,
+    and listing it in both sections would leave the report contradicting itself about the
+    same card.
+    """
+    (writable_library / BARON_ZEMO_SCAN).unlink()
+    run = resolve(client, writable_library, CAP_FOLDER)
+    updated = omit(client, run, BARON_ZEMO).json()
+
+    (entry,) = updated["report"]["omitted"]
+    assert entry["card_code"] == BARON_ZEMO
+    assert entry["card_name"] == "Baron Zemo"
+    assert entry["group"] == "nemesis"
+    assert entry["provenance"] == "omitted"
+    assert BARON_ZEMO not in {r["card_code"] for r in updated["report"]["resolutions"]}
+
+
+def test_an_omitted_card_is_counted_against_the_pack_listings_card_count(client, writable_library):
+    """FR-030b, FR-018 — the pack is short by exactly the card that was left out.
+
+    `cards_in_pack` comes from the pack listing and does not move; `cards_printed` counts
+    what the entries actually say. A report where the two agreed after an omission would be
+    claiming the pack is complete.
+    """
+    (writable_library / BARON_ZEMO_SCAN).unlink()
+    run = resolve(client, writable_library, CAP_FOLDER)
+    before = run["report"]
+
+    after = settle(client, omit(client, run, BARON_ZEMO).json())["report"]
+    assert after["cards_in_pack"] == before["cards_in_pack"]
+    assert after["cards_printed"] == after["cards_in_pack"] - 1
+
+
+def test_an_omitted_card_appears_in_the_runs_log_record(client, writable_library, capsys):
+    """FR-030b — "the omission MUST appear in the log record for the run".
+
+    Identified by code rather than by file, like 001's generation record: the log is meant
+    to be safe to paste into a bug report without redaction, and a file path — especially
+    one from outside the named library — is exactly what must not be in it (FR-009, FR-022b).
+    """
+    import json
+
+    (writable_library / BARON_ZEMO_SCAN).unlink()
+    run = resolve(client, writable_library, CAP_FOLDER)
+    omitted = settle(client, omit(client, run, BARON_ZEMO).json())
+
+    capsys.readouterr()
+    confirmed = client.post(
+        f"/api/assemblies/{omitted['id']}/confirmation",
+        json={"save_as": "cap without Baron Zemo"},
+        headers={"If-Match": str(omitted["version"])},
+    )
+    assert confirmed.status_code == 202, confirmed.text
+
+    lines = [
+        json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith("{")
+    ]
+    records = [r for r in lines if r.get("run_id") == run["id"]]
+    assert records, "the run wrote no log record"
+    assert BARON_ZEMO in records[-1]["omitted_card_codes"]
+    assert str(writable_library) not in json.dumps(records[-1])
+
+
+def test_a_pack_with_an_omitted_card_prints(client, writable_library):
+    """FR-030 — proceeding is the user's decision and the tool must not overrule it."""
+    (writable_library / BARON_ZEMO_SCAN).unlink()
+    run = resolve(client, writable_library, CAP_FOLDER)
+    omitted = settle(client, omit(client, run, BARON_ZEMO).json())
+    assert omitted["state"] == "ready"
+
+    confirmed = client.post(
+        f"/api/assemblies/{omitted['id']}/confirmation",
+        json={"save_as": "cap without Baron Zemo"},
+        headers={"If-Match": str(omitted["version"])},
+    )
+    assert confirmed.status_code == 202, confirmed.text
+    assert confirmed.json()["state"] == "complete"
+    # FR-036: an omission is something the user would want to know before paying to print.
+    assert confirmed.json()["outcome"] == "warnings"
+    assert client.get(f"/api/assemblies/{run['id']}/document").status_code == 200
+
+
+def test_the_omission_stays_legible_a_week_later(client, writable_library):
+    """FR-030b — retrievable from the run record, not only from the response that made it."""
+    (writable_library / BARON_ZEMO_SCAN).unlink()
+    run = resolve(client, writable_library, CAP_FOLDER)
+    omit(client, run, BARON_ZEMO)
+
+    again = client.get(f"/api/assemblies/{run['id']}").json()
+    assert [o["card_code"] for o in again["report"]["omitted"]] == [BARON_ZEMO]

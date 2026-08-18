@@ -186,8 +186,14 @@ def test_searching_the_whole_library_does_not_pull_in_another_packs_cards(thor):
     equally reachable under `Aspects/Leadership/`.
     """
     printed = {r["card_code"] for r in thor["report"]["resolutions"]}
-    assert all(code.startswith("06") for code in printed), sorted(
-        code for code in printed if not code.startswith("06")
+    # The deck list is the one printed card with no MarvelCDB code at all — it carries the
+    # pseudo-code `decklist`, is found by filename in the hero folder, and is never counted
+    # among the pack's cards (FR-013b, FR-018). It is excluded here rather than allowed to
+    # weaken the prefix test, which is about *other packs' cards* and nothing else.
+    pack_cards = printed - {"decklist"}
+    assert pack_cards, "the control: Thor's pack resolved something"
+    assert all(code.startswith("06") for code in pack_cards), sorted(
+        code for code in pack_cards if not code.startswith("06")
     )
 
 

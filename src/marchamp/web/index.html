@@ -281,13 +281,33 @@
             <div><dt>Deck list</dt><dd id="report-decklist">—</dd></div>
           </dl>
 
+          <!-- FR-026d. Each card gets its own row with its own file picker and its own
+               "print without it" button. The thing this must never be is a failed run the
+               user has to diagnose, so nothing here is a single control acting on the
+               whole list. -->
           <section id="gaps" class="failures" hidden aria-labelledby="gaps-title">
             <h4 id="gaps-title">Cards that could not be found</h4>
             <p class="muted">
               The pack will not print while these are missing — a pack that is quietly short
-              is worse than one that says so.
+              is worse than one that says so. Choose a file for each, or say you want to
+              print without it. Files you supply may come from anywhere on this machine;
+              only the file's own name is recorded.
             </p>
-            <ul id="gaps-list"></ul>
+            <ul id="gaps-list" class="gaps"></ul>
+          </section>
+
+          <!-- FR-013c. 25 of 60 hero folders hold no deck list scan. The address is offered
+               and never fetched — the user downloads it and supplies it here. -->
+          <section id="decklist-upload" class="failures" hidden aria-labelledby="decklist-upload-title">
+            <h4 id="decklist-upload-title">Supply a deck list</h4>
+            <p class="muted">
+              This folder holds no deck list scan. Download one from Hall of Heroes and
+              choose it here; the pack prints without one if you would rather not.
+            </p>
+            <label class="field">
+              <span class="field__label">Deck list image</span>
+              <input type="file" id="decklist-file" accept="image/*" />
+            </label>
           </section>
 
           <!-- FR-015e. The pages are packed tight and carry no break between the groups, so

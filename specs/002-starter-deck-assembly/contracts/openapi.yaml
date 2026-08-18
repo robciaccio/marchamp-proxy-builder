@@ -778,9 +778,12 @@ components:
         side: { type: string, enum: [front, back] }
         acknowledged:
           type: boolean
+          enum: [true]
           description: |
-            Must be `true`. FR-030a requires an explicit act: this must not be reachable by
-            dismissing a prompt, ignoring a warning, or staying silent.
+            Must be `true`, and the single-member enum is how that is stated rather than left
+            to prose. FR-030a requires an explicit act: this must not be reachable by
+            dismissing a prompt, ignoring a warning, or staying silent — and a plain boolean
+            would let `false` through the schema to a hand-written branch someone can relax.
       required: [acknowledged]
 
     AssemblyConfirmation:
@@ -856,7 +859,15 @@ components:
             Anything other than `folder_position` is a substitution and **must** appear in the
             report (FR-024, SC-005). `manual` stays distinguishable from every automatic
             resolution (FR-029, SC-006c).
-          enum: [folder_position, library_position, reprint, name, manual, omitted]
+
+            `decklist_name` is the deck list card, matched on its filename rather than through
+            the cascade (FR-013d). It is reported like any other printed card because FR-015e
+            makes the report the only thing a user sorting a cut stack can tell the four groups
+            apart by — and because a deck list the user fetched and uploaded is a manual choice
+            FR-029 requires to be visible, which it cannot be if the card is absent from the
+            report entirely. It is still never counted among the pack's cards (FR-013b, FR-018).
+          enum:
+            [decklist_name, folder_position, library_position, reprint, name, manual, omitted]
         source: { type: string, enum: [library, upload] }
         file:
           type: string

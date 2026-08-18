@@ -10,24 +10,46 @@ leave the contract naming types that describe nothing.
 
 from __future__ import annotations
 
+import hashlib
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path as FilePath
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from fastapi import FastAPI, Header, HTTPException, Path, Query, Response
+from fastapi import (
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
+from pydantic import BaseModel, ValidationError
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from marchamp.api import schemas
 from marchamp.assembly.service import AssemblyError, AssemblyService
 from marchamp.assets.local_dir import LocalDirectoryStore
 from marchamp.catalog.loader import CatalogError
 from marchamp.catalog.validation import validate
+from marchamp.config import Limits
 from marchamp.generations.registry import GenerationRegistry
 from marchamp.generations.service import Generation as GenerationState
 from marchamp.generations.service import GenerationService
-from marchamp.layout.geometry import PageSize
+from marchamp.layout.geometry import SLOT_SIZE_MM, PageSize
 from marchamp.layout.paginate import face_count
 from marchamp.render import preview
-from marchamp.render.images import FitMode
+from marchamp.render.images import (
+    MIN_DPI,
+    FitMode,
+    ImageTooSmall,
+    ImageUnreadable,
+    validate_source,
+)
 from marchamp.store.layout import StateLayout, UnsafeIdentifier
 from marchamp.store.runs import RunNotFound, RunState
 from marchamp.upstream.client import MarvelCdbClient
@@ -54,6 +76,127 @@ def _binary(media_type: str, description: str) -> dict[str, Any]:
         "description": description,
         "content": {media_type: {"schema": {"type": "string", "format": "binary"}}},
     }
+
+
+#: `POST /api/assemblies/{run_id}/decklist` carries two body shapes on one path, and
+#: FastAPI generates a request body from a signature — which can describe one shape or the
+#: other, never both. Declared here instead, matching `contracts/openapi.yaml`; the schemas
+#: are inline rather than `$ref`s because a component is only generated when a route
+#: signature references the model, and this route's does not.
+_DECKLIST_REQUEST_BODY: dict[str, Any] = {
+    "required": True,
+    "content": {
+        "application/json": {
+            "schema": {
+                "type": "object",
+                "required": ["action"],
+                "properties": {
+                    "action": {"type": "string", "enum": ["confirm", "select", "skip"]},
+                    "ref": {"type": "string"},
+                },
+            }
+        },
+        "multipart/form-data": {
+            "schema": {
+                "type": "object",
+                "required": ["file"],
+                "properties": {"file": {"type": "string", "format": "binary"}},
+            }
+        },
+    },
+}
+
+#: Read in blocks so an upload is never held whole in memory. Matches the digest block size
+#: `assembly.resolve` reads library scans with.
+_UPLOAD_BLOCK = 1 << 20
+
+
+async def _receive(upload: Any, into: FilePath, limits: Limits) -> tuple[FilePath, str]:
+    """Stream an upload to a file under a byte ceiling, hashing as it goes (research R9).
+
+    The ceiling is enforced **while writing**, not from `Content-Length`: a client controls
+    that header, and trusting it would mean the bound applies to honest requests only. The
+    partial file is discarded on the way out, so an over-long upload costs the ceiling in
+    disk and nothing more.
+
+    The name is taken from the upload's own filename and reduced to its last component. It
+    is the only thing about where the file came from that is ever retained (FR-027), and it
+    arrived from a browser, so `../../etc` is not a hypothetical.
+    """
+    name = FilePath(upload.filename or "upload").name or "upload"
+    path = into / name
+    hasher = hashlib.sha256()
+    written = 0
+    with path.open("wb") as handle:
+        while block := await upload.read(_UPLOAD_BLOCK):
+            written += len(block)
+            if written > limits.upload_bytes:
+                handle.close()
+                path.unlink(missing_ok=True)
+                raise AssemblyError(
+                    f"{name!r} is larger than the {limits.upload_bytes // (1024 * 1024)} MB "
+                    "an uploaded card image may be. A 600 DPI card scan is a few megabytes.",
+                    status=400,
+                )
+            hasher.update(block)
+            handle.write(block)
+    return path, hasher.hexdigest()
+
+
+def _require_decodable(path: FilePath, fit_mode: FitMode) -> None:
+    """Refuse anything the application cannot read as an image (FR-028).
+
+    Read through the asset adapter over the temporary directory rather than opened
+    directly, so this is the same `validate_source` the library path uses and there is one
+    decode rule in the project rather than two that can drift.
+    """
+    store = LocalDirectoryStore(path.parent)
+    slot_w, slot_h = SLOT_SIZE_MM
+    try:
+        validate_source(store, path.name, slot_w, slot_h, fit_mode)
+    except ImageUnreadable as exc:
+        raise AssemblyError(
+            f"{path.name!r} could not be read as an image ({exc}). Supply a file this "
+            "application can decode — a TIFF, PNG, or JPEG scan of the card.",
+            status=400,
+        ) from exc
+    except ImageTooSmall:
+        # Not this function's refusal; `_require_printable` is where that decision lives.
+        return
+
+
+def _require_printable(path: FilePath, fit_mode: FitMode) -> None:
+    """FR-028 in full: decodable **and** printable at the required resolution.
+
+    A library scan below the floor is a warning rather than a refusal (FR-035), because the
+    user cannot re-take it and is entitled to decide a soft card is fine. A file they are
+    choosing right this moment is a different situation: they can pick another one, and
+    saying so at the point of choice is the whole value of validating on upload.
+    """
+    _require_decodable(path, fit_mode)
+    store = LocalDirectoryStore(path.parent)
+    slot_w, slot_h = SLOT_SIZE_MM
+    try:
+        validate_source(store, path.name, slot_w, slot_h, fit_mode)
+    except ImageTooSmall as exc:
+        raise AssemblyError(
+            f"{path.name!r} cannot print at {MIN_DPI} DPI at card size: {exc}. The card is "
+            "left unresolved; supply a higher-resolution scan.",
+            status=400,
+        ) from exc
+
+
+def _parse_json_body(body: bytes, model: type[BaseModel]) -> Any:
+    """Validate a hand-read JSON body, naming the field at fault.
+
+    Only needed because the deck list route reads its own body to serve two media types on
+    one path; every other route lets FastAPI do this.
+    """
+    try:
+        return model.model_validate_json(body or b"{}")
+    except ValidationError as exc:
+        where = "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors())
+        raise AssemblyError(where or "the request body could not be validated", status=422) from exc
 
 
 def _as_schema(gen: GenerationState) -> schemas.Generation:
@@ -535,6 +678,92 @@ def register_routes(app: FastAPI) -> None:
         return _run_response(record)
 
     @app.post(
+        "/api/assemblies/{run_id}/cards/{card_code}/image",
+        tags=["assemblies"],
+        status_code=200,
+        response_model=schemas.AssemblyRun,
+        responses={
+            400: _problem("The file is not a decodable image, or is below print resolution."),
+            404: _problem("No such run."),
+            409: _problem("That card is not unresolved, or the version is stale."),
+        },
+    )
+    async def upload_assembly_card_image(
+        run_id: str,
+        card_code: str,
+        file: Annotated[UploadFile, File()],
+        if_match: Annotated[str, Header(alias="If-Match")],
+        side: Annotated[Literal["front", "back"], Form()] = "front",
+    ):
+        """FR-026e. An upload, not a path — and validated before it is kept (FR-028).
+
+        The order here is the whole of the endpoint's safety, and each step exists because
+        the next one is dangerous without it:
+
+        1. **Refuse before reading.** A request naming a card the run did not report as
+           unresolved is turned away before 64 MB of it has been streamed anywhere.
+        2. **Stream to a temporary file under a byte ceiling, before decode.** The bytes are
+           untrusted and Pillow is a decoder; bounding the input is what keeps a hostile
+           file from being a memory problem rather than a rejected one (research R9).
+        3. **Validate from the temporary directory.** A file that fails is never written
+           into the run at all, so a rejection cannot leave the run one record away from
+           resolving a card to an image this service has just said it will not print.
+        """
+        service = assemblies()
+        record = _read_run(service, run_id)
+        try:
+            service.unresolved_face(run_id, card_code, side)
+            with tempfile.TemporaryDirectory() as scratch:
+                path, digest = await _receive(file, FilePath(scratch), settings.limits)
+                _require_printable(path, FitMode(record.fit_mode))
+                updated = service.supply_card_image(
+                    run_id,
+                    card_code,
+                    side,
+                    source=path,
+                    content_digest=digest,
+                    original_filename=path.name,
+                    version=_if_match(if_match),
+                )
+        except AssemblyError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+        return _run_response(updated)
+
+    @app.post(
+        "/api/assemblies/{run_id}/cards/{card_code}/omission",
+        tags=["assemblies"],
+        status_code=200,
+        response_model=schemas.AssemblyRun,
+        responses={
+            404: _problem("No such run."),
+            409: _problem("The run has not yet reported which cards are unresolved."),
+        },
+    )
+    def omit_assembly_card(
+        run_id: str,
+        card_code: str,
+        omission: schemas.CardOmission,
+        if_match: Annotated[str, Header(alias="If-Match")],
+    ):
+        """FR-030, FR-030a. Printing without a card is the user's call, once informed.
+
+        `acknowledged` is typed as `Literal[True]`, so `false` and absent are both refused
+        by the request model rather than by a branch someone could relax. FR-030a's other
+        half — that the permission cannot be granted before the run has reported a gap — is
+        the service's `unresolved_face`, because it is a fact about the run rather than
+        about the payload.
+        """
+        service = assemblies()
+        _read_run(service, run_id)
+        try:
+            record = service.omit_card(
+                run_id, card_code, omission.side, version=_if_match(if_match)
+            )
+        except AssemblyError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+        return _run_response(record)
+
+    @app.post(
         "/api/assemblies/{run_id}/decklist",
         tags=["assemblies"],
         # 200, not 202: a decision is applied synchronously, and the contract says so.
@@ -545,26 +774,65 @@ def register_routes(app: FastAPI) -> None:
             404: _problem("No such run."),
             409: _problem("The run has not resolved yet, or the version is stale."),
         },
+        # Two body shapes on one path, which a FastAPI signature cannot express: declaring
+        # a `File` parameter turns *every* field into a form field, taking the JSON decision
+        # away. The body is therefore parsed by hand below and described here, so the
+        # contract test still compares a real request body rather than an absent one.
+        openapi_extra={"requestBody": _DECKLIST_REQUEST_BODY},
     )
-    def decide_assembly_decklist(
+    async def decide_assembly_decklist(
+        request: Request,
         run_id: str,
-        decision: schemas.DecklistDecisionRequest,
         if_match: Annotated[str, Header(alias="If-Match")],
     ):
-        """FR-013d. `confirm` accepts the tool's candidate and is **not** customization.
+        """FR-013d and FR-013c — two ways to answer the same question about one card.
 
-        Were acceptance itself customization, no run would ever be standard and FR-026h's
-        reuse would never fire once (FR-013e).
+        A JSON `DecklistDecision` answers the candidate the tool found in the folder;
+        `confirm` accepts it and is **not** customization, because were acceptance itself
+        customization no run would ever be standard and FR-026h's reuse would never fire
+        once (FR-013e).
+
+        A multipart upload is the other case: 25 of 60 hero folders hold no deck list scan
+        at all, so there is nothing to confirm. The run names that gap and offers the Hall
+        of Heroes address — and never fetches it, which is what keeps FR-002's allowlist at
+        one host — and the file the user downloaded arrives here (research R9).
         """
         service = assemblies()
         _read_run(service, run_id)
+        version = _if_match(if_match)
+        media_type = (request.headers.get("content-type") or "").split(";")[0].strip()
+
         try:
-            record = service.decide_decklist(
-                run_id, decision.action, decision.ref, version=_if_match(if_match)
-            )
+            if media_type == "multipart/form-data":
+                form = await request.form()
+                upload = form.get("file")
+                if not isinstance(upload, StarletteUploadFile):
+                    raise AssemblyError("`file` is required for a deck list upload", status=400)
+                record = _read_run(service, run_id)
+                with tempfile.TemporaryDirectory() as scratch:
+                    path, digest = await _receive(upload, FilePath(scratch), settings.limits)
+                    # Decode is enforced; the print-resolution floor deliberately is not.
+                    # R9: a Hall of Heroes photograph "will very likely fall below the
+                    # print-resolution floor and trip FR-035's warning; that is the correct
+                    # outcome". Refusing here would leave a user who did exactly what the
+                    # tool told them to do unable to print the card, so the softness is
+                    # reported on the report instead of refused at the door.
+                    _require_decodable(path, FitMode(record.fit_mode))
+                    updated = service.supply_decklist(
+                        run_id,
+                        source=path,
+                        content_digest=digest,
+                        original_filename=path.name,
+                        version=version,
+                    )
+            else:
+                decision = _parse_json_body(await request.body(), schemas.DecklistDecisionRequest)
+                updated = service.decide_decklist(
+                    run_id, decision.action, decision.ref, version=version
+                )
         except AssemblyError as exc:
             raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
-        return _run_response(record)
+        return _run_response(updated)
 
     @app.post(
         "/api/assemblies/{run_id}/confirmation",

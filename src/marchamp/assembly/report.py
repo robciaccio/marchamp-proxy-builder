@@ -22,10 +22,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from marchamp.assembly.catalog import BuiltCatalog
+from marchamp.assembly.catalog import DECKLIST_NAME, BuiltCatalog
 from marchamp.assembly.decklist import DecklistState
-from marchamp.assembly.faces import Group, card_count
-from marchamp.assembly.resolve import Provenance, Resolution, UnresolvedFace
+from marchamp.assembly.faces import DECKLIST_CODE, Group, Side, card_count, classify
+from marchamp.assembly.resolve import Provenance, Resolution, Source, UnresolvedFace
 from marchamp.assets.store import Store
 from marchamp.layout.geometry import SLOT_SIZE_MM
 from marchamp.library.index import Candidates, LibraryIndex
@@ -114,6 +114,65 @@ def _entry(resolution: Resolution, group_of: dict[str, Group]) -> dict[str, Any]
     }
 
 
+def groups_from(cards: Sequence[PackCard]) -> dict[str, Group]:
+    """Every code the pack prints, mapped to its FR-015 group, from the card data alone.
+
+    `BuiltCatalog.group_of` covers what was *built*, and a card the user chose to print
+    without is by definition not built — so an omitted nemesis minion would be reported as
+    a player card, which is precisely the sentence FR-015e exists to make useful. Linked
+    codes are included because an identity spans several of them and only one has a record.
+    """
+    out: dict[str, Group] = {}
+    for card in cards:
+        group = classify(card)
+        for code in (card.code, *card.linked_codes):
+            out[code] = group
+    return out
+
+
+def decklist_resolution(decklist: DecklistState) -> Resolution | None:
+    """The deck list card expressed as a resolution, so the report can show it.
+
+    It is not one of the pack's cards and never enters the FR-020-FR-025 cascade, so it
+    reaches the report from here rather than from `record.resolutions`. Two reasons it has
+    to reach the report at all:
+
+    - **FR-029.** A deck list the user fetched from Hall of Heroes and handed over is a
+      manual choice, and every manual choice must be reported and distinguishable from an
+      automatic one. Reporting the counts while leaving the card itself invisible would
+      make the one card the user did the most work for the only one they cannot audit.
+    - **FR-015e.** The four groups are packed onto as few pages as will hold them with no
+      break between them, so the report is the only thing a user sorting a cut stack can
+      tell them apart by — and `decklist` is one of the four.
+    """
+    if not (decklist.printed and decklist.chosen_ref):
+        return None
+    return Resolution(
+        card_code=DECKLIST_CODE,
+        card_name=DECKLIST_NAME,
+        side=Side.FRONT,
+        provenance=Provenance.MANUAL if decklist.uploaded else Provenance.DECKLIST_NAME,
+        source=Source.UPLOAD if decklist.uploaded else Source.LIBRARY,
+        ref=decklist.chosen_ref,
+        content_digest="",
+        quantity=1,
+        original_filename=decklist.uploaded_filename,
+        note=(
+            "Supplied by hand: this folder holds no deck list scan."
+            if decklist.uploaded
+            else "Matched on the filename, and printed because you accepted it."
+        ),
+    )
+
+
+def decklist_entry(decklist: DecklistState) -> dict[str, Any] | None:
+    """`decklist_resolution` as the contract's `Resolution` object, or `None`."""
+    resolution = decklist_resolution(decklist)
+    if resolution is None:
+        return None
+    return _entry(resolution, {DECKLIST_CODE: Group.DECKLIST})
+
+
 def _sorted(resolutions: Sequence[Resolution]) -> list[Resolution]:
     """Card then side, so the same run always renders the same report (Principle V)."""
     return sorted(resolutions, key=lambda r: (r.card_code, r.side.value))
@@ -133,7 +192,7 @@ COPY_COUNTED_REASON = (
 UNMATCHED_REASON = "no card in this pack resolved to it"
 
 
-def _low_resolution(
+def low_resolution_notes(
     store: Store, resolutions: Sequence[Resolution], fit_mode: FitMode
 ) -> list[dict[str, Any]]:
     """Scans that cannot print at the required resolution — a warning, never a refusal.
@@ -400,7 +459,22 @@ def build_report(
     # in and what FR-018 compares against, while faces are what the page count follows from
     # (SC-002b). Ant-Man is the case that keeps them honest — one physical card, two
     # records, three faces.
-    group_of = built.group_of if built else {}
+    # Layered most-general first: the pack listing knows every code's group, the built
+    # catalog knows what was actually printed, and the deck list belongs to neither.
+    group_of = {
+        **groups_from(cards),
+        DECKLIST_CODE: Group.DECKLIST,
+        **(built.group_of if built else {}),
+    }
+    # The codes the pack listing has a record for. A *linked* code has none of its own —
+    # `03001b` is the alter-ego half of one identity card whose record is `03001a` — and
+    # the built catalog carries an entry for each, because each is a separate face with a
+    # separate image. Counting both as cards reports 60 printed against 59 in the pack,
+    # which is not merely off by one: it exactly cancels a missing card, so a run one card
+    # short reads as complete and FR-030b's "stated against the number the pack listing
+    # records" becomes unfalsifiable. Faces are deliberately not filtered — two faces is
+    # what the identity really prints, and that is what the page count follows from.
+    counted_as_cards = {card.code for card in cards}
     printed_cards = 0
     printed_faces = 0
     if built is not None:
@@ -409,18 +483,23 @@ def build_report(
             if group_of.get(entry.card_id) is Group.DECKLIST:
                 continue
             card = built.catalog.card(entry.card_id)
-            printed_cards += entry.quantity
+            if entry.card_id in counted_as_cards:
+                printed_cards += entry.quantity
             printed_faces += entry.quantity * (2 if card and card.double_sided else 1)
 
     # A card printed without is not a card printed. It appears in `omitted` and nowhere
     # else, so the two lists never disagree about the same card (FR-030b, SC-006e).
     printed = [r for r in resolutions if r.provenance is not Provenance.OMITTED]
     omitted = [r for r in resolutions if r.provenance is Provenance.OMITTED]
+    # The deck list never enters the cascade, so it is not in `resolutions` — but it is a
+    # card that prints, it can be a manual choice, and FR-029 and FR-015e both want it seen.
+    if decklist is not None and (card := decklist_resolution(decklist)) is not None:
+        printed = [*printed, card]
 
     unused_files: list[dict[str, Any]] = []
     uninterpretable_files: list[dict[str, Any]] = []
     conflicts: list[dict[str, Any]] = []
-    low_resolution = _low_resolution(store, printed, fit_mode) if store is not None else []
+    low_resolution = low_resolution_notes(store, printed, fit_mode) if store is not None else []
     if index is not None and hero_folder:
         used_refs = {r.ref for r in printed}
         # A file matched as the decklist was *used*, whether or not the user has decided

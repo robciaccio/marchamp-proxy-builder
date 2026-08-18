@@ -170,6 +170,45 @@ def test_unresolved_cards_are_named_individually_with_where_the_tool_looked(mark
     assert "Cards that could not be found" in markup
 
 
+def test_each_unresolved_card_carries_its_own_way_out(script):
+    """FR-026d — "each unresolved card individually", which is a rule about controls.
+
+    The failure being guarded is a single "upload the missing cards" control, or one "print
+    anyway" button covering the list. Both would satisfy a reading of the requirement and
+    neither lets the user answer *this* card, which is the whole of FR-030a's explicit act.
+    So the per-card picker and the per-card omit button are built inside the loop over
+    `run.unresolved`, and this test says so.
+    """
+    gaps = script.split("function renderGaps(")[1].split("\nfunction ")[0]
+    assert "for (const gap of gaps)" in gaps
+    assert 'picker.type = "file"' in gaps
+    assert "supplyCardImage(gap, file)" in gaps
+    assert "omitCard(gap)" in gaps
+
+
+def test_a_supplied_file_is_uploaded_rather_than_named_by_path(markup, script):
+    """FR-026e — the user must not have to type a filesystem path for a card."""
+    assert "new FormData()" in script
+    assert 'body.append("file", file)' in script
+    assert "/image" in script
+    # No text input anywhere asks for a per-card path.
+    assert 'type="file"' in markup
+
+
+def test_printing_without_a_card_is_an_explicit_act(script):
+    """FR-030a — not the default, not inferred from silence, and never blanket."""
+    assert "acknowledged: true" in script
+    assert "/omission" in script
+    assert "side: gap.side" in script
+
+
+def test_a_folder_with_no_decklist_can_be_answered_with_a_file(markup, script):
+    """FR-013c — the address is offered, the user fetches it, and it comes back here."""
+    assert 'id="decklist-file"' in markup
+    assert "supplyDecklist(file)" in script
+    assert "hallofheroes" in markup.lower() or "Hall of Heroes" in markup
+
+
 def test_substitutions_are_shown_so_a_wrong_match_is_visible(markup, script):
     """FR-024, SC-005 — everything except an exact hit in the hero folder is listed."""
     assert 'id="substitutions-list"' in markup

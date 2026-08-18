@@ -2,14 +2,15 @@
 
 The cascade is six steps, first match wins, and the step that matched *is* the provenance —
 that is the whole audit record FR-024 and SC-005 are asserted against. This module builds
-steps 1 to 4; 5 is US4's upload, and 6 is FR-030's omission.
+steps 1 to 4 as a search. Steps 5 and 6 are not searched for at all: they are recorded
+when the user answers, and **override** the cascade on every later pass.
 
     1  folder_position    exact (position, suffix) inside the hero folder     [here]
     2  library_position   the same, anywhere under the library root           [here]
     3  reprint            another printing of the same card                   [here]
     4  name               the canonical name of the card being sought         [here]
-    5  manual             a file the user uploaded for this card              [US4]
-    6  omitted            the user chose to print without it                  [FR-030]
+    5  manual             a file the user uploaded for this card              [here]
+    6  omitted            the user chose to print without it                  [here]
 
 **Nothing here picks between two candidates.** Ambiguity is reported and the user is asked
 (FR-033); the index already draws the line between "one card in several renditions", which is
@@ -39,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from marchamp.assembly.faces import DECKLIST_CODE, Face, Group, Side
+from marchamp.assets.overlay import UPLOAD_PREFIX
 from marchamp.library.index import LibraryIndex
 from marchamp.upstream.models import PackCard
 
@@ -498,6 +500,68 @@ def _resolution(
         # FR-016: from the pack being printed, never from the printing lent the image.
         quantity=card.quantity,
         note=note,
+    )
+
+
+#: Provenances the user produced rather than the cascade. They **override** the cascade on
+#: every later pass (FR-026b, US4 scenario 8): the library is re-read each time a run
+#: advances, so an answer the user already gave has to survive a resolve that would
+#: otherwise report the same card missing again — forever.
+USER_SUPPLIED = frozenset({Provenance.MANUAL, Provenance.OMITTED})
+
+
+def manual_resolution(
+    card_code: str,
+    card_name: str,
+    side: Side,
+    content_digest: str,
+    original_filename: str,
+    quantity: int = 1,
+) -> Resolution:
+    """A face paired with a file the user handed over (FR-026e, FR-027, FR-029).
+
+    Two things distinguish this from every resolution the cascade builds, and both are
+    requirements rather than bookkeeping:
+
+    - **The ref is content, not a path.** `upload:<sha256>` routes to the run's own uploads
+      directory through `assets.OverlayStore`, which is what lets the run reprint after the
+      file the user picked has been moved or deleted (FR-026e, SC-006b).
+    - **Only the file's own name is retained.** The file may have come from anywhere on the
+      machine (FR-027), and a path from outside the named library must not reach the report,
+      the record, or the log — so FR-009 holds without an exception carved into it.
+    """
+    return Resolution(
+        card_code=card_code,
+        card_name=card_name,
+        side=side,
+        provenance=Provenance.MANUAL,
+        source=Source.UPLOAD,
+        ref=f"{UPLOAD_PREFIX}{content_digest}",
+        content_digest=content_digest,
+        quantity=quantity,
+        original_filename=original_filename,
+        note="Supplied by hand for this card; the library holds no image for it.",
+    )
+
+
+def omitted_resolution(card_code: str, card_name: str, side: Side) -> Resolution:
+    """A face the user explicitly chose to print without (FR-030, FR-030b).
+
+    Carries no ref and no digest, deliberately. It is not a card that resolved to something
+    — it is a card that resolved to *nothing*, on purpose, and giving it a plausible-looking
+    file would put a phantom entry into the document. `build_catalog` drops it and the
+    report names it in `omitted` and nowhere else, so the two never disagree.
+    """
+    return Resolution(
+        card_code=card_code,
+        card_name=card_name,
+        side=side,
+        provenance=Provenance.OMITTED,
+        source=Source.LIBRARY,
+        ref="",
+        content_digest="",
+        quantity=0,
+        note="Printed without this card, at the user's explicit request.",
     )
 
 
