@@ -290,6 +290,18 @@
             <ul id="gaps-list"></ul>
           </section>
 
+          <!-- FR-015e. The pages are packed tight and carry no break between the groups, so
+               this list is the only thing a user who does not know the cards by sight can
+               sort the cut stack by (SC-002b). -->
+          <section id="groups" class="subs" hidden aria-labelledby="groups-title">
+            <h4 id="groups-title">Sorting the cut cards</h4>
+            <p class="muted">
+              The pages are packed as tightly as they will go, so one page can carry the end
+              of one group and the start of the next. This is what tells them apart.
+            </p>
+            <ul id="groups-list"></ul>
+          </section>
+
           <section id="substitutions" class="subs" hidden aria-labelledby="substitutions-title">
             <h4 id="substitutions-title">Where images came from</h4>
             <p class="muted">
@@ -299,12 +311,59 @@
             <ul id="substitutions-list"></ul>
           </section>
 
+          <!-- FR-030b, SC-006e. A pack printed with a card left out is never
+               indistinguishable from a complete one, on the day or a week later. -->
+          <section id="omitted" class="failures" hidden aria-labelledby="omitted-title">
+            <h4 id="omitted-title">Printed without these cards</h4>
+            <p class="muted">
+              You chose to print without them. They are named here so this pack is never
+              mistaken for a complete one.
+            </p>
+            <ul id="omitted-list"></ul>
+          </section>
+
+          <!-- FR-031 - FR-035. Problems in the folder the user pointed at, each one
+               something they can act on — or can knowingly decide to ignore. -->
+          <section id="library-notes" class="subs" hidden aria-labelledby="library-notes-title">
+            <h4 id="library-notes-title">About your library</h4>
+
+            <div id="conflicts" hidden>
+              <h5>Files that clash</h5>
+              <p class="muted">
+                Two different cards claim one number, or one card has two scans. Nothing here
+                picks between two cards — you do.
+              </p>
+              <ul id="conflicts-list"></ul>
+            </div>
+
+            <div id="warnings" hidden>
+              <h5>Scans below print resolution</h5>
+              <p class="muted">
+                These will still print, softer than 300 DPI. Rescan them if it matters to
+                you; nothing is refused over it.
+              </p>
+              <ul id="warnings-list"></ul>
+            </div>
+
+            <div id="unused" hidden>
+              <h5>Files in this folder that were not used</h5>
+              <p class="muted">
+                Every file in the hero folder is either used or listed here with the reason.
+                None is skipped silently.
+              </p>
+              <ul id="unused-list"></ul>
+            </div>
+          </section>
+
           <div class="actions">
             <button type="button" class="btn btn--primary" id="assembly-confirm" hidden>
               Make the PDF
             </button>
             <a id="assembly-download" class="btn btn--primary" hidden download>Download PDF</a>
           </div>
+          <!-- FR-036. Shown only once the run is terminal: waiting on a card is not an
+               outcome, and reading it as one would report a failure that has not happened. -->
+          <p id="assembly-outcome" class="muted" role="status" aria-live="polite"></p>
           <p id="assembly-progress" class="muted" role="status" aria-live="polite"></p>
         </section>
       </section>

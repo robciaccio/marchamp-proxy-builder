@@ -316,9 +316,22 @@ progress {
 }
 
 .subs h3,
-.failures h3 {
+.subs h4,
+.failures h3,
+.failures h4 {
   margin: 0 0 0.35rem;
   font-size: 1rem;
+}
+
+/* The library notes nest one level deeper: conflicts, low-resolution scans, and unused
+   files are three separate things to act on inside one section (FR-031 - FR-035). */
+.subs h5 {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+}
+
+.subs > div + div {
+  margin-top: 0.9rem;
 }
 
 .subs ul,

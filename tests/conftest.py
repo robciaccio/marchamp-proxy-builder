@@ -301,6 +301,34 @@ def snapshot_fixture(pack_code: str) -> list[dict]:
     return json.loads((SNAPSHOT_FIXTURES / f"{pack_code}.json").read_text())
 
 
+def pack_cards(pack_code: str) -> list:
+    """The committed listing for one pack, parsed into `PackCard` records.
+
+    Here rather than in each test module because three of them now want it, and a fourth
+    copy of the same six lines is a place for them to drift apart.
+    """
+    from marchamp.upstream.models import parse_snapshot_cards
+
+    cards, _warnings = parse_snapshot_cards(snapshot_fixture(pack_code), pack_code)
+    return cards
+
+
+def printing_lookup(code: str):
+    """Find one card by code across every committed snapshot.
+
+    Stands in for the prefix->pack map research R4 describes. What the cascade needs is only
+    that *some* other printing can be found by code; where it is fetched from is the
+    service's problem, which is why `resolve_pack` takes this as a parameter.
+    """
+    for path in sorted(SNAPSHOT_FIXTURES.glob("*.json")):
+        if path.stem == "packs":
+            continue
+        for card in pack_cards(path.stem):
+            if card.code == code:
+                return card
+    return None
+
+
 #: Measured on `cards/cap.json`, 2026-08-17. There is no ETag; `Last-Modified` is the only
 #: validator MarvelCDB serves, and `max-age` is 600 s (research R1, R12).
 UPSTREAM_MAX_AGE = 600

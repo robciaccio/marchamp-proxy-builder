@@ -529,6 +529,8 @@ function renderAssembly() {
       gapList.append(li);
     }
 
+    renderGroups(report);
+
     const subs = (report.resolutions || []).filter(
       (r) => r.provenance !== "folder_position",
     );
@@ -541,6 +543,15 @@ function renderAssembly() {
       subList.append(li);
     }
 
+    /* FR-030b, SC-006e: a pack printed with a card left out never looks complete. */
+    const omitted = report.omitted || [];
+    $("omitted").hidden = omitted.length === 0;
+    fillList("omitted-list", omitted, (card) =>
+      `${card.card_name} (${card.card_code}, ${card.group}) — printed without`,
+    );
+
+    renderLibraryNotes(report);
+
     /* FR-026a: reaching `ready` does not print. The button is the confirmation. */
     $("assembly-confirm").hidden = run.state !== "ready";
     const download = $("assembly-download");
@@ -548,7 +559,77 @@ function renderAssembly() {
     if (run.state === "complete") download.href = `/api/assemblies/${run.id}/document`;
     $("assembly-progress").textContent =
       run.state === "rendering" ? "Building the PDF…" : "";
+    /* FR-036: null until the run is terminal, so nothing here reports a failure that has
+     * not happened. Waiting on a card is the tool working, not the tool failing. */
+    $("assembly-outcome").textContent = run.outcome ? OUTCOMES[run.outcome] || "" : "";
   }
+}
+
+/* FR-015e, SC-002b. FR-015d packs the four groups onto as few pages as will hold them with
+ * no page break between them, so a page routinely carries the last player cards and the
+ * first nemesis cards. This list is therefore the only thing a user who cannot recognise
+ * the cards by sight can sort the cut stack by — which is why it is grouped and why every
+ * group is named even when it holds one card. */
+const GROUP_LABELS = {
+  player: "Player cards",
+  identity: "Identity card",
+  nemesis: "Nemesis set",
+  decklist: "Deck list",
+};
+
+/* FR-036, rendered for a person rather than for a consumer of the API. */
+const OUTCOMES = {
+  clean: "Assembled cleanly.",
+  warnings: "Assembled, with notes below worth reading.",
+  refused: "Refused — nothing was printed.",
+};
+
+function fillList(id, items, describe) {
+  const list = $(id);
+  list.replaceChildren();
+  for (const item of items) {
+    const li = document.createElement("li");
+    li.textContent = describe(item);
+    list.append(li);
+  }
+}
+
+function renderGroups(report) {
+  const resolutions = report.resolutions || [];
+  const list = $("groups-list");
+  list.replaceChildren();
+  $("groups").hidden = resolutions.length === 0;
+
+  for (const group of ["player", "identity", "nemesis", "decklist"]) {
+    /* Fronts only: a double-sided card is one card to sort, not two, and listing its back
+     * again would have the user hunting for a card that is not in the stack twice. */
+    const cards = resolutions.filter((r) => r.group === group && r.side === "front");
+    if (cards.length === 0) continue;
+    const li = document.createElement("li");
+    const heading = document.createElement("strong");
+    heading.textContent = `${GROUP_LABELS[group]} (${cards.length})`;
+    const names = document.createElement("span");
+    names.textContent = ` — ${cards.map((c) => c.card_name).join(", ")}`;
+    li.append(heading, names);
+    list.append(li);
+  }
+}
+
+function renderLibraryNotes(report) {
+  const conflicts = report.conflicts || [];
+  const warnings = report.low_resolution || [];
+  const unused = report.unused_files || [];
+
+  $("conflicts").hidden = conflicts.length === 0;
+  $("warnings").hidden = warnings.length === 0;
+  $("unused").hidden = unused.length === 0;
+  $("library-notes").hidden =
+    conflicts.length === 0 && warnings.length === 0 && unused.length === 0;
+
+  const named = (entry) => `${entry.file} — ${entry.reason}`;
+  fillList("conflicts-list", conflicts, named);
+  fillList("warnings-list", warnings, named);
+  fillList("unused-list", unused, named);
 }
 
 async function showPackPicker() {
