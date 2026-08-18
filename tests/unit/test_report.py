@@ -210,20 +210,20 @@ def test_an_uploaded_file_is_reported_by_its_own_name_and_stays_distinguishable(
     chose it and must be able to recognise it a week later.
     """
     manual = Resolution(
-        card_code="03031",
-        card_name="Enraged",
+        card_code="03032",
+        card_name="Followed",
         side=Side.FRONT,
         provenance=Provenance.MANUAL,
         source=Source.UPLOAD,
         ref="uploads/" + "f" * 64,
         content_digest="f" * 64,
-        original_filename="enraged scanned again.tiff",
+        original_filename="followed scanned again.tiff",
     )
     report = build_report(**{**cap_inputs, "resolutions": [*cap_inputs["resolutions"], manual]})
-    entry = next(e for e in report.resolutions if e["card_code"] == "03031")
+    entry = next(e for e in report.resolutions if e["card_code"] == "03032")
     assert entry["provenance"] == "manual"
     assert entry["source"] == "upload"
-    assert entry["file"] == "enraged scanned again.tiff"
+    assert entry["file"] == "followed scanned again.tiff"
 
 
 # ------------------------------------------------------------------------- omissions
@@ -236,8 +236,8 @@ def test_a_card_printed_without_is_named_in_the_report_and_not_counted_as_printe
     it among those printed would leave the user reading a report that contradicts itself.
     """
     omitted = Resolution(
-        card_code="03031",
-        card_name="Enraged",
+        card_code="03032",
+        card_name="Followed",
         side=Side.FRONT,
         provenance=Provenance.OMITTED,
         source=Source.LIBRARY,
@@ -255,9 +255,9 @@ def test_a_card_printed_without_is_named_in_the_report_and_not_counted_as_printe
     )
     report = build_report(**{**cap_inputs, "resolutions": resolutions, "built": built})
 
-    assert [e["card_code"] for e in report.omitted] == ["03031"]
-    assert report.omitted[0]["card_name"] == "Enraged"
-    assert "03031" not in {e["card_code"] for e in report.resolutions}
+    assert [e["card_code"] for e in report.omitted] == ["03032"]
+    assert report.omitted[0]["card_name"] == "Followed"
+    assert "03032" not in {e["card_code"] for e in report.resolutions}
     # Unchanged from the same run without the omission: a card printed without is a card
     # not printed, whatever else the report says about it.
     assert report.cards_printed == build_report(**cap_inputs).cards_printed

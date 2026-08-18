@@ -105,32 +105,43 @@ def normalise(text: str) -> str:
 
 
 def edit_distance(a: str, b: str, ceiling: int = NAME_DISTANCE_LIMIT) -> int:
-    """Levenshtein distance, abandoned once it exceeds `ceiling`.
+    """Edit distance, abandoned once it exceeds `ceiling`.
 
     Called against every name key in an index built from ~4,447 files, and the exact value
     of a large distance is never wanted — only whether it is within the bound. Returns
     `ceiling + 1` to mean "further than you care about".
+
+    **A swap of two adjacent characters counts as one edit, not two** (Damerau's restricted
+    variant). Plain Levenshtein scores `Pheonix` two edits from `Phoenix`, which puts the
+    typo the Phoenix folder actually contains outside the bound a seven-character name gets —
+    and `distance_limit` tightens short names precisely because *two independent* edits can
+    reach a different card. One transposed pair is a single slip of the fingers and reaches
+    nothing; scoring it as two spends the whole budget on one mistake and reports a gap for a
+    card whose scan is sitting in the folder the user named.
     """
     if a == b:
         return 0
     if abs(len(a) - len(b)) > ceiling:
         return ceiling + 1
 
-    previous = list(range(len(b) + 1))
+    # Two rows back, because a transposition looks at `i-2`/`j-2`.
+    before = list(range(len(b) + 1))
+    previous: list[int] = []
     for i, ca in enumerate(a, start=1):
         current = [i]
         for j, cb in enumerate(b, start=1):
-            current.append(
-                min(
-                    previous[j] + 1,  # deletion
-                    current[j - 1] + 1,  # insertion
-                    previous[j - 1] + (ca != cb),  # substitution
-                )
+            cost = min(
+                before[j] + 1,  # deletion
+                current[j - 1] + 1,  # insertion
+                before[j - 1] + (ca != cb),  # substitution
             )
+            if i > 1 and j > 1 and ca == b[j - 2] and a[i - 2] == cb:
+                cost = min(cost, previous[j - 2] + 1)  # transposition
+            current.append(cost)
         if min(current) > ceiling:
             return ceiling + 1
-        previous = current
-    return previous[-1]
+        previous, before = before, current
+    return before[-1]
 
 
 def distance_limit(canonical_normalised: str) -> int:
@@ -213,12 +224,23 @@ def parse_filename(filename: str) -> ParsedFilename:
         # `2_`, `3_`, and `4_Active Altruism_Event` are three scans of one card, and an
         # index that read them as three different cards would report a conflict where
         # there is none.
+        #
+        # A *trailing* number in the same filename is a different thing again, and the face
+        # suffix on it is kept. `0_Pheonix_Hero_1B` and `0_Phoenix_Alter-Ego_1A` are the two
+        # faces of one identity card, and `1_Phoenix Force_Upgrade_2A`/`_2B` the two faces of
+        # one upgrade; their names are identical, so the suffix is the only thing that tells
+        # them apart. The trailing *position* is deliberately left unread — this folder has
+        # already been judged to number by copy, and `build_index` drops its positions
+        # wholesale rather than trusting one of the two numbers over the other.
+        rest = stem[leading.end() :]
+        trailing = TRAILING_POSITION_RE.search(rest)
         return ParsedFilename(
             filename,
             stem,
             Form.COPY_NUMBER,
             copy_number=int(leading.group(1)),
-            card_identity=normalise(stem[leading.end() :]),
+            face_suffix=(trailing.group(2) or "").lower() or None if trailing else None,
+            card_identity=normalise(rest),
             name_keys=keys,
         )
 

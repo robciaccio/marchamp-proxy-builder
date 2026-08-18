@@ -175,10 +175,10 @@ FR-029, and SC-005 are asserted against.
 | Step | `provenance` | Rule |
 |---|---|---|
 | 0 | `decklist_name` | **Decklist only.** A `deck\s*list` stem match inside `hero_folder`, proposed to the user and printed only once accepted (FR-013d). Never reaches steps 1–4: the decklist card has no `pack_code`, no `position`, and no canonical name, and this is a literal substring test rather than FR-023's name match. Candidates differing only by extension are one candidate (FR-034); different stems are a conflict the user resolves (FR-033); none is FR-013c's gap. `card_code` is the literal `decklist` and is not a MarvelCDB code. |
-| 1 | `folder_position` | Exact `(pack_code, position, code suffix)` match inside `hero_folder`. The only provenance that is *not* reported as a substitution. |
-| 2 | `library_position` | The same match anywhere under `library_root` (FR-021). Origin named in the report. |
+| 1 | `folder_position` | Exact `(pack_code, position, code suffix)` match inside `hero_folder`. The only provenance that is *not* reported as a substitution. Two different cards at one position is a *failure to match*, so the cascade continues to step 2 rather than stopping; the clash is still reported, derived from the library rather than from this run's failures (FR-033). |
+| 2 | `library_position` | The same `(position, code suffix)` anywhere under `library_root`, **narrowed by the canonical name of the card being sought** (FR-021, FR-023). Position alone spans the whole library — position 33 occurs in more than a dozen packs — so on its own it would pair a card with confidently wrong art; requiring both is what makes the widened search safe. Origin named in the report. |
 | 3 | `reprint` | Follow `duplicate_of_code` / `duplicated_by` in both directions and accept any other printing of the same card (FR-014, FR-022). |
-| 4 | `name` | Match a normalised filename against **the canonical name of the specific card being sought** (FR-023). Never parses identity out of a filename. Carries the whole of Phoenix and Wonder Man (SC-003c). |
+| 4 | `name` | Match a normalised filename against **the canonical name of the specific card being sought** (FR-023). Never parses identity out of a filename. `hero_folder` and its subtree are searched before the rest of the library, for the same reason step 1 precedes step 2 — four folders hold a `Hawkeye`. Carries the whole of Phoenix and Wonder Man (SC-003c). |
 | 5 | `manual` | A file the user uploaded for this card (FR-026, FR-026e). Distinguishable from every automatic resolution (FR-029, SC-006c). |
 | 6 | `omitted` | The user explicitly chose to print without it (FR-030). Named in the report, counted against the pack's card count, and written to the run's log (FR-030b, SC-006e). |
 | — | *unresolved* | None matched and the user has not decided. The run **stops** (FR-017, FR-025). |
@@ -197,7 +197,7 @@ went away to find the missing file.
 | Field | Type | Rules |
 |---|---|---|
 | `by_position` | map | `(pack_hint, position, suffix) -> [entry]`. `pack_hint` comes from the containing hero folder; absent under `Aspects/`, where a position means nothing without a pack. |
-| `by_name` | map | `normalised name -> [entry]`. Casefolded, punctuation and underscores stripped, whitespace collapsed, then compared with a **Levenshtein distance ≤ 2**, tightened to **≤ 1** for canonical names under 8 characters. Stripping alone is not enough and never was: "Stength in Numbers" is a dropped letter. A match MUST be **unique** — two candidates inside the bound are a conflict (FR-033), never an arbitrary pick — and every hit is reported as a name match (FR-024). |
+| `by_name` | map | `normalised name -> [entry]`. Casefolded, punctuation and underscores stripped, whitespace collapsed, then compared with an **edit distance ≤ 2**, tightened to **≤ 1** for canonical names under 8 characters. Stripping alone is not enough and never was: "Stength in Numbers" is a dropped letter. **A swap of two adjacent characters counts as one edit** (Damerau's restricted variant): "Pheonix" is two edits from "Phoenix" under plain Levenshtein and so falls outside the bound a 7-character name gets, but the tightening exists because two *independent* edits on a short name can reach a different card, which one transposed pair cannot. A match MUST be **unique** after the narrowing below — anything still ambiguous is a conflict (FR-033), never an arbitrary pick — and every hit is reported as a name match (FR-024). |
 | `decklist_candidates` | entry[] | Files anywhere in `hero_folder` whose normalised stem contains `deck\s*list` (FR-013d). A candidate is **not** an `unparseable` entry and is never reported as unused (FR-031, FR-032). Candidates sharing a stem and differing only by extension collapse to one under FR-034. |
 | `unparseable` | entry[] | Files matching none of the three conventions. Reported when inside `hero_folder` (FR-032); outside it they surface only through the card that failed to resolve. |
 
@@ -213,9 +213,28 @@ Form C is detected per folder — leading numbers that are small, repeat across 
 and fail to line up with the candidate pack's positions — and positional matching is dropped
 for that folder rather than allowed to match wrongly.
 
+A Form C filename may *also* carry a trailing suffix — `0_Pheonix_Hero_1B`,
+`1_Phoenix Force_Upgrade_2A`/`_2B` — and that suffix **is** read even though the folder's
+positions are not. The two numbers are answering different questions, and the trailing one is
+frequently the only thing separating two faces of a card whose name the card data gives
+identically to both. The trailing *position* is still discarded: this folder has already been
+judged to number by copy, and trusting one of its two numbers over the other is a guess.
+
 **A suffix is evidence, never identity.** Vision's `_2a`/`_2b` are the two faces of the single
 code `26002`; Captain America's `_1a`/`_1b` are the two distinct codes `03001a`/`03001b`. Which
 one a suffix means is decidable only from the card data.
+
+**Narrowing an ambiguous name match** (step 4). The bound has to be loose enough to absorb
+`Battlefild Benevolence`, and a bound that loose puts `Wonder Man` within reach of
+`Wonder Fans`. Two further facts settle those, and both are read from the card data rather
+than out of a filename, which is the direction FR-023 permits:
+
+1. **The face the code asks for**, applied as a *filter* rather than a tie-breaker. A name
+   identifies a card; what is being resolved is a face, and one card's two faces carry one
+   name. A face left with no candidate is a gap — never a reason to relax back to the name
+   and answer "where is the back?" with the front.
+2. **The card's type**, matched against whole filename segments, so `Ally` does not match
+   `Allying` and `Hero` does not match `Heroic Conditioning`.
 
 **Conflicts** (FR-033, FR-034): two files claiming the same position are reported naming both
 sides and neither is chosen (US2 scenario 4). A `.tif`/`.tiff` pair of one card is a duplicate

@@ -7,20 +7,18 @@ recover the eight physical cards whose scans live in the Core Set.
 **What this asserts, and what it deliberately does not.**
 
 `cap` cannot be assembled *completely* against this library, and that is a fact about the
-library rather than a shortfall in this phase:
+fixture rather than a shortfall in the cascade. `Followed` (03032) resolves by reprint into
+Spider-Ham's pack, and T005 derives only the ten acceptance heroes plus the Core Set and
+`Aspects/`, so Spider-Ham's folder is not here. Driven against the mounted library this card
+resolves as it stands.
 
-- `Enraged` (03031) and `Expert Defense` (03033) sit under the root `Aspects/` tree with no
-  position in their filenames and no reprint link. Only cascade step 4's name match reaches
-  them, which is US3's (Phase 5).
-- `Followed` (03032) is a gap in the **fixture**, not in the library or the cascade. It
-  resolves by reprint into Spider-Ham's pack, and T005 derives only the ten acceptance
-  heroes plus the Core Set and `Aspects/`, so Spider-Ham's folder is not here. Driven
-  against the mounted library this card resolves under Phase 3 exactly as it stands.
+Phase 5 closed the other two. `Enraged` (03031) and `Expert Defense` (03033) sit under the
+root `Aspects/` tree with no position in their filenames and no reprint link, and cascade
+step 4's name match is the only route they have.
 
-So the run reaches `awaiting_cards` with exactly three named gaps against the fixture — two
+So the run reaches `awaiting_cards` with exactly one named gap against the fixture — none
 against the real library — and this file asserts that precisely. A test claiming "every card
-resolved" here would either be wrong or would have to weaken FR-017. The full-pack render is
-T115's, once Phase 5's name match lands.
+resolved" here would either be wrong or would have to weaken FR-017.
 """
 
 from __future__ import annotations
@@ -45,10 +43,10 @@ CORE_SET_REPRINTS = {
     "03023": 1,  # Strength
 }
 
-#: What Phase 3 leaves unresolved **against the derived fixture**. `03031` and `03033` need
-#: Phase 5's name match; `03032` is a fixture-coverage artefact and resolves against the real
-#: library today. See the module docstring.
-EXPECTED_GAPS = {"03031", "03032", "03033"}
+#: What the whole cascade leaves unresolved **against the derived fixture**. `03032` is a
+#: fixture-coverage artefact and resolves against the real library today. See the module
+#: docstring.
+EXPECTED_GAPS = {"03032"}
 
 
 @pytest.fixture

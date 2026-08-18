@@ -2,12 +2,12 @@
 
 The cascade is six steps, first match wins, and the step that matched *is* the provenance —
 that is the whole audit record FR-024 and SC-005 are asserted against. This module builds
-steps 1 and 3; steps 2 and 4 are US3's, 5 is US4's upload, and 6 is FR-030's omission.
+steps 1 to 4; 5 is US4's upload, and 6 is FR-030's omission.
 
     1  folder_position    exact (position, suffix) inside the hero folder     [here]
-    2  library_position   the same, anywhere under the library root           [US3]
+    2  library_position   the same, anywhere under the library root           [here]
     3  reprint            another printing of the same card                   [here]
-    4  name               the canonical name of the card being sought         [US3]
+    4  name               the canonical name of the card being sought         [here]
     5  manual             a file the user uploaded for this card              [US4]
     6  omitted            the user chose to print without it                  [FR-030]
 
@@ -15,6 +15,14 @@ steps 1 and 3; steps 2 and 4 are US3's, 5 is US4's upload, and 6 is FR-030's omi
 (FR-033); the index already draws the line between "one card in several renditions", which is
 FR-034's deterministic pick, and "two cards claiming one key", which is a conflict. A resolver
 that guessed would pair a card with confidently wrong art, and be silent about it.
+
+**Steps 2 and 4 search outside the folder the user named, so neither may match on one piece
+of evidence alone.** Position 33 occurs in more than a dozen packs and the name `Hawkeye` in
+four folders, so a whole-library step that took either on its own would pair a card with
+confidently wrong art at scale. What both do instead is narrow with things already known
+about the *specific card being sought* — its canonical name, the face its code asks for, its
+type — which is the direction FR-023 permits. Deciding what card a filename names is the
+direction it forbids, and nothing here does it.
 
 **Copy counts never travel with a borrowed image** (FR-016). `cap` prints two Make the Call;
 the Core Set printing whose scan it borrows ships three. The quantity comes from the pack
@@ -211,25 +219,49 @@ def _resolve_face(
     load_printing: Callable[[str], PackCard | None],
 ) -> Resolution | UnresolvedFace:
     searched: list[str] = []
+    #: The first FR-033 clash the cascade ran into, reported only if nothing later resolves
+    #: the card. An ambiguity a subsequent step settles unambiguously is not a gap, and
+    #: reporting it as one would send the user hunting for a file they already have.
+    conflict: tuple[str, ...] = ()
 
     # ---- step 1: an exact position inside the folder the user named (FR-020)
     for suffix in face_suffixes(face):
         candidates = index.positions_under(hero_folder, card.position, suffix)
         if candidates.conflict:
-            return UnresolvedFace(
-                face.card_code,
-                face.name,
-                face.side,
-                group=face.group,
-                searched=(*searched, f"position {card.position} in the hero folder"),
-                conflict=tuple(sorted(e.ref for e in candidates.entries)),
-            )
+            # Two different cards at one position is a failure to match, which is exactly
+            # what FR-021 says to widen the search on. Ant-Man's folder holds a mis-numbered
+            # `Pym Particles` at position 7 alongside `Army of Ants`, and stopping here
+            # would ask the user to supply a file that is sitting in the folder they named.
+            # The clash is still reported — the report derives it from the library rather
+            # than from this run's failures — so nothing about it goes quiet.
+            conflict = conflict or tuple(sorted(e.ref for e in candidates.entries))
+            continue
         chosen = candidates.chosen
         if chosen is not None:
             return _resolution(
                 face, card, chosen.ref, library_root, Provenance.FOLDER_POSITION, note=None
             )
     searched.append(f"position {card.position} in the hero folder")
+
+    # ---- step 2: the same position, anywhere under the library root (FR-021)
+    for suffix in face_suffixes(face):
+        candidates = index.positions_under(None, card.position, suffix)
+        narrowed = [e for e in candidates.entries if _names_agree(e, card)]
+        if not narrowed:
+            continue
+        chosen_ref = _deterministic(narrowed)
+        if chosen_ref is None:
+            conflict = conflict or tuple(sorted(e.ref for e in narrowed))
+            continue
+        return _resolution(
+            face,
+            card,
+            chosen_ref,
+            library_root,
+            Provenance.LIBRARY_POSITION,
+            note=_library_position_note(chosen_ref, card, hero_folder),
+        )
+    searched.append(f"position {card.position} anywhere under the library root")
 
     # ---- step 3: another printing of the same card (FR-014, FR-022)
     for other_code in linked_printing_codes(card):
@@ -249,8 +281,159 @@ def _resolve_face(
         )
         return _resolution(face, card, borrowed, library_root, Provenance.REPRINT, note=note)
 
+    # ---- step 4: the canonical name of the card being sought (FR-023)
+    chosen_ref, clash = _by_name(index, card, face, hero_folder)
+    searched.append(f"the name {card.name!r}, in the hero folder and then across the library")
+    if chosen_ref is not None:
+        return _resolution(
+            face,
+            card,
+            chosen_ref,
+            library_root,
+            Provenance.NAME,
+            note=_name_note(chosen_ref, card),
+        )
+    conflict = conflict or clash
+
     return UnresolvedFace(
-        face.card_code, face.name, face.side, group=face.group, searched=tuple(searched)
+        face.card_code,
+        face.name,
+        face.side,
+        group=face.group,
+        searched=tuple(searched),
+        conflict=conflict,
+    )
+
+
+def _by_name(
+    index: LibraryIndex, card: PackCard, face: Face, hero_folder: str
+) -> tuple[str | None, tuple[str, ...]]:
+    """Step 4: the file whose name is this card's, or the ambiguity that stopped it.
+
+    **The hero folder is searched before the rest of the library**, which is the same
+    principle that puts step 1 before step 2 applied to the name path. Wonder Man's folder
+    holds a `Hawkeye` and so do three others; one undifferentiated pass over the library
+    turns a card that is sitting right there into a reported gap.
+
+    This step carries Phoenix and Wonder Man entirely (SC-003c). Their folders number
+    physical copies rather than positions, so the index records no position for a single
+    file in them and every positional step finds nothing at all.
+    """
+    hits = index.by_name(card.name).entries
+    prefix = f"{hero_folder}/"
+    in_folder = [e for e in hits if e.folder == hero_folder or e.folder.startswith(prefix)]
+
+    clash: tuple[str, ...] = ()
+    for scope in (in_folder, list(hits)):
+        if not scope:
+            continue
+        chosen, ambiguous = _narrow_by_card(scope, card, face)
+        if chosen is not None:
+            return chosen, ()
+        clash = clash or ambiguous
+    return None, clash
+
+
+def _narrow_by_card(
+    entries: Sequence[Any], card: PackCard, face: Face
+) -> tuple[str | None, tuple[str, ...]]:
+    """One ref from a set of name matches, using only what is known about *this* card.
+
+    A name identifies a *card*; what is being resolved is a *face*. So the face the code
+    asks for is applied first and is a filter rather than a tie-breaker: `Vision_Intangible
+    _Upgrade_2a` and `_2b` are one card's two faces under one name, and a step that took the
+    name alone would answer "where is the back?" with the front — printing a blank where the
+    card carries game text, and reporting the run complete. Excluding is the whole job here,
+    so a face left with no candidate is a gap, never a reason to relax back to the name.
+
+    What remains can still be several cards, because the edit-distance bound has to be loose
+    enough to absorb `Battlefild Benevolence` and a bound that loose pulls `Wonder Man` into
+    the candidates for `Wonder Fans`. The **card's type** settles those — a Support is not a
+    Hero, and the library writes the type into the filename as its own segment.
+
+    Anything still ambiguous is returned as an FR-033 conflict naming every side, never as an
+    arbitrary pick.
+    """
+    entries = _same_face(entries, face)
+    if not entries:
+        return None, ()
+    chosen = _deterministic(entries)
+    if chosen is not None:
+        return chosen, ()
+
+    reduced = _same_type(entries, card)
+    if reduced and len(reduced) < len(entries):
+        entries = reduced
+        chosen = _deterministic(entries)
+        if chosen is not None:
+            return chosen, ()
+    return None, tuple(sorted(e.ref for e in entries))
+
+
+def _same_face(entries: Sequence[Any], face: Face) -> list[Any]:
+    """Candidates carrying a suffix this face could wear.
+
+    `face_suffixes` already answers exactly this question for the positional steps, and the
+    set it returns is used here unchanged rather than re-derived: an ordinary single-faced
+    card accepts an unsuffixed file or an `a`, a code ending in a letter accepts only that
+    letter, and the back of a double-sided card accepts only `b`. A `b` file is therefore
+    never a candidate for a front, which is the case that matters.
+    """
+    allowed = face_suffixes(face)
+    return [e for e in entries if e.parsed.face_suffix in allowed]
+
+
+def _same_type(entries: Sequence[Any], card: PackCard) -> list[Any]:
+    """Candidates whose filename carries this card's type as one of its segments.
+
+    Matched against whole segments rather than as a substring, so `Ally` does not match a
+    card called `Allying` and `Hero` does not match `Heroic Conditioning`.
+    """
+    from marchamp.library.filenames import normalise
+
+    wanted = normalise(card.type_code or "")
+    if not wanted:
+        return []
+    return [
+        e
+        for e in entries
+        if any(normalise(segment) == wanted for segment in e.parsed.stem.split("_"))
+    ]
+
+
+def _library_position_note(ref: str, card: PackCard, hero_folder: str) -> str:
+    """Where this came from, in the user's terms (FR-024, US3 scenarios 1 and 2).
+
+    `library_position` names the step; it does not tell anyone that Black Widow's
+    `Espionage` came out of the shared `Aspects/Basic` tree. The two cases read differently
+    and are worth saying differently: a file found elsewhere is the ordinary US3 case, while
+    one found inside the hero folder got here only because the position it sits at is
+    contested — which the user should know before trusting the match.
+    """
+    folder = str(Path(ref).parent)
+    inside = folder == hero_folder or folder.startswith(f"{hero_folder}/")
+    if inside:
+        return (
+            f"Position {card.position} in the hero folder is claimed by more than one card; "
+            f"this file was chosen because its name matches {card.name}."
+        )
+    return (
+        f"Found outside the hero folder, at position {card.position} under {folder}, "
+        f"matched on the name {card.name}."
+    )
+
+
+def _name_note(ref: str, card: PackCard) -> str:
+    """US3 scenario 3 — a name match is reported *as* a name match.
+
+    This is the loosest thing the cascade does: it tolerates the misspellings the library
+    actually contains, which means it can tolerate a genuine difference too. Saying so, and
+    naming the file, is what lets a wrong match be caught by reading the report rather than
+    discovered mid-game.
+    """
+    return (
+        f"Matched by name rather than by position: this file's name is within the tolerance "
+        f"for {card.name}. No position was usable, so check it is the right card."
     )
 
 
