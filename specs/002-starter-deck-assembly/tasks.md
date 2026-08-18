@@ -295,12 +295,42 @@ to check against, the report is the *only* thing that can tell the user a pack i
 **Independent test**: Print Black Widow, whose `Quincarrier` is filed under Wasp. It succeeds when
 the card is found and every pack card resolves.
 
-- [ ] T075 [US3] Write failing tests for cascade step 2 (`library_position`, anywhere under the library root) and step 4 (`name`, matched only against the canonical name of the specific card being sought), in `tests/unit/test_resolve.py` (FR-021, FR-023)
-- [ ] T076 [US3] Implement cascade steps 2 and 4 in `src/marchamp/assembly/resolve.py`
-- [ ] T077 [US3] Write failing test that a card found outside the hero folder has its origin named, and a name match is reported **as a name match**, so a wrong match is visible rather than invisible, in `tests/unit/test_resolve.py` (FR-024, SC-005, US3 scenario 3)
-- [ ] T078 [US3] Implement the provenance reporting for steps 2 and 4 in `src/marchamp/assembly/resolve.py` and `src/marchamp/assembly/report.py`
-- [ ] T079 [US3] [P] Write the integration test for Black Widow (`Quincarrier` under Wasp) and Thor (`Teamwork` under `Aspects/Leadership/`) in `tests/integration/test_whole_library_search.py` (SC-003)
-- [ ] T080 [US3] Write the integration test for Phoenix and Wonder Man in `tests/integration/test_name_fallback.py` — both use the copy-counting convention and carry no usable positions, so this is the acceptance case for the name path as the *primary* route rather than a safety net (SC-003c)
+- [X] T075 [US3] Write failing tests for cascade step 2 (`library_position`, anywhere under the library root) and step 4 (`name`, matched only against the canonical name of the specific card being sought), in `tests/unit/test_resolve.py` (FR-021, FR-023)
+- [X] T076 [US3] Implement cascade steps 2 and 4 in `src/marchamp/assembly/resolve.py`
+- [X] T077 [US3] Write failing test that a card found outside the hero folder has its origin named, and a name match is reported **as a name match**, so a wrong match is visible rather than invisible, in `tests/unit/test_resolve.py` (FR-024, SC-005, US3 scenario 3)
+- [X] T078 [US3] Implement the provenance reporting for steps 2 and 4 in `src/marchamp/assembly/resolve.py` and `src/marchamp/assembly/report.py`
+- [X] T079 [US3] [P] Write the integration test for Black Widow (`Quincarrier` under Wasp) and Thor (`Teamwork` under `Aspects/Leadership/`) in `tests/integration/test_whole_library_search.py` (SC-003)
+- [X] T080 [US3] Write the integration test for Phoenix and Wonder Man in `tests/integration/test_name_fallback.py` — both use the copy-counting convention and carry no usable positions, so this is the acceptance case for the name path as the *primary* route rather than a safety net (SC-003c)
+
+> **Done.** Steps 2 and 4 landed as written, and three things the tasks did not anticipate
+> came out of driving them against the derived fixture. Each was a live defect rather than a
+> detail, and each is recorded in data-model.md:
+>
+> - **A position conflict at step 1 no longer ends the cascade.** Ant-Man's folder holds two
+>   different cards at position 7, and stopping there asked the user to supply a file sitting
+>   in the folder they had just named. FR-021 reads a conflict as a failure to match, so the
+>   search continues; the clash is still reported, because the report derives it from the
+>   library rather than from this run's failures.
+> - **A transposed pair now costs one edit, not two.** `Pheonix` is the typo the Phoenix
+>   folder actually contains, and under plain Levenshtein it sits outside the bound a
+>   seven-character name gets — so the hero's own identity scan was unreachable while the
+>   alter-ego's file answered for *both* faces. The short-name tightening exists because two
+>   *independent* edits can reach a different card, which one transposition cannot.
+> - **An ambiguous name match is narrowed by the face and the type the card data states.**
+>   The bound must absorb `Battlefild Benevolence`, and a bound that loose puts `Wonder Man`
+>   within reach of `Wonder Fans`. The face narrowing is a *filter*, not a tie-breaker: one
+>   card's two faces carry one name, so a step that relaxed back to the name when the suffix
+>   excluded everything would answer "where is the back?" with the front — which is exactly
+>   what it did until `tests/integration/test_incomplete.py` caught it.
+>
+> **What "completely" means against the fixture.** Six of the ten acceptance heroes now
+> resolve every face; the other four are short one or two cards that the derived library does
+> not contain at all — `cap`'s `Followed`, Ms. Marvel's `Morale Boost`, Star-Lord's `Cosmo`
+> and `Knowhere`, Wonder Man's `Avengers Compound`. Every one has no scan in its own hero
+> folder and exactly one other printing, in a pack T005 does not derive. This is the T005
+> coverage limitation, not a resolver shortfall, and it is asserted as an exact set so a
+> regression that loses a *different* card cannot hide behind the same count. SC-003b's
+> real-library run (T121) is where the remaining five are expected to close.
 
 **Checkpoint**: every acceptance hero resolves completely, including the two that positional
 matching cannot help at all.

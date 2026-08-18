@@ -246,8 +246,24 @@ def test_edit_distance_is_bounded_and_symmetric():
     assert edit_distance("", "") == 0
     assert edit_distance("abc", "abc") == 0
     assert edit_distance("abc", "abd") == 1
-    assert edit_distance("abc", "acb") == 2  # a transposition costs two, not one
+    assert edit_distance("abc", "acb") == 1  # one transposed pair is one slip, not two
     assert edit_distance("kitten", "sitting") == edit_distance("sitting", "kitten") == 3
+
+
+def test_a_transposed_pair_stays_inside_the_bound_a_short_name_gets():
+    """Phase 5 (T076). `Pheonix` is the typo the Phoenix folder actually contains.
+
+    Scored as plain Levenshtein it is two edits from `Phoenix`, and `distance_limit` allows a
+    seven-character name only one — so the hero's own identity scan fell outside the bound
+    and the pack reported a gap for a card sitting in the folder the user named. The
+    tightening exists because *two independent* edits on a short name can reach a different
+    card; one transposed pair reaches nothing, so it is scored as the single slip it is.
+    """
+    from marchamp.library.filenames import matches_name
+
+    assert matches_name("pheonix", "Phoenix")
+    # And the bound is still a bound: two independent edits on a short name do not pass.
+    assert not matches_name("phoemux", "Phoenix")
 
 
 def test_edit_distance_gives_up_early_rather_than_computing_a_large_answer():
