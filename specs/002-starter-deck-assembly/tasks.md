@@ -345,21 +345,68 @@ themselves, rather than being told the run failed and left to work out why.
 **Independent test**: Assemble a hero whose library is missing one card. It succeeds when the tool
 names that card, accepts a file the user chooses for it, and prints the pack.
 
-- [ ] T081 [US4] Write failing contract test for `POST /api/assemblies/{run_id}/cards/{card_code}/image` in `tests/contract/test_assembly_contract.py`, including the `side` field for a double-sided card
-- [ ] T082 [US4] Implement the upload route in `src/marchamp/api/routes.py`, streaming to a temporary file under the T011 byte ceiling **before** decode, then storing under the content SHA-256 in `runs/<id>/uploads/`
-- [ ] T083 [US4] Write failing tests that an upload is rejected with a specific reason when it is not a decodable image or is below the print-resolution floor, and that the card **remains unresolved**, in `tests/integration/test_upload.py` (FR-028)
-- [ ] T084 [US4] Implement upload validation in `src/marchamp/api/routes.py` by reusing `validate_source` from `src/marchamp/render/images.py` — manual choice bypasses discovery, never validation
-- [ ] T085 [US4] Write failing tests that a manual resolution is distinguishable from every automatic one, and that **only the uploaded file's own name** is recorded — no path from outside the named library root reaches the report or the log — in `tests/integration/test_upload.py` (FR-027, FR-029, SC-006c)
-- [ ] T086 [US4] Implement manual provenance recording in `src/marchamp/assembly/resolve.py` and `src/marchamp/store/runs.py`
-- [ ] T087 [US4] Write failing tests that a run resolved with an uploaded file still prints that card after the source file is moved or deleted on disk, because the run holds the bytes, in `tests/integration/test_upload.py` (FR-026e, SC-006b, US4 scenario 4)
-- [ ] T088 [US4] Write failing contract test for `POST /api/assemblies/{run_id}/cards/{card_code}/omission`, asserting the explicit `acknowledged` flag and the **`409` when the run has not yet reported which cards are unresolved**, in `tests/contract/test_assembly_contract.py` (FR-030, FR-030a)
-- [ ] T089 [US4] Implement the omission route in `src/marchamp/api/routes.py` and its state guard in `src/marchamp/assembly/service.py`. A blanket permission offered up front is refused rather than honoured, and the run still stops on the first card it cannot resolve
-- [ ] T090 [US4] Write failing test that an omitted card is named in the report, counted against the pack listing's card count, and written to the run's log, in `tests/integration/test_incomplete.py` (FR-030b, SC-006e)
-- [ ] T091 [US4] Implement omission reporting in `src/marchamp/assembly/report.py` and the log record in `src/marchamp/observability/logging.py`
-- [ ] T092 [US4] Write failing contract test for the **upload** half of `POST /api/assemblies/{run_id}/decklist`, and a test that a hero folder with no decklist scan — Hulk's and Phoenix's real case — names the gap and offers the Hall of Heroes address while the application **never fetches it**, in `tests/integration/test_decklist.py` (FR-013c, SC-006j)
-- [ ] T093 [US4] Implement the decklist upload path in `src/marchamp/api/routes.py`, reusing T084's validation. Detection, the decision endpoint, and the report fields are US1's (T048a–T048d); a missing decklist never refuses the run
-- [ ] T094 [US4] Extend `src/marchamp/web/app.js` to present each unresolved card individually with an upload control and an explicit omit action — never a failed run the user must diagnose (FR-026d)
-- [ ] T095 [US4] Write failing test that supplying a file for the first of two unresolved cards keeps the folder, the pack, and every earlier choice, and asks only about the second, in `tests/integration/test_upload.py` (US4 scenario 8)
+- [X] T081 [US4] Write failing contract test for `POST /api/assemblies/{run_id}/cards/{card_code}/image` in `tests/contract/test_assembly_contract.py`, including the `side` field for a double-sided card
+- [X] T082 [US4] Implement the upload route in `src/marchamp/api/routes.py`, streaming to a temporary file under the T011 byte ceiling **before** decode, then storing under the content SHA-256 in `runs/<id>/uploads/`
+- [X] T083 [US4] Write failing tests that an upload is rejected with a specific reason when it is not a decodable image or is below the print-resolution floor, and that the card **remains unresolved**, in `tests/integration/test_upload.py` (FR-028)
+- [X] T084 [US4] Implement upload validation in `src/marchamp/api/routes.py` by reusing `validate_source` from `src/marchamp/render/images.py` — manual choice bypasses discovery, never validation
+- [X] T085 [US4] Write failing tests that a manual resolution is distinguishable from every automatic one, and that **only the uploaded file's own name** is recorded — no path from outside the named library root reaches the report or the log — in `tests/integration/test_upload.py` (FR-027, FR-029, SC-006c)
+- [X] T086 [US4] Implement manual provenance recording in `src/marchamp/assembly/resolve.py` and `src/marchamp/store/runs.py`
+- [X] T087 [US4] Write failing tests that a run resolved with an uploaded file still prints that card after the source file is moved or deleted on disk, because the run holds the bytes, in `tests/integration/test_upload.py` (FR-026e, SC-006b, US4 scenario 4)
+- [X] T088 [US4] Write failing contract test for `POST /api/assemblies/{run_id}/cards/{card_code}/omission`, asserting the explicit `acknowledged` flag and the **`409` when the run has not yet reported which cards are unresolved**, in `tests/contract/test_assembly_contract.py` (FR-030, FR-030a)
+- [X] T089 [US4] Implement the omission route in `src/marchamp/api/routes.py` and its state guard in `src/marchamp/assembly/service.py`. A blanket permission offered up front is refused rather than honoured, and the run still stops on the first card it cannot resolve
+- [X] T090 [US4] Write failing test that an omitted card is named in the report, counted against the pack listing's card count, and written to the run's log, in `tests/integration/test_incomplete.py` (FR-030b, SC-006e)
+- [X] T091 [US4] Implement omission reporting in `src/marchamp/assembly/report.py` and the log record in `src/marchamp/observability/logging.py`
+- [X] T092 [US4] Write failing contract test for the **upload** half of `POST /api/assemblies/{run_id}/decklist`, and a test that a hero folder with no decklist scan — Hulk's and Phoenix's real case — names the gap and offers the Hall of Heroes address while the application **never fetches it**, in `tests/integration/test_decklist.py` (FR-013c, SC-006j)
+- [X] T093 [US4] Implement the decklist upload path in `src/marchamp/api/routes.py`, reusing T084's validation. Detection, the decision endpoint, and the report fields are US1's (T048a–T048d); a missing decklist never refuses the run
+- [X] T094 [US4] Extend `src/marchamp/web/app.js` to present each unresolved card individually with an upload control and an explicit omit action — never a failed run the user must diagnose (FR-026d)
+- [X] T095 [US4] Write failing test that supplying a file for the first of two unresolved cards keeps the folder, the pack, and every earlier choice, and asks only about the second, in `tests/integration/test_upload.py` (US4 scenario 8)
+
+> **Done.** T081-T095 landed as written. Four things the tasks did not anticipate, three of
+> them live defects:
+>
+> - **`cards_printed` counted a linked code as a second card.** `03001b` is the alter-ego
+>   half of Captain America's identity and has no record of its own, but the built catalog
+>   carries an entry per *code* because each is a face with its own image. A complete `cap`
+>   run therefore reported 60 cards printed against 59 in the pack — and the extra one
+>   exactly cancelled a missing one, so a run with Baron Zemo omitted reported 59 of 59 and
+>   read as complete. That makes FR-030b's "the number of cards printed MUST be stated
+>   against the number the pack listing records" unfalsifiable, which is how the omission
+>   test found it. `build_report` now counts only codes the pack listing has a record for;
+>   faces are deliberately unfiltered, because two faces is what the identity really prints.
+> - **The deck list card was absent from the report's resolutions entirely.** It never
+>   enters the FR-020-FR-025 cascade, so it was in `record.resolutions` for no pass — which
+>   meant an uploaded one was invisible, and FR-029 requires every manual choice to be
+>   reported and distinguishable. It is now projected into the report from the deck list
+>   state, and `Provenance.DECKLIST_NAME` — declared since Phase 3 and unused — is what
+>   carries the folder-found case. **This required amending the contract**: the `Resolution`
+>   provenance enum gained `decklist_name`. It also makes `renderGroups`' fourth group,
+>   which FR-015e names, actually appear.
+> - **A manual resolution has to survive re-resolution.** The library is re-read on every
+>   pass (FR-026b) and supplying a file does not put anything in the library, so a plain
+>   re-resolve reports the same card missing again — forever, which is US4 scenario 8's
+>   failure exactly. Manual and omitted resolutions are therefore stored on the run and
+>   **override** the cascade per `(card, side)`. That single decision is what makes scenario
+>   8 work, and it is why `resolve.py`'s cascade table now marks steps 5 and 6 as built here
+>   rather than searched for.
+> - **T086's `store/runs.py` half needed nothing.** The uploads directory is already created
+>   with the run, and that module's docstring is explicit that resolutions are carried there
+>   as opaque JSON so "every change to the resolution cascade" is not a change to the storage
+>   layer. Adding resolution-shaped helpers there would have contradicted it, so the manual
+>   and omitted constructors live in `assembly/resolve.py` alone and the override logic in
+>   `assembly/service.py`.
+> - **`POST /decklist` carries two body shapes on one path**, which a FastAPI signature
+>   cannot express — declaring a `File` parameter turns every field into a form field and
+>   takes the JSON decision away. The route parses its own body by content type and declares
+>   `openapi_extra`, so the contract test still compares a real request body.
+>
+> **One judgment call worth reviewing.** FR-028 requires an uploaded file below the
+> print-resolution floor to be *rejected*; research R9 says a Hall of Heroes deck list
+> photograph "will very likely fall below the print-resolution floor and trip FR-035's
+> warning; that is the correct outcome and must not be special-cased into silence". Both
+> cannot hold literally. R9 wins for the deck list alone: refusing it would leave a user who
+> did exactly what the tool told them to do unable to print the one card that makes the pack
+> usable. Decode is enforced on both paths; only the floor's verdict differs, and for the
+> deck list it becomes the same sentence a soft library scan gets.
 
 **Checkpoint**: no card the user can point at is unprintable.
 

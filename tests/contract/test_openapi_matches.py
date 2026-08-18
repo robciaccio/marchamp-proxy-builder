@@ -65,8 +65,6 @@ _UNDECLARED_STATUS = {"422"}
 _PENDING_OPERATIONS = {
     ("/api/assemblies", "get"): "T099 (US5, run list)",
     ("/api/assemblies/{run_id}", "delete"): "T104 (US5, retention)",
-    ("/api/assemblies/{run_id}/cards/{card_code}/image", "post"): "T082 (US4, upload)",
-    ("/api/assemblies/{run_id}/cards/{card_code}/omission", "post"): "T089 (US4, omission)",
     ("/api/packs/{pack_code}/snapshot", "get"): "T110b (US5, manual refresh)",
     ("/api/packs/{pack_code}/snapshot", "post"): "T110b (US5, manual refresh)",
     ("/api/pdfs", "get"): "T104 (US5, stored PDFs)",
@@ -78,11 +76,7 @@ _PENDING_OPERATIONS = {
 #: contract as `_PENDING_OPERATIONS`, one level finer: `POST .../decklist` carries two shapes
 #: on one path, and US1 builds only the JSON decision half (T048c). The multipart upload is
 #: T093's, and exempting the whole operation would stop verifying the half that *is* built.
-_PENDING_REQUEST_MEDIA_TYPES = {
-    ("/api/assemblies/{run_id}/decklist", "post"): {
-        "multipart/form-data": "T093 (US4, decklist upload)",
-    },
-}
+_PENDING_REQUEST_MEDIA_TYPES: dict[tuple[str, str], dict[str, str]] = {}
 
 
 _PROSE_KEYS = frozenset({"description", "title", "example", "examples", "summary"})
@@ -205,6 +199,11 @@ def _shape(schema: Any, doc: dict[str, Any]) -> Any:
         out["enum"] = [resolved["const"]]
     if "format" in resolved:
         out["format"] = resolved["format"]
+    elif resolved.get("contentMediaType") == "application/octet-stream":
+        # An uploaded file. OpenAPI 3.0 spells it `format: binary`, which is what the
+        # contract is written in; Pydantic emits 3.1's `contentMediaType` instead. Same
+        # interface, two spellings — the same normalisation `const`/`enum` gets above.
+        out["format"] = "binary"
     if "properties" in resolved:
         out["properties"] = {k: _shape(v, doc) for k, v in sorted(resolved["properties"].items())}
         out["required"] = sorted(resolved.get("required", []))

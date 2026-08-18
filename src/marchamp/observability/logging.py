@@ -32,6 +32,38 @@ class GenerationRecord:
         return asdict(self)
 
 
-def write_record(record: GenerationRecord, stream: TextIO | None = None) -> None:
+@dataclass(frozen=True)
+class AssemblyRecord:
+    """One line per assembly run that produced a PDF (FR-030b, FR-022b).
+
+    The same rule as `GenerationRecord`, and it bites harder here: **no filesystem paths**.
+    A run may hold a file the user supplied from anywhere on their machine (FR-027), and
+    FR-009 forbids a path from outside the named library reaching the log any more than the
+    report. Cards are identified by MarvelCDB code, which is stable, meaningless outside the
+    game, and safe to paste into a bug report — the *names* live in the report, where the
+    person reading them is the person who owns the library.
+
+    `omitted_card_codes` is what FR-030b requires of this record specifically: printing a
+    pack with a card left out must be legible as such afterwards, and the report alone is
+    not enough because a report can be regenerated while a log line is what happened.
+    """
+
+    run_id: str
+    pack_code: str
+    snapshot_revision: str
+    outcome: str
+    cards_printed: int
+    cards_in_pack: int
+    page_count: int | None = None
+    reused: bool = False
+    customized: bool = False
+    omitted_card_codes: list[str] = field(default_factory=list)
+    manual_card_codes: list[str] = field(default_factory=list)
+
+    def as_dict(self) -> dict:
+        return asdict(self)
+
+
+def write_record(record: GenerationRecord | AssemblyRecord, stream: TextIO | None = None) -> None:
     out = stream if stream is not None else sys.stdout
     out.write(json.dumps(record.as_dict(), separators=(",", ":"), sort_keys=True) + "\n")

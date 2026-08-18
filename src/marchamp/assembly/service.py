@@ -38,21 +38,35 @@ the key: a run whose folder moved but whose images are byte-identical still gets
 from __future__ import annotations
 
 import hashlib
+import shutil
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 from marchamp.assembly.catalog import build_catalog
 from marchamp.assembly.decklist import DecklistDecision, DecklistState, find_decklist
-from marchamp.assembly.faces import expand_pack
-from marchamp.assembly.report import build_report
-from marchamp.assembly.resolve import Resolution, resolve_pack
-from marchamp.assets.overlay import OverlayStore
+from marchamp.assembly.faces import DECKLIST_CODE, Side, expand_pack
+from marchamp.assembly.report import (
+    build_report,
+    decklist_entry,
+    decklist_resolution,
+    low_resolution_notes,
+)
+from marchamp.assembly.resolve import (
+    USER_SUPPLIED,
+    Provenance,
+    Resolution,
+    manual_resolution,
+    omitted_resolution,
+    resolve_pack,
+)
+from marchamp.assets.overlay import UPLOAD_PREFIX, OverlayStore
 from marchamp.config import Settings
 from marchamp.layout.geometry import PageSize
 from marchamp.layout.paginate import paginate
 from marchamp.library.identify import Identification, identify, rank_packs
 from marchamp.library.index import build_index
+from marchamp.observability.logging import AssemblyRecord, write_record
 from marchamp.render.document import FitMode, compose
 from marchamp.store.layout import StateLayout
 from marchamp.store.pdfs import PdfStore
@@ -157,6 +171,43 @@ def outcome_for(state: RunState, report: dict[str, Any]) -> Outcome | None:
         return Outcome.REFUSED
     flagged = any(report.get(section) for section in WARNING_SECTIONS)
     return Outcome.WARNINGS if flagged else Outcome.CLEAN
+
+
+def _apply_user_answers(record: RunRecord, outcome) -> tuple[list[Resolution], list]:
+    """This pass's cascade, with the answers the user already gave laid over it (FR-026a).
+
+    The library is re-read on every pass (FR-026b), so the cascade is run again each time a
+    run advances — and it will report the same card missing again, because supplying a file
+    for it did not put anything in the library. US4 scenario 8 is exactly that case: a run
+    reporting two gaps, one of them answered, must ask only about the second and must keep
+    every earlier resolution. That is what this does, and it is the reason a manual choice
+    is stored on the run rather than folded into the resolutions and forgotten.
+
+    An override wins for its `(card, side)` alone. Answering one face of a double-sided card
+    leaves the other on whatever the cascade found, which is what makes `side` meaningful on
+    the upload rather than decorative.
+    """
+    overrides = {
+        (r["card_code"], r["side"]): Resolution.from_json(r)
+        for r in record.resolutions
+        if Provenance(r["provenance"]) in USER_SUPPLIED
+    }
+    if not overrides:
+        return list(outcome.resolutions), list(outcome.unresolved)
+
+    resolutions = [r for r in outcome.resolutions if (r.card_code, r.side.value) not in overrides]
+    unresolved = [u for u in outcome.unresolved if (u.card_code, u.side.value) not in overrides]
+    return [*resolutions, *overrides.values()], unresolved
+
+
+def _waiting_state(unresolved: Sequence[Any], decklist: DecklistState) -> RunState:
+    """Whether the run is still waiting on the user.
+
+    An undecided decklist candidate holds the run exactly as an unresolved card does
+    (FR-013d). It needs no state of its own; `skip` is the escape.
+    """
+    waiting = bool(unresolved) or (decklist.candidate is not None and not decklist.decided)
+    return RunState.AWAITING_CARDS if waiting else RunState.READY
 
 
 class AssemblyService:
@@ -322,9 +373,10 @@ class AssemblyService:
             record.library_root,
             self._load_printing,
         )
+        resolutions, unresolved = _apply_user_answers(record, outcome)
         decklist = self._decklist_state(record, index)
 
-        record.resolutions = [r.to_json() for r in outcome.resolutions]
+        record.resolutions = [r.to_json() for r in resolutions]
         # The catalog is built here as well as at render time, and not only to save work
         # later: it is what knows each card's FR-015 group and what the entries actually
         # print. Without it a run waiting on a card reports every resolution as a player
@@ -335,28 +387,22 @@ class AssemblyService:
             pack_code=pack_code,
             pack_name=identification.pack_name or pack_code,
             cards=cards,
-            resolutions=outcome.resolutions,
+            resolutions=resolutions,
             snapshot_revision=record.snapshot_revision or "",
             decklist=decklist,
         )
         record.report = self._report(
             record,
             cards,
-            outcome.resolutions,
+            resolutions,
             decklist,
             built=built,
             index=index,
-            unresolved=outcome.unresolved,
+            unresolved=unresolved,
         ).to_json()
-        record.report["unresolved"] = [u.to_json() for u in outcome.unresolved]
+        record.report["unresolved"] = [u.to_json() for u in unresolved]
         record.decklist = decklist.to_json()
-
-        # An undecided decklist candidate holds the run exactly as an unresolved card does
-        # (FR-013d). It needs no state of its own; `skip` is the escape.
-        waiting = bool(outcome.unresolved) or (
-            decklist.candidate is not None and not decklist.decided
-        )
-        record.state = RunState.AWAITING_CARDS if waiting else RunState.READY
+        record.state = _waiting_state(unresolved, decklist)
         return self.runs.write(record)
 
     def _decklist_state(self, record: RunRecord, index) -> DecklistState:
@@ -368,7 +414,7 @@ class AssemblyService:
         if previous.decided:
             # A decision already made survives re-resolution; the library is re-read on every
             # pass (FR-026b) and re-asking would undo an answer the user already gave.
-            return found.decide(previous.decision, ref=previous.chosen_ref)
+            return found.carrying(previous)
         return found
 
     def _load_printing(self, code: str) -> PackCard | None:
@@ -420,6 +466,133 @@ class AssemblyService:
             fit_mode=FitMode(record.fit_mode),
         )
 
+    # ------------------------------------------------- answering a card by hand (US4)
+
+    def unresolved_face(self, run_id: str, card_code: str, side: str) -> dict[str, Any]:
+        """The gap this card and side names, or the reason there is nothing to answer.
+
+        Called before an upload is read off the wire, so a request that cannot be honoured
+        is refused before 64 MB of it has been streamed to disk.
+
+        **The refusal for a run that has not resolved yet is FR-030a's**, and it is a rule
+        about ordering rather than about payloads: permission to print an incomplete pack
+        cannot be granted before the run has reported which cards are unresolved, because a
+        decision taken then is not an informed one. A blanket permission offered up front is
+        refused rather than remembered, and the run still stops on the first card it cannot
+        resolve (US4 scenario 9).
+        """
+        record = self.runs.read(run_id)
+        if record.state is not RunState.AWAITING_CARDS:
+            raise AssemblyError(
+                f"run {run_id} is {record.state.value} and has not reported which cards it "
+                "could not resolve. A decision about a card the run has not asked about yet "
+                "is not an informed one, so it is refused rather than remembered (FR-030a).",
+                status=409,
+            )
+        for gap in record.report.get("unresolved") or []:
+            if gap["card_code"] == card_code and gap.get("side", "front") == side:
+                return gap
+        waiting_on = ", ".join(
+            sorted(
+                f"{g['card_code']} ({g.get('side', 'front')})" for g in record.report["unresolved"]
+            )
+        )
+        raise AssemblyError(
+            f"{card_code} ({side}) is not one of the cards run {run_id} could not resolve, "
+            f"so there is nothing to answer for it. This run is waiting on: {waiting_on}.",
+            status=409,
+        )
+
+    def supply_card_image(
+        self,
+        run_id: str,
+        card_code: str,
+        side: str,
+        source: Path,
+        content_digest: str,
+        original_filename: str,
+        version: int | None = None,
+    ) -> RunRecord:
+        """Record a file the user chose for one card (FR-026, FR-026e, FR-027, FR-029).
+
+        The bytes are taken into the run, not referenced where they sit. The user went and
+        found that file somewhere and has no reason to keep it there, so a run that pointed
+        at it would stop printing the day they tidied up (SC-006b, US4 scenario 4).
+
+        Validation has already happened by the time this is called — a rejected file must
+        never reach the run's uploads directory, or the run would be one record away from
+        resolving a card to an image the service has said it will not print (FR-028).
+        """
+        record = self.runs.read(run_id)
+        self._check_version(record, version)
+        gap = self.unresolved_face(run_id, card_code, side)
+
+        self._store_upload(record, source, content_digest)
+        record.resolutions.append(
+            manual_resolution(
+                card_code=card_code,
+                card_name=gap.get("card_name") or card_code,
+                side=Side(side),
+                content_digest=content_digest,
+                original_filename=original_filename,
+                quantity=self._quantity_for(record, card_code),
+            ).to_json()
+        )
+        # FR-026i: two users pointed at the same folder would now get different PDFs, so
+        # this is not the pack's standard one.
+        record.customized = True
+        return self._resolve(record)
+
+    def omit_card(
+        self, run_id: str, card_code: str, side: str, version: int | None = None
+    ) -> RunRecord:
+        """Print without this card, at the user's explicit request (FR-030, FR-030b).
+
+        The default when a card cannot be resolved is to stop; proceeding anyway is the
+        user's decision and the tool must not overrule it. What it must do is make the
+        result legible as incomplete afterwards, which is the report's job and not this
+        method's — here the card simply stops being a gap and starts being an omission.
+        """
+        record = self.runs.read(run_id)
+        self._check_version(record, version)
+        gap = self.unresolved_face(run_id, card_code, side)
+
+        record.resolutions.append(
+            omitted_resolution(
+                card_code=card_code,
+                card_name=gap.get("card_name") or card_code,
+                side=Side(side),
+            ).to_json()
+        )
+        record.customized = True
+        return self._resolve(record)
+
+    def _store_upload(self, record: RunRecord, source: Path, content_digest: str) -> Path:
+        """Take the bytes into the run, named by their own SHA-256 (research R9).
+
+        Content-addressed for two reasons that both matter: the same file supplied twice
+        costs one copy, and the ref a resolution carries then says nothing about where the
+        file came from — which is what lets FR-027 and FR-009 both hold without an exception.
+        """
+        destination = self.layout.upload(record.id, content_digest)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if not destination.exists():
+            shutil.copyfile(source, destination)
+        return destination
+
+    def _quantity_for(self, record: RunRecord, card_code: str) -> int:
+        """Copies of this card **in the pack being printed** (FR-016).
+
+        Read from the pinned snapshot rather than assumed to be one: `cap` prints three
+        Honorary Avenger, and a manually supplied file for it must print three times like
+        every other resolution of that card.
+        """
+        identification = Identification.from_json(record.identification or {})
+        for card in self.snapshots.get(identification.pack_code or "").cards:
+            if card.code == card_code or card_code in card.linked_codes:
+                return card.quantity
+        return 1
+
     # ------------------------------------------------------------------ decklist
 
     def decide_decklist(
@@ -439,16 +612,77 @@ class AssemblyService:
         except ValueError as exc:
             raise AssemblyError(str(exc), status=400) from exc
 
-        record.decklist = decided.to_json()
-        record.report["decklist_printed"] = decided.printed
-        record.report["decklist_source_url"] = (
-            None if decided.printed else decided.hall_of_heroes_url
+        self._apply_decklist(record, decided)
+        return self.runs.write(record)
+
+    def supply_decklist(
+        self,
+        run_id: str,
+        source: Path,
+        content_digest: str,
+        original_filename: str,
+        version: int | None = None,
+    ) -> RunRecord:
+        """The deck list photograph the user fetched themselves (FR-013c, research R9).
+
+        25 of 60 hero folders hold no deck list scan. The run names that gap and offers the
+        address at which Hall of Heroes publishes one; the application never fetches it,
+        which is what keeps FR-002's egress allowlist at a single host. This is where the
+        file the user downloaded comes back — through the same upload mechanism an
+        unresolved card uses, because the deck list card has no MarvelCDB code and so needs
+        a path of its own but no machinery of its own.
+        """
+        record = self.runs.read(run_id)
+        self._check_version(record, version)
+        if not record.decklist:
+            raise AssemblyError(f"run {run_id} has not resolved yet", status=409)
+
+        self._store_upload(record, source, content_digest)
+        state = DecklistState.from_json(record.decklist)
+        self._apply_decklist(
+            record, state.supply(f"{UPLOAD_PREFIX}{content_digest}", original_filename)
         )
+        return self.runs.write(record)
+
+    def _apply_decklist(self, record: RunRecord, decided: DecklistState) -> None:
+        """Fold a deck list decision into the run and its report.
+
+        Patched onto the stored report rather than rebuilt through `_resolve`, because a
+        deck list decision changes exactly one card and a full pass re-hashes ~40 scans of
+        ~3 MB to learn nothing. The three fields and the one entry written here are exactly
+        what `build_report` would produce for the same state, which is why both call the
+        same helpers — two spellings of one projection is how a report starts disagreeing
+        with itself depending on which endpoint last touched it.
+        """
+        record.decklist = decided.to_json()
+        report = record.report
+        report["decklist_printed"] = decided.printed
+        report["decklist_source_url"] = None if decided.printed else decided.hall_of_heroes_url
+
+        entries = [e for e in report.get("resolutions") or [] if e["card_code"] != DECKLIST_CODE]
+        notes = [
+            note
+            for note in report.get("low_resolution") or []
+            if note["file"] not in {decided.chosen_ref, decided.uploaded_filename}
+        ]
+        if (entry := decklist_entry(decided)) is not None:
+            entries.append(entry)
+            # FR-035, research R9: a Hall of Heroes photograph will very likely fall below
+            # the print-resolution floor, and that is the correct outcome rather than
+            # something to special-case into silence. It prints, and it is reported soft.
+            notes.extend(
+                low_resolution_notes(
+                    OverlayStore(record.library_root, self.layout.run_dir(record.id)),
+                    [card for card in [decklist_resolution(decided)] if card],
+                    FitMode(record.fit_mode),
+                )
+            )
+        report["resolutions"] = entries
+        report["low_resolution"] = notes
+
         if decided.customizes_the_run:
             record.customized = True
-        unresolved = record.report.get("unresolved") or []
-        record.state = RunState.AWAITING_CARDS if unresolved else RunState.READY
-        return self.runs.write(record)
+        record.state = _waiting_state(report.get("unresolved") or [], decided)
 
     # ------------------------------------------------------------------ rendering
 
@@ -558,7 +792,35 @@ class AssemblyService:
         record.report["unresolved"] = []
         record.state = RunState.COMPLETE
         record.outcome = outcome_for(record.state, record.report)
-        return self.runs.write(record)
+        record = self.runs.write(record)
+        self._log(record, resolutions)
+        return record
+
+    def _log(self, record: RunRecord, resolutions: Sequence[Resolution]) -> None:
+        """One line for the finished run (FR-030b, FR-022b).
+
+        Written after the record, not before: a log line claiming a run completed when the
+        write that made it complete failed is worse than no line at all.
+        """
+        write_record(
+            AssemblyRecord(
+                run_id=record.id,
+                pack_code=(record.report or {}).get("pack_code") or "",
+                snapshot_revision=record.snapshot_revision or "",
+                outcome=record.outcome.value if record.outcome else "",
+                cards_printed=(record.report or {}).get("cards_printed", 0),
+                cards_in_pack=(record.report or {}).get("cards_in_pack", 0),
+                page_count=(record.report or {}).get("page_count"),
+                reused=bool(record.reused),
+                customized=bool(record.customized),
+                omitted_card_codes=sorted(
+                    {r.card_code for r in resolutions if r.provenance is Provenance.OMITTED}
+                ),
+                manual_card_codes=sorted(
+                    {r.card_code for r in resolutions if r.provenance is Provenance.MANUAL}
+                ),
+            )
+        )
 
     def document(self, run_id: str) -> bytes:
         """The finished PDF. Depends on nothing outside the run (FR-026f, SC-006h)."""

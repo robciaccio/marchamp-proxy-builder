@@ -225,6 +225,21 @@ class DecklistDecisionRequest(BaseModel):
     ref: str = ""
 
 
+class CardOmission(BaseModel):
+    """FR-030a — printing without a card requires an explicit act naming *this* card.
+
+    `acknowledged` is `Literal[True]` rather than `bool`, so `false` and absent are both
+    refused by the model. The requirement is that this "MUST NOT be reachable by dismissing
+    a prompt, ignoring a warning, or staying silent", and a plain boolean with a default
+    would make silence mean yes — which is the failure, spelled out.
+    """
+
+    acknowledged: Literal[True]
+    #: Which face, for a double-sided card. Omitting the back of a card whose front
+    #: resolved is a real case: the run prints neither, and says so.
+    side: Literal["front", "back"] = "front"
+
+
 class DecklistCandidate(BaseModel):
     ref: str
     #: Present when two candidates with **different stems** matched — a conflict the user
@@ -250,7 +265,13 @@ class ResolutionEntry(BaseModel):
     side: Literal["front", "back"]
     group: CardGroup
     provenance: Literal[
-        "folder_position", "library_position", "reprint", "name", "manual", "omitted"
+        "decklist_name",
+        "folder_position",
+        "library_position",
+        "reprint",
+        "name",
+        "manual",
+        "omitted",
     ]
     source: Literal["library", "upload"]
     #: Relative to the library root, or an uploaded file's **own name**. Never an absolute

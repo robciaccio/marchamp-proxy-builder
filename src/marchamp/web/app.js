@@ -400,16 +400,20 @@ function assemblyError(message) {
 }
 
 async function assemblyRequest(path, options = {}) {
+  const { formData, body, ...rest } = options;
   const headers = { ...(options.headers || {}) };
-  if (options.body !== undefined) headers["Content-Type"] = "application/json";
+  /* A multipart body must NOT carry a Content-Type of ours: the browser has to set it
+   * itself so it can append the boundary, and overriding it produces a body the server
+   * cannot parse (FR-026e). */
+  if (body !== undefined) headers["Content-Type"] = "application/json";
   /* Sent on every mutating call, never only on the ones that felt risky. */
   if (options.method && options.method !== "GET" && assembly.run) {
     headers["If-Match"] = String(assembly.run.version);
   }
   const response = await fetch(path, {
-    ...options,
+    ...rest,
     headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    body: formData !== undefined ? formData : body === undefined ? undefined : JSON.stringify(body),
   });
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;
@@ -507,6 +511,9 @@ function renderAssembly() {
   if (noDecklist && run.report && run.report.decklist_source_url) {
     $("decklist-url").href = run.report.decklist_source_url;
   }
+  /* FR-013c: the file the user downloaded comes back here. Offered only while there is no
+   * deck list yet — once one is printing, changing it is a different question. */
+  $("decklist-upload").hidden = !(noDecklist && !run.report.decklist_printed);
 
   /* ---- the report */
   const report = run.report;
@@ -517,17 +524,7 @@ function renderAssembly() {
     $("report-faces").textContent = report.faces_printed;
     $("report-decklist").textContent = report.decklist_printed ? "included" : "not included";
 
-    const gaps = run.unresolved || [];
-    $("gaps").hidden = gaps.length === 0;
-    const gapList = $("gaps-list");
-    gapList.replaceChildren();
-    for (const gap of gaps) {
-      const li = document.createElement("li");
-      /* Named individually with where the tool looked, so the user can act on the report
-       * alone rather than being handed a failed run to diagnose (FR-026d, SC-008). */
-      li.textContent = `${gap.card_name} (${gap.card_code}, ${gap.group}, ${gap.side}) — looked in: ${gap.searched.join("; ")}`;
-      gapList.append(li);
-    }
+    renderGaps(run);
 
     renderGroups(report);
 
@@ -583,6 +580,108 @@ const OUTCOMES = {
   warnings: "Assembled, with notes below worth reading.",
   refused: "Refused — nothing was printed.",
 };
+
+/* FR-026d — each unresolved card individually, with its own way out.
+ *
+ * The requirement is worded against a specific failure: presenting a failed run and
+ * leaving the user to work out which cards were at fault. So there is deliberately no
+ * "upload the missing cards" control and no "print anyway" button covering the list —
+ * every row names one card, says where the tool looked for it, and carries a file picker
+ * and an omit button that act on that card alone (FR-030a: an explicit act naming *this*
+ * card, never a blanket permission). */
+function renderGaps(run) {
+  const gaps = run.unresolved || [];
+  $("gaps").hidden = gaps.length === 0;
+  const list = $("gaps-list");
+  list.replaceChildren();
+
+  for (const gap of gaps) {
+    const li = document.createElement("li");
+    const name = document.createElement("strong");
+    name.textContent = `${gap.card_name} (${gap.card_code}, ${gap.group}, ${gap.side})`;
+
+    const where = document.createElement("p");
+    where.className = "muted";
+    where.textContent = `Looked in: ${gap.searched.join("; ")}`;
+
+    const actions = document.createElement("div");
+    actions.className = "actions";
+
+    const picker = document.createElement("input");
+    picker.type = "file";
+    picker.accept = "image/*";
+    picker.setAttribute(
+      "aria-label",
+      `Choose a file for ${gap.card_name} (${gap.side})`,
+    );
+    picker.addEventListener("change", () => {
+      const [file] = picker.files || [];
+      if (file) supplyCardImage(gap, file);
+    });
+
+    const omit = document.createElement("button");
+    omit.type = "button";
+    omit.className = "btn";
+    omit.textContent = "Print without this card";
+    omit.addEventListener("click", () => omitCard(gap));
+
+    actions.append(picker, omit);
+    li.append(name, where, actions);
+    list.append(li);
+  }
+}
+
+/* FR-026e — an upload, never a typed path. Sent as multipart, so `assemblyRequest`'s JSON
+ * content type would be wrong; the body is handed to `fetch` as-is and the browser sets the
+ * boundary itself. */
+async function supplyCardImage(gap, file) {
+  assemblyError("");
+  const body = new FormData();
+  body.append("file", file);
+  body.append("side", gap.side);
+  try {
+    assembly.run = await assemblyRequest(
+      `/api/assemblies/${assembly.run.id}/cards/${gap.card_code}/image`,
+      { method: "POST", formData: body },
+    );
+    renderAssembly();
+  } catch (err) {
+    /* FR-028: the card stays unresolved and the reason names the file, so the user knows
+     * to pick a different one rather than that "something went wrong". */
+    assemblyError(err.message);
+  }
+}
+
+/* FR-030, FR-030a. `acknowledged` is sent explicitly and is the only value the API takes:
+ * this is an act, not the absence of one. */
+async function omitCard(gap) {
+  assemblyError("");
+  try {
+    assembly.run = await assemblyRequest(
+      `/api/assemblies/${assembly.run.id}/cards/${gap.card_code}/omission`,
+      { method: "POST", body: { acknowledged: true, side: gap.side } },
+    );
+    renderAssembly();
+  } catch (err) {
+    assemblyError(err.message);
+  }
+}
+
+/* FR-013c — the deck list the user fetched from Hall of Heroes themselves. */
+async function supplyDecklist(file) {
+  assemblyError("");
+  const body = new FormData();
+  body.append("file", file);
+  try {
+    assembly.run = await assemblyRequest(`/api/assemblies/${assembly.run.id}/decklist`, {
+      method: "POST",
+      formData: body,
+    });
+    renderAssembly();
+  } catch (err) {
+    assemblyError(err.message);
+  }
+}
 
 function fillList(id, items, describe) {
   const list = $(id);
@@ -733,6 +832,10 @@ function wireAssembly() {
   );
   $("decklist-confirm").addEventListener("click", () => decideDecklist("confirm"));
   $("decklist-skip").addEventListener("click", () => decideDecklist("skip"));
+  $("decklist-file").addEventListener("change", (event) => {
+    const [file] = event.target.files || [];
+    if (file) supplyDecklist(file);
+  });
   $("assembly-confirm").addEventListener("click", confirmAssembly);
   for (const link of document.querySelectorAll("[data-mode]")) {
     link.addEventListener("click", () => showMode(link.dataset.mode));

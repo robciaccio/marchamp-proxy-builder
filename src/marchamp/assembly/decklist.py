@@ -22,7 +22,7 @@ standard and FR-026h's reuse would never fire once.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Any
 
@@ -67,6 +67,10 @@ class DecklistState:
     conflict: bool = False
     decision: DecklistDecision | None = None
     chosen_ref: str | None = None
+    #: The uploaded file's **own name**, when the user supplied one (FR-013c, FR-027). The
+    #: ref is `upload:<sha256>` in that case, which is what the run reads the bytes back
+    #: through and is deliberately not something a person can recognise.
+    uploaded_filename: str | None = None
     hall_of_heroes_url: str = HALL_OF_HEROES_URL
 
     @property
@@ -83,6 +87,11 @@ class DecklistState:
         return self.chosen_ref is not None
 
     @property
+    def uploaded(self) -> bool:
+        """Whether the printed deck list came from the user rather than from the folder."""
+        return self.printed and self.uploaded_filename is not None
+
+    @property
     def customizes_the_run(self) -> bool:
         """Whether this decision makes the run non-standard (FR-013e, FR-026i).
 
@@ -91,6 +100,39 @@ class DecklistState:
         does, because two users pointed at the same folder would now get different PDFs.
         """
         return self.decision in (DecklistDecision.SELECT, DecklistDecision.SKIP)
+
+    def supply(self, ref: str, filename: str) -> DecklistState:
+        """The user fetched a deck list and handed it over (FR-013c, research R9).
+
+        25 of 60 hero folders hold no deck list scan, and the tool refuses to fetch one:
+        Hall of Heroes is not on FR-002's egress allowlist and must not become the second
+        host on it. So the run names the gap, offers the address, and the person goes and
+        gets it — which lands here.
+
+        Recorded as a `select`, because that is exactly what it is against FR-026i: the
+        folder holds no such file, so two users pointed at it would now get different PDFs
+        and this run cannot be the pack's standard one. `ref` is content-addressed rather
+        than a path, so the run keeps the bytes and reprints identically afterwards
+        (FR-026e, FR-045).
+        """
+        return replace(
+            self, decision=DecklistDecision.SELECT, chosen_ref=ref, uploaded_filename=filename
+        )
+
+    def carrying(self, previous: DecklistState) -> DecklistState:
+        """This pass's findings, keeping the decision the user already made (FR-026b).
+
+        The ref is copied rather than re-derived through `decide`. It was contained against
+        the hero folder — or content-addressed — when the decision was taken, and
+        re-validating an uploaded ref against that folder would refuse a file that is not in
+        the folder by design, silently undoing an answer the user gave.
+        """
+        return replace(
+            self,
+            decision=previous.decision,
+            chosen_ref=previous.chosen_ref,
+            uploaded_filename=previous.uploaded_filename,
+        )
 
     def decide(self, decision: DecklistDecision, ref: str | None = None) -> DecklistState:
         if decision is DecklistDecision.CONFIRM:
@@ -103,15 +145,10 @@ class DecklistState:
             chosen = _contained(ref, self.hero_folder)
         else:
             chosen = None
-        return DecklistState(
-            hero_folder=self.hero_folder,
-            candidate=self.candidate,
-            candidates=self.candidates,
-            conflict=self.conflict,
-            decision=decision,
-            chosen_ref=chosen,
-            hall_of_heroes_url=self.hall_of_heroes_url,
-        )
+        # `uploaded_filename` is dropped: a decision taken here names a file in the folder
+        # or none at all, so carrying an earlier upload's name would label the folder's own
+        # scan with it.
+        return replace(self, decision=decision, chosen_ref=chosen, uploaded_filename=None)
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -121,6 +158,7 @@ class DecklistState:
             "conflict": self.conflict,
             "decision": self.decision.value if self.decision else None,
             "chosen_ref": self.chosen_ref,
+            "uploaded_filename": self.uploaded_filename,
             "hall_of_heroes_url": self.hall_of_heroes_url,
         }
 
@@ -136,6 +174,7 @@ class DecklistState:
             conflict=payload.get("conflict", False),
             decision=DecklistDecision(payload["decision"]) if payload.get("decision") else None,
             chosen_ref=payload.get("chosen_ref"),
+            uploaded_filename=payload.get("uploaded_filename"),
             hall_of_heroes_url=payload.get("hall_of_heroes_url", HALL_OF_HEROES_URL),
         )
 

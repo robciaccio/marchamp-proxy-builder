@@ -345,6 +345,29 @@ progress {
   margin-bottom: 0.2rem;
 }
 
+/* FR-026d. Each unresolved card is its own block with its own controls, so the file
+   picker and the omit button visibly belong to *that* card — a flat list with the
+   controls elsewhere would read as acting on all of them. */
+.gaps {
+  list-style: none;
+  padding-left: 0;
+}
+
+.gaps li {
+  margin-bottom: 0.9rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.gaps li p {
+  margin: 0.25rem 0 0.5rem;
+}
+
+.gaps .actions {
+  margin: 0;
+}
+
 .banner {
   margin-bottom: 1.25rem;
   padding: 0.9rem 1rem;
