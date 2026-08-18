@@ -328,6 +328,9 @@ class AssemblyRun(BaseModel):
     reused: bool | None = None
     pdf_id: str | None = None
     report: AssemblyReport | None = None
+    #: Why the run cannot read its library right now, or null (FR-026f). Never persisted:
+    #: an unmounted drive is a fact about this visit, not about the run.
+    library_problem: str | None = None
 
 
 class AssemblySummary(BaseModel):
@@ -346,6 +349,37 @@ class AssemblySummary(BaseModel):
 
 class AssemblyList(BaseModel):
     runs: list[AssemblySummary]
+
+
+class StoredPdf(BaseModel):
+    id: str
+    #: A `standard` PDF belongs to the **pack** and is shared by every clean run of it; a
+    #: `saved` one belongs to the run that named it (FR-026g1, FR-026h, FR-026i).
+    kind: Literal["standard", "saved"]
+    name: str
+    byte_size: int
+    created_at: datetime
+    pack_code: str | None = None
+    snapshot_revision: str | None = None
+
+
+class StoredPdfList(BaseModel):
+    pdfs: list[StoredPdf]
+    #: What the user is keeping, so FR-026g's reclamation is an informed choice rather than
+    #: a guess about which of two identical-looking rows is the 202 MB one.
+    total_bytes: int
+
+
+class PackSnapshot(BaseModel):
+    pack_code: str
+    #: A content hash of the *reduced* records, not upstream's `Last-Modified` — so an edit
+    #: to card text this feature does not retain cannot throw a 202 MB stored PDF away.
+    revision: str
+    card_count: int
+    captured_at: datetime
+    #: Within it no request is issued at all, which is what SC-006d requires literally.
+    fresh_until: datetime
+    stale: bool
 
 
 class AssemblyConfirmation(BaseModel):

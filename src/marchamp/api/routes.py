@@ -32,7 +32,7 @@ from pydantic import BaseModel, ValidationError
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from marchamp.api import schemas
-from marchamp.assembly.service import AssemblyError, AssemblyService
+from marchamp.assembly.service import AssemblyError, AssemblyService, library_problem
 from marchamp.assets.local_dir import LocalDirectoryStore
 from marchamp.catalog.loader import CatalogError
 from marchamp.catalog.validation import validate
@@ -51,6 +51,7 @@ from marchamp.render.images import (
     validate_source,
 )
 from marchamp.store.layout import StateLayout, UnsafeIdentifier
+from marchamp.store.pdfs import PdfStore
 from marchamp.store.runs import RunNotFound, RunState
 from marchamp.upstream.client import MarvelCdbClient
 from marchamp.upstream.snapshots import SnapshotStore, SnapshotUnavailable
@@ -583,6 +584,7 @@ def register_routes(app: FastAPI) -> None:
             ],
             reused=record.reused,
             pdf_id=(record.pdf or {}).get("id"),
+            library_problem=library_problem(record),
             report=schemas.AssemblyReport(**report) if report else None,
             created_at=record.created_at,
             updated_at=record.updated_at,
@@ -620,13 +622,62 @@ def register_routes(app: FastAPI) -> None:
         return _run_response(record)
 
     @app.get(
+        "/api/assemblies",
+        tags=["assemblies"],
+        response_model=schemas.AssemblyList,
+    )
+    def list_assemblies() -> schemas.AssemblyList:
+        """FR-026c, SC-006g — the runs, without the user having recorded an identifier.
+
+        Summaries only. The report lives on the detail resource because ten packs' worth of
+        resolutions is a list nobody loads, and the three facts that decide what the user
+        does next — is it finished, is it waiting on a card, is it waiting for me to confirm
+        the pack — are all here.
+
+        No `library_problem` on a summary, deliberately. Answering it means a `stat` per run
+        against a mount that may be down, which is exactly the request that hangs; the run's
+        own resource says so when the user opens it.
+        """
+        return schemas.AssemblyList(
+            runs=[_summary_response(r) for r in assemblies().runs.list_runs()]
+        )
+
+    def _summary_response(record) -> schemas.AssemblySummary:
+        identification = record.identification or {}
+        return schemas.AssemblySummary(
+            id=record.id,
+            version=record.version,
+            library_root=str(record.library_root),
+            hero_folder=record.hero_folder,
+            state=record.state.value,
+            outcome=record.outcome.value if record.outcome else None,
+            pack_code=identification.get("pack_code"),
+            pack_name=identification.get("pack_name"),
+            unresolved_count=len((record.report or {}).get("unresolved") or []),
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+        )
+
+    @app.get(
         "/api/assemblies/{run_id}",
         tags=["assemblies"],
         response_model=schemas.AssemblyRun,
         responses={404: _problem("No such run.")},
     )
     def get_assembly(run_id: str):
-        return _run_response(_read_run(assemblies(), run_id))
+        """Read a run, and reopen it if this is a later visit (FR-026b, SC-006f).
+
+        `resume` rather than `get`: the folder, the pack, the pinned revision, and every
+        resolution come straight off disk, but a run the process died inside — mid-render,
+        mid-resolve — would otherwise sit in that state forever, because the only request
+        that could have moved it on is the one that died.
+        """
+        service = assemblies()
+        _read_run(service, run_id)
+        try:
+            return _run_response(service.resume(run_id))
+        except AssemblyError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
 
     def _read_run(service: AssemblyService, run_id: str):
         try:
@@ -857,6 +908,166 @@ def register_routes(app: FastAPI) -> None:
         except AssemblyError as exc:
             raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
         return _run_response(record)
+
+    @app.delete(
+        "/api/assemblies/{run_id}",
+        tags=["assemblies"],
+        status_code=204,
+        response_class=Response,
+        responses={
+            204: {"description": "Deleted."},
+            404: _problem("No such run."),
+            409: _problem("The `If-Match` version is stale."),
+        },
+    )
+    def delete_assembly(
+        run_id: str, if_match: Annotated[str, Header(alias="If-Match")]
+    ) -> Response:
+        """Discard a deck attempt. **Not** the act that reclaims disk (FR-026g1).
+
+        Its uploads go, and a *saved* PDF it named goes with it. The pack's **standard** PDF
+        does not: every other run of that pack was served the same file, and revoking
+        FR-026f for all of them from a button labelled "delete this run" is not something
+        the user could have predicted. `DELETE /api/pdfs/{id}` is the act that says what it
+        does, and the two stay separate on purpose.
+        """
+        service = assemblies()
+        _read_run(service, run_id)
+        try:
+            service.delete(run_id, version=_if_match(if_match))
+        except AssemblyError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+        return Response(status_code=204)
+
+    # -------------------------------------------------------------- stored PDFs (002)
+
+    def _pdfs() -> PdfStore:
+        return PdfStore(StateLayout(settings.state_dir))
+
+    def _stored_pdf(stored) -> schemas.StoredPdf:
+        return schemas.StoredPdf(
+            id=stored.id,
+            kind=stored.kind.value,
+            name=stored.name,
+            byte_size=stored.byte_size,
+            created_at=stored.created_at,
+            pack_code=stored.pack_code,
+            snapshot_revision=stored.snapshot_revision,
+        )
+
+    @app.get("/api/pdfs", tags=["pdfs"], response_model=schemas.StoredPdfList)
+    def list_stored_pdfs() -> schemas.StoredPdfList:
+        """FR-026i's browsable list, and the only place a standard PDF can be deleted from.
+
+        `total_bytes` is not decoration. Retention under FR-026f is unbounded and 001
+        measured roughly 202 MB for one deck, so this figure is how the user sees what they
+        are keeping before deciding what to give back.
+        """
+        stored = _pdfs().list_stored()
+        return schemas.StoredPdfList(
+            pdfs=[_stored_pdf(p) for p in stored],
+            total_bytes=sum(p.byte_size for p in stored),
+        )
+
+    @app.delete(
+        "/api/pdfs/{pdf_id}",
+        tags=["pdfs"],
+        status_code=204,
+        response_class=Response,
+        responses={
+            204: {"description": "Deleted; the space is reclaimed."},
+            404: _problem("No such stored PDF."),
+        },
+    )
+    def delete_stored_pdf(pdf_id: str) -> Response:
+        """FR-026g. The next assembly of that pack rebuilds; the scan library is untouched."""
+        if not _pdfs().delete(pdf_id):
+            raise HTTPException(status_code=404, detail=f"no stored PDF {pdf_id!r}")
+        return Response(status_code=204)
+
+    @app.get(
+        "/api/pdfs/{pdf_id}/document",
+        tags=["pdfs"],
+        response_class=Response,
+        responses={
+            200: _binary("application/pdf", "The PDF."),
+            404: _problem("No such stored PDF."),
+        },
+    )
+    def get_stored_pdf_document(pdf_id: str) -> Response:
+        stored = _pdfs().find(pdf_id)
+        if stored is None:
+            raise HTTPException(status_code=404, detail=f"no stored PDF {pdf_id!r}")
+        return Response(content=stored.path.read_bytes(), media_type="application/pdf")
+
+    # ------------------------------------------------------------------- packs (002)
+
+    def _snapshots() -> SnapshotStore:
+        layout = StateLayout(settings.state_dir)
+        return SnapshotStore(layout, MarvelCdbClient(settings.upstream))
+
+    def _snapshot_response(snapshot) -> schemas.PackSnapshot:
+        return schemas.PackSnapshot(
+            pack_code=snapshot.pack_code,
+            revision=snapshot.revision,
+            card_count=len(snapshot.cards),
+            captured_at=snapshot.captured_at,
+            fresh_until=snapshot.fresh_until,
+            stale=snapshot.stale,
+        )
+
+    @app.get(
+        "/api/packs/{pack_code}/snapshot",
+        tags=["packs"],
+        response_model=schemas.PackSnapshot,
+        responses={404: _problem("No snapshot is stored for that pack.")},
+    )
+    def get_pack_snapshot(pack_code: str) -> schemas.PackSnapshot:
+        """What is stored for this pack, and how fresh it is.
+
+        Reports; never captures. A `GET` that fetched when nothing was stored would make the
+        read side of this pair issue traffic the user did not ask for, which is what FR-039's
+        freshness rules exist to avoid. `POST` is how a snapshot comes into being.
+        """
+        try:
+            stored = _snapshots().stored(pack_code)
+        except SnapshotUnavailable as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if stored is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no snapshot is stored for pack {pack_code!r}; assemble a deck from "
+                "it, or refresh it, to capture one",
+            )
+        return _snapshot_response(stored)
+
+    @app.post(
+        "/api/packs/{pack_code}/snapshot",
+        tags=["packs"],
+        response_model=schemas.PackSnapshot,
+        responses={
+            404: _problem("No such pack."),
+            503: _problem("Card data could not be retrieved and none is stored."),
+        },
+    )
+    def refresh_pack_snapshot(pack_code: str) -> schemas.PackSnapshot:
+        """FR-044b — the user overriding freshness, because they know something we do not.
+
+        Most packs are years old and never change, so refresh is automatic and governed by
+        the cache headers MarvelCDB sends. A recently released pack can pick up corrections
+        upstream, and a user who already knows that must not wait out a 600-second expiry.
+
+        **This never alters a run.** A run pins its revision when its pack is confirmed
+        (FR-045), and a changed listing is written under a *new* revision rather than over
+        the old one — so a deck in flight keeps the composition its resolutions were made
+        against. A `304` keeps the stored records and the revision untouched, which is what
+        stops a refresh of unchanged data from invalidating a ~202 MB stored PDF.
+        """
+        store = _snapshots()
+        try:
+            return _snapshot_response(store.refresh(pack_code))
+        except SnapshotUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.get(
         "/api/assemblies/{run_id}/document",

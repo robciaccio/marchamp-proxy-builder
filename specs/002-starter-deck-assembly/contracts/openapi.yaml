@@ -579,7 +579,14 @@ components:
         pack_code: { type: [string, "null"] }
         pack_name: { type: [string, "null"] }
         state: { $ref: "#/components/schemas/AssemblyState" }
-        outcome: { $ref: "#/components/schemas/AssemblyOutcome" }
+        # Nullable for the same reason `AssemblyRun.outcome` is, and corrected in the same
+        # way in the Phase 7 PR: `AssemblyOutcome` documents itself as "null until the run
+        # is terminal", a bare `$ref` cannot carry null, and a run list whose whole purpose
+        # is showing *unfinished* runs is where that contradiction is least affordable.
+        outcome:
+          oneOf:
+            - $ref: "#/components/schemas/AssemblyOutcome"
+            - type: "null"
         unresolved_count: { type: integer }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
@@ -640,6 +647,18 @@ components:
         reused:
           type: [boolean, "null"]
           description: A stored PDF was served rather than rendered again (FR-026h, SC-006i).
+        library_problem:
+          type: [string, "null"]
+          description: |
+            Why this run cannot read its library right now — moved, renamed, unmounted, or no
+            longer readable — as one sentence naming the folder (FR-026f). **Not a wave of
+            newly missing cards**: both renderings carry the same fact, and only this one
+            tells the user the mount is down rather than burying it under forty card names
+            that all come back when the drive reappears.
+
+            Derived per read and never persisted: a mount that is down at nine is up at ten.
+            Always null for a terminal run, which holds its own PDF and never reads the
+            library again (SC-006h).
         pdf_id: { type: [string, "null"] }
         # Null until the run has resolved. A run awaiting pack confirmation has nothing to
         # report yet, and an empty report would claim a pack of zero cards.

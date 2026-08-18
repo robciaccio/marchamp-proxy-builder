@@ -38,6 +38,7 @@ the key: a run whose folder moved but whose images are byte-identical still gets
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 from collections.abc import Sequence
 from pathlib import Path
@@ -69,7 +70,7 @@ from marchamp.library.index import build_index
 from marchamp.observability.logging import AssemblyRecord, write_record
 from marchamp.render.document import FitMode, compose
 from marchamp.store.layout import StateLayout
-from marchamp.store.pdfs import PdfStore
+from marchamp.store.pdfs import PdfKind, PdfStore
 from marchamp.store.runs import Outcome, RunRecord, RunState, RunStore
 from marchamp.upstream.models import PackCard
 from marchamp.upstream.snapshots import SnapshotStore
@@ -200,6 +201,47 @@ def _apply_user_answers(record: RunRecord, outcome) -> tuple[list[Resolution], l
     return [*resolutions, *overrides.values()], unresolved
 
 
+def library_problem(record: RunRecord) -> str | None:
+    """Why this run cannot read its library right now, or `None` (FR-026f).
+
+    **Derived per read, never stored.** A Drive mount that is down at nine is up at ten, and
+    a run carrying a persisted "your folder is missing" would go on saying so after the
+    folder came back — a fact about one visit written down as though it were a fact about
+    the run.
+
+    **Terminal runs are exempt, and that is the requirement rather than an optimisation.** A
+    finished run holds its own PDF and depends on nothing outside itself (FR-026f, SC-006h);
+    checking a mount it will never read again could only produce a warning about nothing.
+
+    **One sentence naming the folder, not a wave of missing cards.** Both renderings carry
+    the same fact. Only this one tells the user the mount is down; the other buries it under
+    forty card names that will all come back when the drive reappears, which is why the spec
+    requires the report to hang off the run.
+    """
+    if record.state.terminal:
+        return None
+
+    root = record.library_root
+    if not root.exists():
+        return (
+            f"the library folder {root} is not there. It has been moved, renamed, or "
+            "unmounted since this run started. Nothing is lost — restore it and reopen "
+            "this run."
+        )
+    if not root.is_dir():
+        return f"the library folder {root} is no longer a directory."
+    if not os.access(root, os.R_OK | os.X_OK):
+        return f"the library folder {root} can no longer be read."
+
+    hero = root / record.hero_folder
+    if not hero.is_dir():
+        return (
+            f"the hero folder {record.hero_folder} is no longer inside {root}. The library "
+            "is readable, so it has been renamed or moved rather than unmounted."
+        )
+    return None
+
+
 def _waiting_state(unresolved: Sequence[Any], decklist: DecklistState) -> RunState:
     """Whether the run is still waiting on the user.
 
@@ -228,6 +270,44 @@ class AssemblyService:
 
     def get(self, run_id: str) -> RunRecord:
         return self.runs.read(run_id)
+
+    def resume(self, run_id: str) -> RunRecord:
+        """Reopen a run on a later visit (FR-026b, SC-006f).
+
+        For the case the user actually meets — a run parked in `awaiting_pack` or
+        `awaiting_cards` — this is a read, and that is the point: the folder, the pack, the
+        pinned revision, the resolutions, and the report are all on disk, so there is nothing
+        to reconstruct and nothing that needs the library to still be mounted.
+
+        What it does do is recover a run the *process* left mid-step. ADR 0001 chose plain
+        files knowing a crash can land between a state change and the work it announced, and
+        `identifying`, `resolving`, and `rendering` are the three states nobody will ever
+        move a run out of, because the only thing that could was the request that died:
+
+        - **`rendering`** goes back to `ready`. The PDF is linked to the run only after
+          `compose` returns, so a crashed render left nothing; the user confirms again. Not
+          `failed`, because nothing about the run is wrong.
+        - **`resolving`** re-resolves, which is safe to repeat — the cascade is a pure read
+          of the library and the user's own answers are laid back over it. Skipped when the
+          library is unreachable, so a run is never demoted for a mount being down.
+        - **`identifying`** is `failed`. It crashed before there was a pack, and there is
+          nothing to resume toward; FR-036 requires that to be a stated outcome rather than
+          a run that sits forever looking busy.
+
+        Left strictly alone otherwise. A resumed run is never silently advanced past a
+        question the user has not answered.
+        """
+        record = self.runs.read(run_id)
+        if record.state is RunState.RENDERING:
+            record.state = RunState.READY
+            return self.runs.write(record)
+        if record.state is RunState.IDENTIFYING:
+            record.state = RunState.FAILED
+            record.outcome = Outcome.REFUSED
+            return self.runs.write(record)
+        if record.state is RunState.RESOLVING and library_problem(record) is None:
+            return self._resolve(record)
+        return record
 
     def _check_version(self, record: RunRecord, expected: int | None) -> None:
         """Optimistic concurrency (ADR 0001). A stale value is 409, never a silent write.
@@ -276,6 +356,27 @@ class AssemblyService:
 
     def _load_pack_cards(self, pack_code: str) -> list[PackCard]:
         return list(self.snapshots.get(pack_code).cards)
+
+    def _pinned_snapshot(self, record: RunRecord, pack_code: str):
+        """The listing this run was resolved against, not the current one (FR-044b, FR-045).
+
+        A run pins its revision when its pack is confirmed, and every later pass — a
+        re-resolve after an upload, the render itself — has to read *that* listing. Reading
+        the current one instead is the failure with no symptom: an explicit refresh brings
+        down a corrected pack, and the run the user comes back to prints a different deck
+        with all forty of their resolutions still sitting there looking answered.
+
+        Falls back to the current snapshot when the pinned revision is no longer retained.
+        The alternative is refusing to finish a run whose archived file has gone, which
+        costs the user their work to protect them from a listing that has usually not
+        changed — and when it has, the report still names the revision that was used.
+        """
+        pinned = record.snapshot_revision
+        if pinned:
+            snapshot = self.snapshots.read_revision(pack_code, pinned)
+            if snapshot is not None:
+                return snapshot
+        return self.snapshots.get(pack_code)
 
     # ------------------------------------------------------------------ the pack
 
@@ -361,7 +462,9 @@ class AssemblyService:
     def _resolve(self, record: RunRecord) -> RunRecord:
         identification = Identification.from_json(record.identification or {})
         pack_code = identification.pack_code or ""
-        snapshot = self.snapshots.get(pack_code)
+        # The revision this run pinned, never the current one (FR-045). Re-resolving after
+        # an upload must not quietly pick up a listing refreshed in the meantime.
+        snapshot = self._pinned_snapshot(record, pack_code)
         cards = list(snapshot.cards)
 
         index = build_index(record.library_root, file_cap=self.settings.limits.library_scan_files)
@@ -588,7 +691,7 @@ class AssemblyService:
         every other resolution of that card.
         """
         identification = Identification.from_json(record.identification or {})
-        for card in self.snapshots.get(identification.pack_code or "").cards:
+        for card in self._pinned_snapshot(record, identification.pack_code or "").cards:
             if card.code == card_code or card_code in card.linked_codes:
                 return card.quantity
         return 1
@@ -738,7 +841,7 @@ class AssemblyService:
 
         identification = Identification.from_json(record.identification or {})
         pack_code = identification.pack_code or ""
-        snapshot = self.snapshots.get(pack_code)
+        snapshot = self._pinned_snapshot(record, pack_code)
         cards = list(snapshot.cards)
         resolutions = [Resolution.from_json(r) for r in record.resolutions]
         decklist = DecklistState.from_json(record.decklist) if record.decklist else None
@@ -821,6 +924,33 @@ class AssemblyService:
                 ),
             )
         )
+
+    def delete(self, run_id: str, version: int | None = None) -> None:
+        """Throw away a deck attempt (FR-026g1). **Not** the same act as reclaiming disk.
+
+        What goes is what is private to this run: its record, the files uploaded to it
+        (FR-026e), and — if it produced one — the *saved* PDF it named (FR-026i).
+
+        What stays is the pack's **standard** PDF. It belongs to the pack, not to the run
+        that happened to build it, and every other run of that pack was served the same
+        file; deleting it here would revoke FR-026f's guarantee for all of them, from a
+        button whose label says nothing about that. It is removed from the stored-PDF list
+        instead, which is the act that says what it does.
+
+        The consequence the user actually feels is predictability: discarding a run frees a
+        few uploaded scans, never 202 MB, unless the run's PDF was theirs alone.
+        """
+        record = self.runs.read(run_id)
+        self._check_version(record, version)
+
+        stored = record.pdf or {}
+        if stored.get("kind") == PdfKind.SAVED.value and stored.get("id"):
+            self.pdfs.delete_saved(stored["id"])
+        # `runs.delete` removes the whole run directory, and the run's hard link to a
+        # standard PDF goes with it — which frees nothing, because `pdfs/standard/` still
+        # holds a name for the same inode. That is the refcount doing the work rather than
+        # a rule someone has to remember here.
+        self.runs.delete(run_id)
 
     def document(self, run_id: str) -> bytes:
         """The finished PDF. Depends on nothing outside the run (FR-026f, SC-006h)."""

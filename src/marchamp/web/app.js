@@ -391,6 +391,11 @@ function renderFailures(generation) {
 const assembly = {
   run: null,
   candidates: [],
+  /* FR-026c's two lists. Loaded on start-up rather than behind a control, because the
+   * requirement is that a returning user *finds* their runs, not that they can ask for
+   * them once they know to. */
+  runs: [],
+  pdfs: { pdfs: [], total_bytes: 0 },
 };
 
 function assemblyError(message) {
@@ -445,6 +450,7 @@ async function startAssembly(event) {
       },
     });
     renderAssembly();
+    refreshLists();
   } catch (err) {
     assemblyError(err.message);
   } finally {
@@ -455,6 +461,12 @@ async function startAssembly(event) {
 function renderAssembly() {
   const run = assembly.run;
   if (!run) return;
+
+  /* FR-026f — one sentence naming the folder, above everything else the run has to say.
+   * Not an error: nothing is lost, the drive is simply not there right now. */
+  const library = $("assembly-library");
+  library.textContent = run.library_problem || "";
+  library.hidden = !run.library_problem;
 
   const identified = run.identification && run.identification.pack_code;
   const awaitingPack = run.state === "awaiting_pack" || run.state === "unidentified";
@@ -556,6 +568,8 @@ function renderAssembly() {
     if (run.state === "complete") download.href = `/api/assemblies/${run.id}/document`;
     $("assembly-progress").textContent =
       run.state === "rendering" ? "Building the PDF…" : "";
+    /* A finished run has just added a stored PDF and moved itself down the run list. */
+    if (run.state === "complete") refreshLists();
     /* FR-036: null until the run is terminal, so nothing here reports a failure that has
      * not happened. Waiting on a card is the tool working, not the tool failing. */
     $("assembly-outcome").textContent = run.outcome ? OUTCOMES[run.outcome] || "" : "";
@@ -823,6 +837,213 @@ function showMode(mode) {
   if (!isAssembly) showStep(state.step);
 }
 
+/* ======================================================= US5: coming back to a run
+ *
+ * FR-026c: "the user MUST be able to see their runs without remembering an identifier".
+ * That is a requirement about the *entry point*, so these two lists load on start-up and
+ * refresh after anything that could change them — not behind a control the user has to know
+ * to press, and never behind a box asking which run they mean.
+ */
+
+/* How the list describes a run, and what the user does about it. Three states with three
+ * different next actions (FR-026c): download it, go and find a scan, say yes to the pack. A
+ * list that collapsed any two of them into "in progress" would send the user into the run
+ * to find out which. */
+const RUN_STATES = {
+  awaiting_pack: "waiting for you to confirm the pack",
+  unidentified: "waiting for you to name the pack",
+  awaiting_cards: "waiting on a card",
+  resolving: "still gathering cards",
+  identifying: "still working out the pack",
+  ready: "ready to print",
+  rendering: "building the PDF",
+  complete: "finished — printable",
+  failed: "refused",
+};
+
+/* Sizes, so FR-026g's "delete this and get the space back" is a decision rather than a
+ * guess. Rounded to one decimal because the number is being compared, not audited. */
+function formatBytes(bytes) {
+  if (!bytes) return "0 B";
+  const units = ["B", "kB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${unit === 0 ? value : value.toFixed(1)} ${units[unit]}`;
+}
+
+async function loadRuns() {
+  try {
+    const payload = await api("/api/assemblies");
+    assembly.runs = payload.runs || [];
+  } catch {
+    /* The list is a convenience over the run the user is already in the middle of. Failing
+     * to load it must not take the wizard down with it. */
+    assembly.runs = [];
+  }
+  renderRuns();
+}
+
+function renderRuns() {
+  const runs = assembly.runs || [];
+  $("runs").hidden = runs.length === 0;
+  const list = $("runs-list");
+  list.replaceChildren();
+
+  for (const run of runs) {
+    const li = document.createElement("li");
+    li.className = "decks__item";
+
+    const name = document.createElement("strong");
+    name.textContent = run.pack_name ? `${run.pack_name} (${run.pack_code})` : run.hero_folder;
+    li.append(name);
+
+    const status = document.createElement("span");
+    status.className = "muted";
+    const waiting =
+      run.state === "awaiting_cards" && run.unresolved_count
+        ? ` — ${run.unresolved_count} card(s) still to answer`
+        : "";
+    status.textContent = ` — ${RUN_STATES[run.state] || run.state}${waiting}`;
+    li.append(status);
+
+    const actions = document.createElement("div");
+    actions.className = "actions";
+
+    if (run.state === "complete") {
+      /* FR-026f: a finished run holds its own PDF, so this works with the library
+       * unmounted and without rebuilding anything. */
+      const download = document.createElement("a");
+      download.className = "btn";
+      download.download = "";
+      download.href = `/api/assemblies/${run.id}/document`;
+      download.textContent = "Download PDF";
+      actions.append(download);
+    }
+
+    const resume = document.createElement("button");
+    resume.type = "button";
+    resume.className = "btn";
+    resume.textContent = run.state === "complete" ? "Open" : "Resume";
+    resume.addEventListener("click", () => resumeRun(run.id));
+    actions.append(resume);
+
+    const discard = document.createElement("button");
+    discard.type = "button";
+    discard.className = "btn";
+    discard.textContent = "Discard";
+    discard.addEventListener("click", () => deleteRun(run));
+    actions.append(discard);
+
+    li.append(actions);
+    list.append(li);
+  }
+}
+
+/* FR-026b — the folder, the pack, the pinned card data, and every answer already given come
+ * straight off the run. Nothing is restated and nothing is asked twice. */
+async function resumeRun(runId) {
+  assemblyError("");
+  try {
+    assembly.run = await assemblyRequest(`/api/assemblies/${runId}`);
+    $("library-root").value = assembly.run.library_root;
+    $("hero-folder").value = assembly.run.hero_folder;
+    renderAssembly();
+  } catch (err) {
+    assemblyError(err.message);
+  }
+}
+
+/* FR-026g1 — this discards an attempt. It never removes the pack's standard PDF, which
+ * other attempts of that pack share; that lives in the stored-PDF list below, under a verb
+ * that says what it does. */
+async function deleteRun(run) {
+  assemblyError("");
+  try {
+    await assemblyRequest(`/api/assemblies/${run.id}`, {
+      method: "DELETE",
+      headers: { "If-Match": String(run.version) },
+    });
+    if (assembly.run && assembly.run.id === run.id) assembly.run = null;
+    await refreshLists();
+  } catch (err) {
+    assemblyError(err.message);
+  }
+}
+
+async function loadStoredPdfs() {
+  try {
+    assembly.pdfs = await api("/api/pdfs");
+  } catch {
+    assembly.pdfs = { pdfs: [], total_bytes: 0 };
+  }
+  renderStoredPdfs();
+}
+
+function renderStoredPdfs() {
+  const payload = assembly.pdfs || { pdfs: [], total_bytes: 0 };
+  const stored = payload.pdfs || [];
+  $("pdfs").hidden = stored.length === 0;
+  $("pdfs-total").textContent = formatBytes(payload.total_bytes || 0);
+
+  const list = $("pdfs-list");
+  list.replaceChildren();
+  for (const pdf of stored) {
+    const li = document.createElement("li");
+    li.className = "decks__item";
+
+    const name = document.createElement("strong");
+    name.textContent = pdf.name;
+    li.append(name);
+
+    const detail = document.createElement("span");
+    detail.className = "muted";
+    /* A standard PDF belongs to the pack and is shared; a saved one is this user's copy of
+     * a deck they changed. Saying which is what makes deleting predictable (FR-026g1). */
+    const kind = pdf.kind === "standard" ? "shared by every clean run of this pack" : "your copy";
+    detail.textContent = ` — ${formatBytes(pdf.byte_size)}, ${kind}`;
+    li.append(detail);
+
+    const actions = document.createElement("div");
+    actions.className = "actions";
+
+    const download = document.createElement("a");
+    download.className = "btn";
+    download.download = "";
+    download.href = `/api/pdfs/${pdf.id}/document`;
+    download.textContent = "Download";
+    actions.append(download);
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "btn";
+    remove.textContent = "Delete and free the space";
+    remove.addEventListener("click", () => deleteStoredPdf(pdf));
+    actions.append(remove);
+
+    li.append(actions);
+    list.append(li);
+  }
+}
+
+async function deleteStoredPdf(pdf) {
+  assemblyError("");
+  try {
+    const response = await fetch(`/api/pdfs/${pdf.id}`, { method: "DELETE" });
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    await refreshLists();
+  } catch (err) {
+    assemblyError(err.message);
+  }
+}
+
+function refreshLists() {
+  return Promise.all([loadRuns(), loadStoredPdfs()]);
+}
+
 function wireAssembly() {
   $("assembly-form").addEventListener("submit", startAssembly);
   $("pack-confirm").addEventListener("click", () => setPack("confirm"));
@@ -840,6 +1061,7 @@ function wireAssembly() {
   for (const link of document.querySelectorAll("[data-mode]")) {
     link.addEventListener("click", () => showMode(link.dataset.mode));
   }
+  refreshLists();
 }
 
 // ------------------------------------------------------------------------- start up

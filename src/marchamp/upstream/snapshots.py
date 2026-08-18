@@ -270,6 +270,19 @@ class SnapshotStore:
         """
         return self.get(pack_code, force_refresh=True)
 
+    def stored(self, pack_code: str) -> PackSnapshot | None:
+        """What is on disk for this pack, or None. Never fetches.
+
+        The read half of FR-044b's pair. Separate from `get` because `get` exists to produce
+        a usable snapshot by whatever means, and reporting what is held must not be able to
+        issue traffic the user did not ask for.
+        """
+        try:
+            path = self.layout.snapshot(pack_code)
+        except UnsafeIdentifier:
+            return None
+        return self._load(path)
+
     def read_revision(self, pack_code: str, revision: str) -> PackSnapshot | None:
         """The exact revision a run pinned, or None if it is no longer retained."""
         current = self._load(self.layout.snapshot(pack_code))

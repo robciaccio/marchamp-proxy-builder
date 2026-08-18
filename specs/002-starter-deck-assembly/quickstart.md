@@ -255,9 +255,17 @@ uv run pytest tests/integration/test_resume.py
    resolution, and the report are all intact. Only the second card is asked about (US4 sc. 8).
 6. Move or delete the uploaded source file on disk, then reprint → **the card still prints**,
    because the run holds the bytes (FR-026e, US4 scenario 4).
+7. Unmount or rename the library folder and reopen the run → `library_problem` names the folder
+   in one sentence and the run's unresolved list does **not** grow (FR-026f). A *finished* run
+   reports nothing and still downloads (SC-006h): it holds its own PDF and never reads the
+   library again.
 
 Step 6 is the reason uploads exist rather than paths, and it is the step that fails if the run
 records a path and reads it later.
+
+Step 7 is the case where one fact has two renderings and only one is usable. Reporting a down
+mount as forty newly missing cards is complete and useless: the user cannot act on it, and all
+of it reverts the moment the drive comes back.
 
 ---
 

@@ -220,6 +220,11 @@
 
         <div id="assembly-error" class="banner banner--error" hidden role="alert"></div>
 
+        <!-- FR-026f. A run resumed after its drive was unmounted says *that*, once, naming
+             the folder — rather than reporting forty cards as newly missing, which is the
+             same fact rendered unusable and which all comes back when the drive does. -->
+        <div id="assembly-library" class="banner" hidden role="status"></div>
+
         <!-- The identification, and the evidence behind it. FR-012 shows the user what the
              figure rests on *before* they confirm, because the failure a confidence number
              cannot catch is one that is confident and wrong (SC-009). -->
@@ -385,6 +390,36 @@
                outcome, and reading it as one would report a failure that has not happened. -->
           <p id="assembly-outcome" class="muted" role="status" aria-live="polite"></p>
           <p id="assembly-progress" class="muted" role="status" aria-live="polite"></p>
+        </section>
+
+        <!-- ============================================================ US5: coming back
+          FR-026c is worded from the user's side: they must be able to see which of their
+          decks are printable and which are still waiting, "without remembering an
+          identifier". So this is a list they browse, not a box they paste an id into —
+          which is also the only reason the durable run record is worth having.
+        -->
+        <section id="runs" class="panel" hidden aria-labelledby="runs-title">
+          <h3 id="runs-title">Packs you have started</h3>
+          <p class="muted">
+            Pick up where you left off. Discarding one throws away that attempt and anything
+            you uploaded to it — it never removes a pack's standard PDF, which other attempts
+            share and which you reclaim from the list below.
+          </p>
+          <ul id="runs-list" class="decks"></ul>
+        </section>
+
+        <!-- FR-026g, FR-026g1. The separate act, in a separate list, with a separate verb.
+             The sizes are the point: one deck's PDF was measured at roughly 202 MB, so
+             "which of these should go" is not a question anyone can answer from names. -->
+        <section id="pdfs" class="panel" hidden aria-labelledby="pdfs-title">
+          <h3 id="pdfs-title">PDFs you are keeping</h3>
+          <p class="muted">
+            Kept so a finished pack downloads again without being rebuilt. Deleting one frees
+            its space; the next assembly of that pack builds it again. Your scans are never
+            touched.
+          </p>
+          <p class="muted">Total held: <strong id="pdfs-total">—</strong></p>
+          <ul id="pdfs-list" class="decks"></ul>
         </section>
       </section>
     </main>
