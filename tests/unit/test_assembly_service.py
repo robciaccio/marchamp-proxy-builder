@@ -19,7 +19,7 @@ import pytest
 from marchamp.assembly.service import AssemblyError, AssemblyService, FolderRefused
 from marchamp.config import Settings
 from marchamp.store.layout import StateLayout
-from marchamp.store.runs import RunState
+from marchamp.store.runs import Outcome, RunState
 from marchamp.upstream.client import MarvelCdbClient
 from marchamp.upstream.snapshots import SnapshotStore
 from tests.conftest import ACCEPTANCE_HEROES
@@ -181,3 +181,98 @@ def test_the_library_root_is_retained_so_a_resumed_run_can_name_it(started, scan
     """FR-026b. Retained deliberately: FR-009 forbids paths from *outside* the named
     library, and the root itself is not outside it."""
     assert started.library_root == scan_library.resolve()
+
+
+# ------------------------------------------------------------------------- the outcome
+
+#: A pack whose every card is generated at its own position, so the run reaches `complete`
+#: without any of Phase 5's or Phase 6's machinery. `vision` rather than an acceptance hero
+#: because it is not in the derived fixture library and so cannot be confused with it.
+FULL_PACK = "vision"
+FULL_FOLDER = "Heros/Vision_Vision"
+
+
+@pytest.fixture
+def complete_library(tmp_path):
+    """A folder holding exactly one scan for every face `vision` prints.
+
+    Generated from the pack listing rather than hand-written: what is being tested is the
+    outcome of a run that wants for nothing, and a folder assembled by hand would sooner or
+    later be missing a card and turn this into a test of something else.
+    """
+    from marchamp.assembly.faces import faces_for
+    from marchamp.assembly.resolve import face_suffixes
+    from tests.conftest import LIBRARY_IMAGE_H, LIBRARY_IMAGE_W, make_card_image, pack_cards
+
+    root = tmp_path / "complete-library"
+    cards = pack_cards(FULL_PACK)
+    for card in cards:
+        for face in faces_for(card, cards):
+            suffix = face_suffixes(face)[0] or ""
+            name = card.name.replace("/", "-")
+            rel = f"{FULL_FOLDER}/Test_{name}_Card_{card.position}{suffix}.tiff"
+            make_card_image(root / rel, name, width=LIBRARY_IMAGE_W, height=LIBRARY_IMAGE_H)
+    return root
+
+
+@pytest.fixture
+def ready_run(service, complete_library):
+    started = service.create(complete_library, FULL_FOLDER)
+    return service.set_pack(started.id, "select", pack_code=FULL_PACK, version=started.version)
+
+
+def test_a_run_waiting_on_a_card_has_no_outcome(service, started):
+    """FR-036 — `awaiting_cards` is the tool doing its job, not the tool failing.
+
+    A consumer that read a missing outcome as a failure would tell the user their pack was
+    refused when it is waiting for them.
+    """
+    record = service.set_pack(started.id, "confirm", version=started.version)
+    assert record.state is RunState.AWAITING_CARDS
+    assert record.outcome is None
+
+
+def test_a_ready_run_has_no_outcome_either(ready_run):
+    """`ready` is not `complete` (FR-026a), so it is not an outcome."""
+    assert ready_run.state is RunState.READY
+    assert ready_run.outcome is None
+
+
+def test_a_run_that_resolved_everything_completes_cleanly(service, ready_run):
+    """FR-036 — `clean` means exactly that: nothing the user needs to know about."""
+    record = service.confirm(ready_run.id, version=ready_run.version)
+    assert record.state is RunState.COMPLETE
+    assert record.outcome is Outcome.CLEAN
+
+
+def test_the_outcome_survives_being_read_back(service, ready_run):
+    """FR-026b — it is on the record, not only in the response that produced it."""
+    service.confirm(ready_run.id, version=ready_run.version)
+    assert service.get(ready_run.id).outcome is Outcome.CLEAN
+
+
+def test_a_completed_run_with_something_to_report_says_warnings(service, ready_run):
+    """FR-036 — "assembled with warnings" is a third answer, not a shade of `clean`.
+
+    Driven by putting a genuinely under-resolution scan in the folder, because the
+    distinction has to be visible to a consumer that never reads the prose.
+    """
+    from tests.conftest import make_card_image
+
+    scan = next(p for p in (ready_run.library_root / FULL_FOLDER).iterdir() if p.suffix == ".tiff")
+    make_card_image(scan, "SMALL", width=240, height=336)
+
+    reresolved = service._resolve(service.get(ready_run.id))
+    record = service.confirm(reresolved.id, version=reresolved.version)
+    assert record.state is RunState.COMPLETE
+    assert record.report["low_resolution"]
+    assert record.outcome is Outcome.WARNINGS
+
+
+def test_the_three_outcomes_are_the_only_ones(service, ready_run):
+    """FR-036 — a machine-readable outcome a consumer can exhaust.
+
+    Asserted against the enum rather than against a run, so adding a fourth value forces
+    someone to come back to this file and to the contract that declares it.
+    """
+    assert {o.value for o in Outcome} == {"clean", "warnings", "refused"}

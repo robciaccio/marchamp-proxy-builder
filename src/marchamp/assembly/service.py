@@ -132,6 +132,33 @@ def image_identity(resolutions: Sequence[Resolution]) -> str:
     return hasher.hexdigest()[:IDENTITY_LENGTH]
 
 
+#: Report sections whose presence makes a completed run "assembled with warnings" rather
+#: than "assembled cleanly" (FR-036). Each is something the user would want to know before
+#: paying to print, and each is a thing they can act on.
+#:
+#: **Substitutions are deliberately not here.** Borrowing an image from another printing of
+#: the same card is the *normal* path — `cap` sources eight physical cards from the Core Set
+#: — so counting them would mark every real run as warned and leave the field meaning
+#: nothing. Nor are unused files: every hero folder has some, and the report names them.
+WARNING_SECTIONS = ("omitted", "low_resolution", "conflicts")
+
+
+def outcome_for(state: RunState, report: dict[str, Any]) -> Outcome | None:
+    """FR-036's machine-readable verdict, so a consumer need not parse prose.
+
+    **Null until terminal**, which is the half that is easy to get wrong: a run awaiting
+    confirmation of its pack or waiting on a card has not reached an outcome, and a consumer
+    that read a missing one as a failure would tell the user their pack was refused when it
+    is waiting for them.
+    """
+    if not state.terminal:
+        return None
+    if state is RunState.FAILED:
+        return Outcome.REFUSED
+    flagged = any(report.get(section) for section in WARNING_SECTIONS)
+    return Outcome.WARNINGS if flagged else Outcome.CLEAN
+
+
 class AssemblyService:
     def __init__(
         self,
@@ -171,16 +198,23 @@ class AssemblyService:
         library_root: Path,
         hero_folder: str,
         page_size: str = "LETTER",
-        fit_mode: str = "crop",
+        fit_mode: str = "CROP",
     ) -> RunRecord:
         """Start a run: validate the paths, identify the pack, and stop (FR-012a).
 
         Deliberately does not resolve. The run settles in `awaiting_pack` or `unidentified`
         and waits for a human, because SC-009's failure is a confident wrong identification
         and no amount of confidence substitutes for being asked.
+
+        Both enum names are upper-cased on the way in. They are stored as strings and read
+        back as `PageSize[...]` and `FitMode(...)`, both of which are case-sensitive, so a
+        caller that said `"crop"` would produce a run that resolves and then fails to render
+        — a long way from the mistake.
         """
         root, relative = _validate_paths(library_root, hero_folder)
-        record = self.runs.create(root, relative, page_size=page_size, fit_mode=fit_mode)
+        record = self.runs.create(
+            root, relative, page_size=str(page_size).upper(), fit_mode=str(fit_mode).upper()
+        )
 
         index = build_index(root, file_cap=self.settings.limits.library_scan_files)
         result = identify(relative, index, self.snapshots.pack_index(), self._load_pack_cards)
@@ -306,7 +340,13 @@ class AssemblyService:
             decklist=decklist,
         )
         record.report = self._report(
-            record, cards, outcome.resolutions, decklist, built=built
+            record,
+            cards,
+            outcome.resolutions,
+            decklist,
+            built=built,
+            index=index,
+            unresolved=outcome.unresolved,
         ).to_json()
         record.report["unresolved"] = [u.to_json() for u in outcome.unresolved]
         record.decklist = decklist.to_json()
@@ -342,7 +382,23 @@ class AssemblyService:
         """
         return self.snapshots.card_by_code(code)
 
-    def _report(self, record, cards, resolutions, decklist, built=None, page_count=None):
+    def _report(
+        self,
+        record,
+        cards,
+        resolutions,
+        decklist,
+        built=None,
+        page_count=None,
+        index=None,
+        unresolved=(),
+    ):
+        """The report for this run, from what this pass already holds.
+
+        `index` and the run's own store are passed through rather than rebuilt: the library
+        sections describe the pass that produced the resolutions, and re-walking the library
+        here could describe a different one (FR-026b re-reads it on every pass).
+        """
         identification = Identification.from_json(record.identification or {})
         return build_report(
             pack_code=identification.pack_code,
@@ -354,6 +410,14 @@ class AssemblyService:
             decklist=decklist,
             snapshot_revision=record.snapshot_revision,
             page_count=page_count,
+            index=index,
+            hero_folder=record.hero_folder,
+            unresolved=unresolved,
+            store=OverlayStore(record.library_root, self.layout.run_dir(record.id)),
+            # The run's own fit mode: `crop` trims the overflowing edges, so the DPI a scan
+            # actually prints at depends on it, and warning against the wrong one would
+            # report a file the document is perfectly happy with (FR-035).
+            fit_mode=FitMode(record.fit_mode),
         )
 
     # ------------------------------------------------------------------ decklist
@@ -388,12 +452,37 @@ class AssemblyService:
 
     # ------------------------------------------------------------------ rendering
 
+    def _require_complete(self, record: RunRecord) -> None:
+        """FR-017, FR-025, FR-037 — every card resolves, or the run says which did not.
+
+        Deliberately not the same check as `state is READY`, and deliberately first. The
+        state says *that* the run is not printable; this says *which cards*, which is the
+        only form of the refusal a user can act on. A message reading "409 Conflict" or
+        "run is awaiting_cards" sends them to read source code (SC-008).
+
+        Held against the record rather than against a fresh resolve, so it cannot disagree
+        with the report the user is looking at.
+        """
+        unresolved = record.report.get("unresolved") or []
+        if not unresolved:
+            return
+        named = ", ".join(
+            f"{u.get('card_name') or u['card_code']} ({u['card_code']}, {u.get('side', 'front')})"
+            for u in sorted(unresolved, key=lambda u: (u["card_code"], u.get("side", "")))
+        )
+        raise AssemblyError(
+            f"run {record.id} cannot print: {len(unresolved)} face(s) resolved to no image "
+            f"— {named}. Supply a file for each, or choose to print without it.",
+            status=409,
+        )
+
     def confirm(
         self, run_id: str, save_as: str | None = None, version: int | None = None
     ) -> RunRecord:
         """Produce the PDF. The only place one is produced (FR-026a)."""
         record = self.runs.read(run_id)
         self._check_version(record, version)
+        self._require_complete(record)
         if record.state is not RunState.READY:
             raise AssemblyError(
                 f"run {run_id} is {record.state.value}; only a ready run can be confirmed"
@@ -432,6 +521,14 @@ class AssemblyService:
             snapshot_revision=record.snapshot_revision or "",
             decklist=decklist,
         )
+        if built is None:
+            # Unreachable through the wizard — `_require_complete` above has already
+            # stopped a run with any unresolved face. Named rather than left to an
+            # `AttributeError`, because the one way to arrive here is a pack listing that
+            # holds no cards at all, and "no cards" is a sentence (FR-037).
+            raise AssemblyError(
+                f"run {record.id} resolved no printable card, so there is nothing to render"
+            )
 
         reused = False
         stored = None
@@ -460,7 +557,7 @@ class AssemblyService:
         ).to_json()
         record.report["unresolved"] = []
         record.state = RunState.COMPLETE
-        record.outcome = Outcome.CLEAN
+        record.outcome = outcome_for(record.state, record.report)
         return self.runs.write(record)
 
     def document(self, run_id: str) -> bytes:

@@ -192,18 +192,39 @@ class LibraryIndex:
         """
         return list(self._by_folder.get(folder, ()))
 
+    def files_under(self, folder: str) -> list[LibraryEntry]:
+        """Every indexed file in the named folder **and its subfolders**.
+
+        The unit FR-031's accounting is done in, and deliberately not `files_in`. The hero
+        folder is a subtree: Captain America's nemesis set lives in `Captain America
+        Nemesis/` beneath it, so an accounting that stopped at the top-level listing would
+        leave five cards' worth of files unexplained while still reporting full coverage of
+        what it chose to look at.
+
+        Ordered by ref so the report reads the same way twice (Principle V).
+        """
+        prefix = f"{folder}/"
+        return sorted(
+            (e for e in self.entries if e.folder == folder or e.folder.startswith(prefix)),
+            key=lambda e: e.ref,
+        )
+
     def decklist_candidates(self, folder: str) -> list[LibraryEntry]:
         """Files in the named folder whose stem contains `deck\\s*list` (FR-013d)."""
         return [e for e in self.files_in(folder) if e.parsed.form is Form.DECKLIST]
 
     def unparseable(self, folder: str) -> list[LibraryEntry]:
-        """Files in the named folder matching none of the three conventions (FR-032).
+        """Files under the named folder matching none of the three conventions (FR-032).
+
+        The subtree, for the same reason `files_under` is: a junk filename sitting in the
+        nemesis subfolder is inside the folder the user pointed at, and FR-032 is about
+        exactly that.
 
         A decklist scan matches none of them either and is excluded by `parse_filename`
         classifying it first — without that it would be a false fault on eight of the ten
         acceptance heroes.
         """
-        return [e for e in self.files_in(folder) if e.parsed.form is Form.UNPARSEABLE]
+        return [e for e in self.files_under(folder) if e.parsed.form is Form.UNPARSEABLE]
 
 
 def _pack_hint(folder: str) -> str | None:

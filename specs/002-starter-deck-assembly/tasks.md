@@ -236,22 +236,53 @@ printing. It succeeds when the run stops, names that card, and prints nothing.
 **Note**: shares P1 with US1 because it is the other half of the same feature — with no deck total
 to check against, the report is the *only* thing that can tell the user a pack is short.
 
-- [ ] T059 [US2] Write failing tests for the report model and every section in data-model.md § Assembly Report, in `tests/unit/test_report.py`
-- [ ] T060 [US2] Implement `src/marchamp/assembly/report.py`
-- [ ] T061 [US2] Write failing tests that a card resolving to no image stops the run by name — including a **nemesis** card and a **missing back face**, held to exactly the same bar as a missing front — and that no PDF is written, in `tests/integration/test_incomplete.py` (FR-015c, FR-015f, FR-017, FR-025, SC-006)
-- [ ] T062 [US2] Implement the completeness check in `src/marchamp/assembly/service.py`
-- [ ] T063 [US2] Write failing test that cards printed are reported against the number the pack listing records, **in cards**, with the face count alongside, and that no run reports an expected total or warns on one, in `tests/unit/test_report.py` (FR-018, FR-019, SC-006a)
-- [ ] T064 [US2] Implement the counts in `src/marchamp/assembly/report.py`, taking the face count from `src/marchamp/assembly/faces.py`
-- [ ] T065 [US2] Write failing test that 100% of files in the **hero folder** are either used or named as unused with a reason, and that files elsewhere under the library root appear only when used or in conflict, in `tests/integration/test_file_accounting.py` (FR-031, SC-004)
-- [ ] T066 [US2] Implement file accounting in `src/marchamp/assembly/report.py`, using the hero-folder entries from `src/marchamp/library/index.py`
-- [ ] T067 [US2] [P] Write failing tests for position conflicts naming both sides and resolved by neither, duplicate `.tif`/`.tiff` renditions naming which was chosen deterministically, and uninterpretable filenames within the hero folder, in `tests/unit/test_report.py` (FR-032, FR-033, FR-034)
-- [ ] T068 [US2] Implement conflict and duplicate reporting in `src/marchamp/assembly/report.py` and the deterministic rendition choice in `src/marchamp/library/index.py`
-- [ ] T069 [US2] [P] Write failing test that a scan below the print-resolution floor is a **warning, not a refusal**, in `tests/unit/test_report.py` (FR-035)
-- [ ] T070 [US2] Implement the low-resolution warning in `src/marchamp/assembly/report.py`, reading the floor from `src/marchamp/render/images.py`
-- [ ] T071 [US2] Write failing test that `outcome` is `clean`, `warnings`, or `refused` and is **null until terminal**, so awaiting confirmation or waiting on a card is distinguishable from a failure, in `tests/unit/test_assembly_service.py` (FR-036)
-- [ ] T072 [US2] Implement the outcome field in `src/marchamp/assembly/service.py` and expose it in `src/marchamp/api/schemas.py`
-- [ ] T073 [US2] Write failing test that every failure names the specific card or file at fault and never a generic error, in `tests/unit/test_report.py` (FR-037, SC-008)
-- [ ] T074 [US2] Render the report in `src/marchamp/web/app.js`, grouped so the user can sort cut cards without recognising them by sight (FR-015e)
+- [X] T059 [US2] Write failing tests for the report model and every section in data-model.md § Assembly Report, in `tests/unit/test_report.py`
+- [X] T060 [US2] Implement `src/marchamp/assembly/report.py`
+- [X] T061 [US2] Write failing tests that a card resolving to no image stops the run by name — including a **nemesis** card and a **missing back face**, held to exactly the same bar as a missing front — and that no PDF is written, in `tests/integration/test_incomplete.py` (FR-015c, FR-015f, FR-017, FR-025, SC-006)
+- [X] T062 [US2] Implement the completeness check in `src/marchamp/assembly/service.py`
+- [X] T063 [US2] Write failing test that cards printed are reported against the number the pack listing records, **in cards**, with the face count alongside, and that no run reports an expected total or warns on one, in `tests/unit/test_report.py` (FR-018, FR-019, SC-006a)
+- [X] T064 [US2] Implement the counts in `src/marchamp/assembly/report.py`, taking the face count from `src/marchamp/assembly/faces.py`
+- [X] T065 [US2] Write failing test that 100% of files in the **hero folder** are either used or named as unused with a reason, and that files elsewhere under the library root appear only when used or in conflict, in `tests/integration/test_file_accounting.py` (FR-031, SC-004)
+- [X] T066 [US2] Implement file accounting in `src/marchamp/assembly/report.py`, using the hero-folder entries from `src/marchamp/library/index.py`
+- [X] T067 [US2] [P] Write failing tests for position conflicts naming both sides and resolved by neither, duplicate `.tif`/`.tiff` renditions naming which was chosen deterministically, and uninterpretable filenames within the hero folder, in `tests/unit/test_report.py` (FR-032, FR-033, FR-034)
+- [X] T068 [US2] Implement conflict and duplicate reporting in `src/marchamp/assembly/report.py` and the deterministic rendition choice in `src/marchamp/library/index.py`
+- [X] T069 [US2] [P] Write failing test that a scan below the print-resolution floor is a **warning, not a refusal**, in `tests/unit/test_report.py` (FR-035)
+- [X] T070 [US2] Implement the low-resolution warning in `src/marchamp/assembly/report.py`, reading the floor from `src/marchamp/render/images.py`
+- [X] T071 [US2] Write failing test that `outcome` is `clean`, `warnings`, or `refused` and is **null until terminal**, so awaiting confirmation or waiting on a card is distinguishable from a failure, in `tests/unit/test_assembly_service.py` (FR-036)
+- [X] T072 [US2] Implement the outcome field in `src/marchamp/assembly/service.py` and expose it in `src/marchamp/api/schemas.py`
+- [X] T073 [US2] Write failing test that every failure names the specific card or file at fault and never a generic error, in `tests/unit/test_report.py` (FR-037, SC-008)
+- [X] T074 [US2] Render the report in `src/marchamp/web/app.js`, grouped so the user can sort cut cards without recognising them by sight (FR-015e)
+
+> **Done in the Phase 4 PR.** Four things the tasks did not anticipate, each a live defect
+> rather than a detail:
+>
+> - **T063's counts were already correct.** Phase 3's `build_report` implemented FR-018 in
+>   full, so T063's tests passed on arrival rather than failing first. They are kept as the
+>   regression guard the requirement never had. T064 therefore reduced to deleting
+>   `unexpected_face_count`, an unused helper whose name invited exactly the expected-total
+>   comparison FR-019 forbids.
+> - **A run that resolved nothing crashed with a pydantic error.** `build_catalog` builds a
+>   `HeroDeck`, which requires at least one entry, and a folder holding only the *back* of
+>   the one card it holds produces none. The 500 replaced a report naming every missing card
+>   with a validation error naming none of them, which is the opposite of FR-037 and SC-008.
+>   `build_catalog` now returns `None` for that case and the service names it.
+> - **`AssemblyService.create` defaulted `fit_mode` to `"crop"`,** lowercase, while
+>   `FitMode` is upper-case and `confirm` does `FitMode(record.fit_mode)`. Only the API
+>   route passed a valid value, so any direct caller produced a run that resolved and then
+>   failed to render. Both enum names are now upper-cased on the way in.
+> - **File accounting needed the hero folder's subtree.** `files_in` is folder-exact, and
+>   Captain America's nemesis set lives in `Captain America Nemesis/` — accounting that
+>   stopped at the top level would have reported full coverage of what it chose to look at
+>   while leaving five cards' worth of files unexplained. `LibraryIndex.files_under` was
+>   added beside it, and `unparseable` moved onto it for the same reason (FR-032).
+>
+> **Two judgment calls worth reviewing.** An uninterpretable file appears in *both*
+> `unused_files` and `uninterpretable_files`, because FR-031 wants every unused file named
+> with a reason and FR-032 wants uninterpretable names called out specifically; one list
+> would have to be read as implying the other. And `outcome` is `warnings` for omissions,
+> low-resolution scans, and conflicts, but **not** for substitutions — `cap` sources eight
+> physical cards from the Core Set by design, so counting reprints would mark every real run
+> as warned and leave the field meaning nothing.
 
 **Checkpoint**: no pack is ever quietly short, and the report says which card and where it looked.
 

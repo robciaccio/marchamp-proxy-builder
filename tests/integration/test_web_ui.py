@@ -189,3 +189,47 @@ def test_the_assembly_client_only_uses_the_public_api(script):
     paths = set(re.findall(r"`(/api/assemblies[^`]*)`", script))
     for path in paths:
         assert path.startswith("/api/assemblies")
+
+
+# ------------------------------------------------------- T074: the report, US2's half
+
+
+def test_the_cut_cards_can_be_sorted_by_group_without_recognising_them(markup, script):
+    """FR-015e, SC-002b — the layout deliberately does not separate the groups.
+
+    A printed page routinely carries the last player cards and the first nemesis cards, so
+    a user who does not know Marvel Champions by sight has only this list to sort by. If it
+    is not grouped, the pack is a shuffled stack of 59 cards and a card name they cannot
+    place.
+    """
+    assert 'id="groups"' in markup
+    assert "Sorting the cut cards" in markup
+    assert 'id="groups-list"' in markup
+    for group in ("player", "identity", "nemesis", "decklist"):
+        assert f'"{group}"' in script
+
+
+def test_cards_printed_without_are_named_where_the_user_will_see_them(markup, script):
+    """FR-030b, SC-006e — an incomplete deck is never indistinguishable from a complete one."""
+    assert 'id="omitted-list"' in markup
+    assert "report.omitted" in script
+
+
+def test_the_library_problems_the_user_can_fix_are_shown(markup, script):
+    """FR-031 - FR-035 — a scan sitting ignored in the folder they pointed at is named."""
+    for element in ("unused-list", "conflicts-list", "warnings-list"):
+        assert f'id="{element}"' in markup
+    assert "report.unused_files" in script
+    assert "report.conflicts" in script
+    assert "report.low_resolution" in script
+
+
+def test_a_low_resolution_scan_is_shown_as_a_warning_and_not_as_a_refusal(markup):
+    """FR-035 — the user decides whether a soft card is acceptable, not the tool."""
+    assert "will still print" in markup
+
+
+def test_the_outcome_is_shown_once_the_run_is_finished(markup, script):
+    """FR-036 — and only then: waiting on a card is not an outcome (and not a failure)."""
+    assert 'id="assembly-outcome"' in markup
+    assert "run.outcome" in script

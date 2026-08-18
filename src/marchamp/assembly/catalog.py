@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 
 from marchamp.assembly.decklist import DecklistState
 from marchamp.assembly.faces import DECKLIST_CODE, GROUP_ORDER, Group, Side, classify
-from marchamp.assembly.resolve import Resolution
+from marchamp.assembly.resolve import Provenance, Resolution
 from marchamp.catalog.models import Card, CardEntry, Catalog, HeroDeck, Printing
 from marchamp.upstream.models import PackCard
 
@@ -70,12 +70,18 @@ def build_catalog(
     resolutions: Sequence[Resolution],
     snapshot_revision: str,
     decklist: DecklistState | None,
-) -> BuiltCatalog:
+) -> BuiltCatalog | None:
     """Turn a pack and its resolutions into a one-deck catalog 001 can render.
 
     Only cards that actually resolved reach the output. A card with no image must stop the
     run (FR-017); letting it through as a blank would print a pack that is quietly short,
     which is the failure US2 exists to prevent.
+
+    **`None` when nothing resolved**, which is a real case and not a defensive branch: a
+    library holding only the *back* of the one card it holds at all produces no printable
+    entry, and 001's `HeroDeck` requires at least one. Raising here would replace a report
+    naming every missing card with a validation error naming none of them — the opposite of
+    FR-037 and SC-008.
     """
     by_card = _group_resolutions(resolutions)
     record_of = {c.code: c for c in cards}
@@ -136,6 +142,9 @@ def build_catalog(
         )
         group_of[DECKLIST_CODE] = Group.DECKLIST
 
+    if not entries:
+        return None
+
     deck = HeroDeck(
         id=pack_code,
         name=pack_name,
@@ -154,8 +163,17 @@ def build_catalog(
 def _group_resolutions(
     resolutions: Sequence[Resolution],
 ) -> dict[str, dict[Side, Resolution]]:
+    """By card, then by side — skipping cards the user chose to print without (FR-030).
+
+    An omitted resolution carries no ref, so letting one through would add a card whose
+    image is the empty string: a phantom entry that counts toward `cards_printed` and fails
+    at render time. FR-030b requires the opposite — the omission is named in the report and
+    absent from the document.
+    """
     grouped: dict[str, dict[Side, Resolution]] = {}
     for resolution in resolutions:
+        if resolution.provenance is Provenance.OMITTED:
+            continue
         grouped.setdefault(resolution.card_code, {})[resolution.side] = resolution
     return grouped
 
