@@ -162,9 +162,15 @@ class SnapshotStore:
         When a prefix is still unknown, one request asks which pack that single card is in
         (`fetch_card_pack_code`) and a second fetches that pack. This is the one place the
         feature spends a request it could not predict, and it stays bounded because the
-        answer is then cached with the snapshot: the request count per assembled pack
-        follows the number of **distinct packs referenced** — measured at two for `cap` —
-        never the card count (FR-040, SC-006d).
+        answer is then remembered: the request count per assembled pack follows the number of
+        **distinct packs referenced** and codes asked about, never the card count. Measured
+        at seven for `cap` against a 34-record listing (T113, 2026-08-18); the breakdown is in
+        `quickstart.md` V11 (FR-040, SC-006d).
+
+        Both outcomes are remembered, including "upstream does not know this code" — see
+        `_remember_pack_of`. Without that, a reprint link into a pack MarvelCDB does not serve
+        costs one request per run for the life of the installation, and FR-039's "no request
+        at all" holds for each pack while being false of the run.
         """
         prefix = code[:2]
         for pack_code in self._prefix_map().get(prefix, ()):
@@ -176,10 +182,16 @@ class SnapshotStore:
         # Emphatically *not* a sweep of the 61 packs looking for a matching prefix: that
         # costs 61 requests at the client's one-per-second floor, for an answer one request
         # already has.
-        try:
-            pack_code = self.client.fetch_card_pack_code(code)
-        except UpstreamError:
-            return None
+        pack_code, remembered = self._remembered_pack_of(code)
+        if not remembered:
+            try:
+                pack_code = self.client.fetch_card_pack_code(code)
+            except UpstreamError:
+                # Deliberately not remembered. A failed request says nothing about the card,
+                # and writing "unplaceable" here would turn one flaky network moment into a
+                # permanent gap in every future run.
+                return None
+            self._remember_pack_of(code, pack_code)
         if not pack_code:
             return None
         try:
@@ -187,6 +199,44 @@ class SnapshotStore:
         except (SnapshotUnavailable, SnapshotInvalid):
             return None
         return next((c for c in snapshot.cards if c.code == code), None)
+
+    # ------------------------------------------------- code -> pack, asked once (FR-039)
+
+    def _card_pack_map(self) -> dict[str, Any]:
+        payload = self._read_json(self.layout.card_pack_map()) or {}
+        entries = payload.get("codes")
+        return entries if isinstance(entries, dict) else {}
+
+    def _remembered_pack_of(self, code: str) -> tuple[str | None, bool]:
+        """The stored answer for one card code, and whether there is one.
+
+        Two values rather than one, because `None` is itself an answer here: upstream not
+        knowing which pack a card belongs to is a fact worth keeping, and the tuple is what
+        keeps "no pack" distinguishable from "not asked yet".
+        """
+        entry = self._card_pack_map().get(code)
+        if not isinstance(entry, dict) or self._expired(entry.get("fresh_until")):
+            return None, False
+        pack_code = entry.get("pack_code")
+        return (pack_code if isinstance(pack_code, str) else None), True
+
+    def _remember_pack_of(self, code: str, pack_code: str | None) -> None:
+        """Write the answer back under the same freshness window as a snapshot.
+
+        Read-modify-write, so two runs learning different codes at the same instant can lose
+        one of the two entries. The cost of that is one extra request later, which is why it
+        is not worth a lock file — and the write itself is atomic, so the file cannot be
+        left half-written whichever way the race goes.
+        """
+        entries = self._card_pack_map()
+        entries[code] = {
+            "pack_code": pack_code,
+            "fresh_until": self._fresh_until(self.client.settings.default_max_age_s),
+        }
+        atomic_write_json(
+            self.layout.card_pack_map(),
+            {"schema_version": SCHEMA_VERSION, "codes": entries},
+        )
 
     def _known_pack_codes(self) -> set[str]:
         """Packs whose card listing is on disk.

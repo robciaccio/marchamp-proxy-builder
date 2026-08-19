@@ -434,3 +434,42 @@ def multipage_catalog_path(tmp_path: Path) -> Path:
     p = tmp_path / "multipage-catalog.json"
     p.write_text(json.dumps(data, indent=2))
     return p
+
+
+@pytest.fixture
+def patched_upstream(upstream_transport, monkeypatch) -> httpx.MockTransport:
+    """Point every `MarvelCdbClient` the app builds at the fixture transport.
+
+    The wiring is a monkeypatch on `__init__` rather than a settings value on purpose: the
+    application constructs its own client inside `create_app`, and a seam wide enough for a
+    test to inject a transport would also be wide enough for a caller to inject a different
+    *host* — which is the one thing the egress clause forbids being configurable.
+
+    Four Phase 8 test modules want this and the four already-merged ones each carry their
+    own copy; new modules use this one rather than adding a fifth.
+    """
+    from marchamp.upstream.client import MarvelCdbClient
+
+    original = MarvelCdbClient.__init__
+
+    def with_transport(self, settings, transport=None):
+        original(self, settings, transport=transport or upstream_transport)
+
+    monkeypatch.setattr(MarvelCdbClient, "__init__", with_transport)
+    return upstream_transport
+
+
+@pytest.fixture
+def writable_library(tmp_path: Path, scan_library: Path) -> Path:
+    """A per-test copy of the derived fixture library that a test may modify.
+
+    Hardlinked rather than copied — 678 files and 21 MB per test is a cost worth avoiding,
+    and a test that removes a link cannot touch the original. `scan_library` itself stays
+    read-only because FR-001's whole point is that this feature never writes to a library.
+    """
+    import os
+    import shutil
+
+    root = tmp_path / "library"
+    shutil.copytree(scan_library, root, copy_function=os.link)
+    return root

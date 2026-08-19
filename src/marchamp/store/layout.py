@@ -139,3 +139,15 @@ class StateLayout:
     def pack_index(self) -> Path:
         """The reduced `GET /api/public/packs/` listing. One file, not per-pack."""
         return self.snapshots_dir() / "packs.json"
+
+    def card_pack_map(self) -> Path:
+        """Answers to `GET /api/public/card/{code}.json`, kept so it is asked once.
+
+        Research R4's prefix->pack map is learned for free from the snapshots on disk, but
+        only for prefixes some held pack uses. A reprint link into a pack nothing on disk
+        covers costs one request to place, and a link upstream cannot place at all costs
+        that request **on every run** unless the *absence* of an answer is remembered too.
+        This file remembers both, which is what makes FR-039's "no request at all" hold for
+        a second run rather than nearly hold.
+        """
+        return self.snapshots_dir() / "card-packs.json"

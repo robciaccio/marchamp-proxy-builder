@@ -332,3 +332,128 @@ def test_an_unreachable_upstream_with_no_index_stored_refuses(snapshots, upstrea
     upstream.fail = True
     with pytest.raises((SnapshotUnavailable, UpstreamUnavailable)):
         snapshots.pack_index()
+
+
+# --------------------------------- T113: code -> pack, asked once (FR-039, SC-006d, R4)
+
+
+class CardLookupUpstream:
+    """Answers `card/{code}.json` for one known code and 404s for everything else.
+
+    Deliberately narrow. What is under test is not the reprint cascade but the memo in front
+    of it, and the interesting case is the code upstream *cannot* place — that is the one a
+    naive implementation re-asks on every run for the life of the installation.
+    """
+
+    KNOWN = "17031"
+    UNKNOWN = "30018"
+
+    def __init__(self) -> None:
+        self.requests: list[str] = []
+        self.fail = False
+
+    def transport(self) -> httpx.MockTransport:
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            self.requests.append(path)
+            if self.fail:
+                raise httpx.ConnectError("the network is down")
+            headers = {"cache-control": "max-age=600, public"}
+            if path == "/api/public/packs/":
+                return httpx.Response(
+                    200,
+                    json=json.loads((SNAPSHOT_FIXTURES / "packs.json").read_text()),
+                    headers=headers,
+                )
+            if path == f"/api/public/card/{self.KNOWN}.json":
+                return httpx.Response(
+                    200, json={"code": self.KNOWN, "pack_code": "stld"}, headers=headers
+                )
+            if path.startswith("/api/public/card/"):
+                return httpx.Response(404, json={"error": "no such card"}, headers=headers)
+            pack = path.removeprefix("/api/public/cards/").removesuffix(".json")
+            fixture = SNAPSHOT_FIXTURES / f"{pack}.json"
+            if not fixture.is_file():
+                return httpx.Response(404, json={"error": "no such pack"}, headers=headers)
+            return httpx.Response(200, json=json.loads(fixture.read_text()), headers=headers)
+
+        return httpx.MockTransport(handler)
+
+    def lookups(self) -> list[str]:
+        return [p for p in self.requests if p.startswith("/api/public/card/")]
+
+
+@pytest.fixture
+def lookup_upstream() -> CardLookupUpstream:
+    return CardLookupUpstream()
+
+
+@pytest.fixture
+def lookup_snapshots(tmp_path, lookup_upstream, clock) -> SnapshotStore:
+    layout = StateLayout(tmp_path / "state")
+    layout.ensure()
+    client = MarvelCdbClient(
+        transport=lookup_upstream.transport(),
+        resolve=lambda host: ["104.21.0.1"],
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
+    )
+    return SnapshotStore(layout=layout, client=client, utcnow=clock.utcnow)
+
+
+def test_a_code_upstream_cannot_place_is_asked_about_once(lookup_snapshots, lookup_upstream):
+    """FR-039, SC-006d — a question with no answer is still a request.
+
+    Without this, a `duplicated_by` link into a pack MarvelCDB does not serve costs one
+    request per run, forever, and the "fresh means no request at all" guarantee holds for
+    every pack but not for the run as a whole.
+    """
+    assert lookup_snapshots.card_by_code(CardLookupUpstream.UNKNOWN) is None
+    assert lookup_upstream.lookups() == [f"/api/public/card/{CardLookupUpstream.UNKNOWN}.json"]
+
+    assert lookup_snapshots.card_by_code(CardLookupUpstream.UNKNOWN) is None
+    assert len(lookup_upstream.lookups()) == 1, "the second run re-asked a settled question"
+
+
+def test_the_memo_expires_with_the_same_freshness_window_as_a_snapshot(
+    lookup_snapshots, lookup_upstream, clock
+):
+    """Remembered, not decided forever. MarvelCDB adds packs, and a card that could not be
+    placed in June may be placeable in July."""
+    lookup_snapshots.card_by_code(CardLookupUpstream.UNKNOWN)
+    clock.advance(seconds=601)
+    lookup_snapshots.card_by_code(CardLookupUpstream.UNKNOWN)
+    assert len(lookup_upstream.lookups()) == 2
+
+
+def test_a_failure_to_reach_upstream_is_not_remembered_as_an_answer(
+    lookup_snapshots, lookup_upstream
+):
+    """The distinction the memo turns on, and the reason `UpstreamNotFound` exists.
+
+    A 404 is upstream saying "no such card". A timeout says nothing about the card at all,
+    and storing it as "unplaceable" would turn one bad network moment into a card that never
+    resolves again until the window rolls over.
+    """
+    lookup_upstream.fail = True
+    assert lookup_snapshots.card_by_code(CardLookupUpstream.UNKNOWN) is None
+    lookup_upstream.fail = False
+
+    assert lookup_snapshots.card_by_code(CardLookupUpstream.UNKNOWN) is None
+    assert len(lookup_upstream.lookups()) > 1, "a network failure was cached as an answer"
+
+
+def test_a_placeable_code_costs_one_lookup_and_then_the_pack(lookup_snapshots, lookup_upstream):
+    """The positive path, and the bound FR-040 actually cares about.
+
+    One `card/{code}` question, one `cards/{pack}` fetch, and the pack teaches its own prefix
+    — so the *next* code from that pack costs nothing at all.
+    """
+    card = lookup_snapshots.card_by_code(CardLookupUpstream.KNOWN)
+    assert card is not None and card.code == CardLookupUpstream.KNOWN
+    assert lookup_upstream.lookups() == [f"/api/public/card/{CardLookupUpstream.KNOWN}.json"]
+    assert "/api/public/cards/stld.json" in lookup_upstream.requests
+
+    sibling = next(c for c in lookup_snapshots.get("stld").cards if c.code != card.code)
+    assert lookup_snapshots.card_by_code(sibling.code) is not None
+    assert len(lookup_upstream.lookups()) == 1, "the prefix map should have answered this one"

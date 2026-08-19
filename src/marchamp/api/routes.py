@@ -582,6 +582,7 @@ def register_routes(app: FastAPI) -> None:
                 )
                 for u in unresolved
             ],
+            customized=bool(record.customized),
             reused=record.reused,
             pdf_id=(record.pdf or {}).get("id"),
             library_problem=library_problem(record),

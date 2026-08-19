@@ -380,6 +380,24 @@
             </div>
           </section>
 
+          <!-- FR-026i. Shown only for a customized run: an untouched one produces the
+               pack's standard PDF, which belongs to the pack rather than to this attempt and
+               is deliberately not the user's to name. -->
+          <label class="field" id="assembly-save-as-field" hidden>
+            <span class="field__label">Name this version</span>
+            <input
+              type="text"
+              id="assembly-save-as"
+              maxlength="120"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Captain America with my rescanned Zemo"
+            />
+            <span class="field__hint">
+              You changed something, so this PDF is yours rather than the pack's. Give it a
+              name you will recognise in the list of saved PDFs.
+            </span>
+          </label>
           <div class="actions">
             <button type="button" class="btn btn--primary" id="assembly-confirm" hidden>
               Make the PDF

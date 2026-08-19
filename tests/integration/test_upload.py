@@ -406,3 +406,60 @@ def test_answering_both_gaps_completes_the_run(client, writable_library):
     assert run["state"] == "ready"
     manual = {r["card_code"] for r in run["report"]["resolutions"] if r["provenance"] == "manual"}
     assert {BARON_ZEMO, HYDRA_SOLDIER} <= manual
+
+
+# ------------------------------------------- T114: the same rule, applied to the log record
+
+
+def test_the_runs_log_record_carries_no_path_from_outside_the_library(
+    client, writable_library, outside_file, capsys
+):
+    """FR-009, FR-030b, Principle V — the log line, not just the run record.
+
+    `test_only_the_uploaded_files_own_name_is_recorded` covers what is written to
+    `run.json`, which stays on the user's own machine. This covers the line written to
+    stdout, which is the one that gets pasted into a bug report — a different destination
+    with a stricter rule, because there even the filename the user recognises has no
+    business appearing next to a directory they did not choose to share.
+
+    The provenance the same line carries is asserted alongside. A record that dropped the
+    paths by dropping the resolutions would pass the first half and be useless.
+    """
+    (writable_library / BARON_ZEMO_SCAN).unlink()
+    run = resolve(client, writable_library)
+    answered = answer_remaining(
+        client,
+        upload(client, run, BARON_ZEMO, outside_file.name, outside_file.read_bytes()).json(),
+    )
+
+    capsys.readouterr()
+    confirmed = client.post(
+        f"/api/assemblies/{answered['id']}/confirmation",
+        json={"save_as": "cap with a rescanned Zemo"},
+        headers={"If-Match": str(answered["version"])},
+    )
+    assert confirmed.status_code == 202, confirmed.text
+
+    line = next(
+        line
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith("{") and '"run_id"' in line
+    )
+    for leak in (str(outside_file), str(outside_file.parent), "somewhere-private"):
+        assert leak not in line, f"the log record leaked {leak!r}"
+    assert str(writable_library) not in line
+    assert outside_file.name not in line, (
+        "a filename from outside the library is exactly what FR-009 keeps out of the log; "
+        "the run record keeps it, the log line must not"
+    )
+
+    record = json.loads(line)
+    assert record["pack_code"] == "cap"
+    assert record["pack_source"] == "identified"
+    assert BARON_ZEMO in record["manual_card_codes"]
+    assert {
+        "card_code": BARON_ZEMO,
+        "side": "front",
+        "provenance": "manual",
+        "source": "upload",
+    } in record["resolutions"]

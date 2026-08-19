@@ -445,17 +445,35 @@ chose to keep.
 
 ## Phase 8: Polish & Cross-Cutting Concerns
 
-- [ ] T111 Write the determinism test in `tests/integration/test_determinism.py` — assemble twice from the same library and snapshot **with reuse disabled** and compare bytes. Serving a stored PDF twice proves nothing, and FR-045 requires this to be verifiable independently of FR-026h (SC-007)
-- [ ] T112 [P] Write the egress hardening test in `tests/integration/test_egress.py` — no request to any host other than `marvelcdb.com`, **every request path one of the three allowlisted JSON endpoints**, no response body consumed as image bytes, and `imagesrc` absent from every captured snapshot; plus no redirect followed, private and link-local ranges refused after resolution, and the `User-Agent` naming the application. The host allowlist alone cannot discharge FR-002 — MarvelCDB serves card art from the same host (FR-002, FR-003, FR-041, FR-038a, constitution egress gate)
-- [ ] T113 [P] Write the request-count test in `tests/integration/test_snapshots.py` — assembling `cap` issues **three** requests (the pack index, `cards/cap`, and `cards/core` for its seven reprint links) and not 34, so the count follows the number of *distinct packs referenced* and never the card count; and a second run against a snapshot still inside `max-age` issues **zero** (FR-040, SC-006d, research R4)
-- [ ] T114 [P] Extend `src/marchamp/observability/logging.py` with the assembly run record — pack, identified or user-selected, snapshot revision, resolutions with provenance, omissions, outcome — and test that it carries no path from outside the named library root (FR-009, FR-030b, Principle V)
-- [ ] T115 Write the acceptance test for all ten heroes over the fixture library in `tests/integration/test_acceptance_heroes.py`, asserting that Hulk and Phoenix report the FR-013c gap with the Hall of Heroes address and still print, while the other eight print a decklist card — a run over Hulk that reported a decklist card would be silently wrong (SC-002, SC-002a, SC-003, SC-003c, SC-006j)
-- [ ] T116 Write `specs/002-starter-deck-assembly/physical-uat.md` and the `physical`-marked test in `tests/integration/test_physical_pack.py` covering quickstart V12 — print, cut, sort from the report alone, build the starter deck from the printed decklist card, play it. Record the finished PDF's byte size and the wall-clock time from naming the folder to holding the PDF, against SC-001's five minutes of user time — the one criterion no automated test can carry (SC-001, SC-002a, SC-002b)
-- [ ] T120 [P] Write the library-immutability test in `tests/integration/test_library_readonly.py` — capture the library root's file set, sizes, and mtimes, drive a full run through it (identify, confirm, upload for one card, omit another, render, then delete the run), and assert every one of them unchanged. The library is a synced Drive folder, which is what makes this the highest-consequence guarantee in the feature (FR-001, FR-008)
-- [ ] T121 Write the `physical`-marked real-library acceptance test in `tests/integration/test_real_library.py` — the ten heroes against the mounted Drive folder, local only, never in CI. This is SC-002/SC-003's acceptance evidence; T115's fixture run is the regression guard, not a substitute (SC-003b)
-- [ ] T117 [P] Update `CLAUDE.md` — feature 002's state, the new packages, `MARCHAMP_STATE_DIR`, that `MARCHAMP_IMAGE_DIR`/`MARCHAMP_CATALOG` are not required for the 002 paths, and that `SC-007` names 001's render target and 002's determinism criterion, which are different things
-- [ ] T118 Run `uv run ruff check . && uv run ruff format --check .` and `uv run pytest -m "not physical"` — both clean
-- [ ] T119 Write the security review notes for the PR body. The constitution requires **written** notes, not a checked box, when a change touches an outbound network call, image or PDF parsing, the asset adapter, the content store, or dependency additions — this change touches all five
+- [X] T111 Write the determinism test in `tests/integration/test_determinism.py` — assemble twice from the same library and snapshot **with reuse disabled** and compare bytes. Serving a stored PDF twice proves nothing, and FR-045 requires this to be verifiable independently of FR-026h (SC-007)
+- [X] T112 [P] Write the egress hardening test in `tests/integration/test_egress.py` — no request to any host other than `marvelcdb.com`, **every request path one of the three allowlisted JSON endpoints**, no response body consumed as image bytes, and `imagesrc` absent from every captured snapshot; plus no redirect followed, private and link-local ranges refused after resolution, and the `User-Agent` naming the application. The host allowlist alone cannot discharge FR-002 — MarvelCDB serves card art from the same host (FR-002, FR-003, FR-041, FR-038a, constitution egress gate)
+- [X] T113 [P] Write the request-count test in `tests/integration/test_snapshots.py` — assembling `cap` issues **three** requests (the pack index, `cards/cap`, and `cards/core` for its seven reprint links) and not 34, so the count follows the number of *distinct packs referenced* and never the card count; and a second run against a snapshot still inside `max-age` issues **zero** (FR-040, SC-006d, research R4)
+- [X] T114 [P] Extend `src/marchamp/observability/logging.py` with the assembly run record — pack, identified or user-selected, snapshot revision, resolutions with provenance, omissions, outcome — and test that it carries no path from outside the named library root (FR-009, FR-030b, Principle V)
+- [X] T115 Write the acceptance test for all ten heroes over the fixture library in `tests/integration/test_acceptance_heroes.py`, asserting that Hulk and Phoenix report the FR-013c gap with the Hall of Heroes address and still print, while the other eight print a decklist card — a run over Hulk that reported a decklist card would be silently wrong (SC-002, SC-002a, SC-003, SC-003c, SC-006j)
+- [X] T116 Write `specs/002-starter-deck-assembly/physical-uat.md` and the `physical`-marked test in `tests/integration/test_physical_pack.py` covering quickstart V12 — print, cut, sort from the report alone, build the starter deck from the printed decklist card, play it. Record the finished PDF's byte size and the wall-clock time from naming the folder to holding the PDF, against SC-001's five minutes of user time — the one criterion no automated test can carry (SC-001, SC-002a, SC-002b)
+- [X] T120 [P] Write the library-immutability test in `tests/integration/test_library_readonly.py` — capture the library root's file set, sizes, and mtimes, drive a full run through it (identify, confirm, upload for one card, omit another, render, then delete the run), and assert every one of them unchanged. The library is a synced Drive folder, which is what makes this the highest-consequence guarantee in the feature (FR-001, FR-008)
+- [X] T121 Write the `physical`-marked real-library acceptance test in `tests/integration/test_real_library.py` — the ten heroes against the mounted Drive folder, local only, never in CI. This is SC-002/SC-003's acceptance evidence; T115's fixture run is the regression guard, not a substitute (SC-003b)
+- [X] T117 [P] Update `CLAUDE.md` — feature 002's state, the new packages, `MARCHAMP_STATE_DIR`, that `MARCHAMP_IMAGE_DIR`/`MARCHAMP_CATALOG` are not required for the 002 paths, and that `SC-007` names 001's render target and 002's determinism criterion, which are different things
+- [X] T118 Run `uv run ruff check . && uv run ruff format --check .` and `uv run pytest -m "not physical"` — both clean. Lint clean across 152 files; suite green at **1000 passed, 1 skipped, 0 failed** (2026-08-18)
+
+### Found while doing Phase 8, and fixed here
+
+Neither was on the list. Both are recorded because a defect fixed without a task is a change
+nobody can trace back to a reason.
+
+- [X] T122 A card code MarvelCDB cannot place cost one request **per run, forever** — the
+  answer was never remembered because `fetch_card_pack_code` could not tell "no such card"
+  from "could not connect", both arriving as `UpstreamUnavailable`. T113's zero-request
+  assertion failed on first write. Fixed with `UpstreamNotFound` for a 404 specifically and a
+  `snapshots/card-packs.json` memo holding both positive and negative answers under the
+  snapshot freshness window. A failure to connect is still not remembered (FR-039, SC-006d)
+- [X] T123 A customized run could not be printed from the wizard at all: `confirmAssembly()`
+  posted `{}` unconditionally, the API requires `save_as` for a customized run and refuses it
+  otherwise, and the run response carried no field a client could use to tell which case it
+  was in — so US4's whole path ended in a 400 on the Build button. Added `customized` to the
+  run response (schema, route, `openapi.yaml`), and a "Name this version" field the wizard
+  shows exactly when the name is required (FR-026i)
+- [X] T119 Write the security review notes for the PR body. The constitution requires **written** notes, not a checked box, when a change touches an outbound network call, image or PDF parsing, the asset adapter, the content store, or dependency additions — this change touches all five
 
 ---
 
