@@ -52,7 +52,8 @@ not enable 002's paths and unsetting them does not disable them — a test that 
 for a 002 test has stopped proving SC-003a.
 
 ```bash
-# Feature 001 only. `serve` refuses to start without both and says which is missing.
+# Feature 001 only. `serve` **starts without these** — 002 removed the refusal (FR-005,
+# SC-003a) and reports them as "the prebuilt deck list is not configured yet" instead.
 export MARCHAMP_IMAGE_DIR="$PWD/card_directory"
 export MARCHAMP_CATALOG="$PWD/card_directory/catalog.json"
 
