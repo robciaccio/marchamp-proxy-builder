@@ -96,6 +96,16 @@ class UpstreamUnavailable(UpstreamError):
     """
 
 
+class UpstreamNotFound(UpstreamUnavailable):
+    """Upstream answered, and the answer is that there is no such thing.
+
+    A subclass, so every caller that only cares about "this did not work" is unaffected. It
+    exists for the one caller that cares about the difference: a 404 is a *definitive*
+    answer worth remembering, where a timeout says nothing about the card and remembering it
+    would turn one bad network moment into a permanent gap (FR-039, SC-006d).
+    """
+
+
 @dataclass
 class UpstreamResponse:
     status: int
@@ -214,8 +224,11 @@ class MarvelCdbClient:
                 f"card code {card_code!r} is not of the form {CARD_CODE_RE.pattern}, so no "
                 "URL is built from it"
             )
-        response = self._get(f"/api/public/card/{card_code}.json")
-        if response.status_code != 200:
+        try:
+            response = self._get(f"/api/public/card/{card_code}.json")
+        except UpstreamNotFound:
+            # Upstream knows nothing about this code. An answer, not a failure — the caller
+            # stores it so the question is asked once rather than once per run.
             return None
         try:
             payload = response.json()
@@ -306,6 +319,8 @@ class MarvelCdbClient:
                     self._sleep(self._backoff(attempts, response.headers.get("retry-after")))
                     attempts += 1
                     continue
+                if response.status_code == 404:
+                    raise UpstreamNotFound(f"{self.settings.host}{path} answered 404")
                 if response.status_code >= 400:
                     raise UpstreamUnavailable(
                         f"{self.settings.host}{path} answered {response.status_code}"
@@ -315,8 +330,9 @@ class MarvelCdbClient:
     def _pace(self) -> None:
         """At least `min_request_interval_s` between requests (FR-043).
 
-        Self-imposed. An assembly makes two or three requests, so the floor costs nothing
-        and makes "conservative" a property a test can check rather than a claim.
+        Self-imposed. An assembly makes a handful of requests — seven for `cap`, and none at
+        all for a second run inside `max-age` — so the floor costs nothing and makes
+        "conservative" a property a test can check rather than a claim.
         """
         now = self._monotonic()
         if self._last_request_at is not None:

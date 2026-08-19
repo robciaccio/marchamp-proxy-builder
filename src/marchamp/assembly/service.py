@@ -909,6 +909,7 @@ class AssemblyService:
             AssemblyRecord(
                 run_id=record.id,
                 pack_code=(record.report or {}).get("pack_code") or "",
+                pack_source=(record.report or {}).get("pack_source") or "",
                 snapshot_revision=record.snapshot_revision or "",
                 outcome=record.outcome.value if record.outcome else "",
                 cards_printed=(record.report or {}).get("cards_printed", 0),
@@ -916,6 +917,19 @@ class AssemblyService:
                 page_count=(record.report or {}).get("page_count"),
                 reused=bool(record.reused),
                 customized=bool(record.customized),
+                # Codes, sides and enum values. Not `ref`, which is a path inside the
+                # library, and not `original_filename`, which is a name from wherever the
+                # user picked the file — the two fields FR-009 is about.
+                resolutions=[
+                    {
+                        "card_code": r.card_code,
+                        "side": r.side.value,
+                        "provenance": r.provenance.value,
+                        "source": r.source.value,
+                    }
+                    for r in resolutions
+                    if r.provenance is not Provenance.OMITTED
+                ],
                 omitted_card_codes=sorted(
                     {r.card_code for r in resolutions if r.provenance is Provenance.OMITTED}
                 ),

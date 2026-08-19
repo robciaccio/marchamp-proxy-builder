@@ -186,15 +186,25 @@ Two findings that shape the design:
 - **Reprints do not all point at the Core Set.** Wasp's `13020` duplicates `12020` (Ant-Man's
   pack) and `13025` duplicates `08023` (Black Widow's). FR-022's "both directions" is not
   hypothetical, and a Core-Set-only special case would be wrong.
-- **`duplicated_by` is null on these records.** The link is one-directional in the pack
-  response, so the reverse direction — "is this Core Set card reprinted in the pack I am
-  assembling?" — is answered from the assembled pack's own records, never by searching upstream.
+- ~~**`duplicated_by` is null on these records.**~~ **Corrected 2026-08-18 (T113).** It is
+  populated, and by a lot: across the twelve T006 snapshots, `duplicated_by` appears on 1–8
+  records per hero pack and on 33 of the Core Set's. The original reading came from a sample
+  that happened to carry none. This is not a detail — it is a second, *forward* reprint route,
+  and the cascade follows it: a card whose own pack folder holds no scan can borrow art from a
+  pack published later. Five of the cards that resolve over the real library resolve only this
+  way.
 
 The prefix→pack map is learned lazily from snapshots already held (every `cap` card code starts
 `03`), with `GET /api/public/card/{code}.json` as the fallback when a prefix is still unknown.
 Request count per assembled pack is therefore bounded by the number of *distinct packs*
-referenced — typically two — and is zero on every later run of that pack. This is what SC-006d
-measures.
+referenced **plus the codes whose prefix maps to no pack held**, never by the card count, and is
+zero on every later run of that pack. This is what SC-006d measures.
+
+**Measured 2026-08-18 (T113): seven requests for `cap`, against a 34-record listing.** The
+earlier estimate of two assumed only `duplicate_of_code`, whose seven links all point into the
+Core Set and cost one `cards/core.json` between them. The breakdown, and the defect the
+measurement exposed — a code upstream cannot place was re-asked on every run because a 404 was
+indistinguishable from a failure to connect — are in `quickstart.md` V11.
 
 ## R5 — Filenames: three conventions, one of which carries no position
 

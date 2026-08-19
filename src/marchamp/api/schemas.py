@@ -325,6 +325,10 @@ class AssemblyRun(BaseModel):
     snapshot_revision: str | None = None
     snapshot_stale: bool = False
     decklist_candidate: DecklistCandidate | None = None
+    #: Whether the user has changed anything about this run (FR-026i). A client needs this
+    #: *before* it confirms: `save_as` is required for a customized run and refused for an
+    #: uncustomized one, so without it the only way to find out which is to be told 400.
+    customized: bool = False
     reused: bool | None = None
     pdf_id: str | None = None
     report: AssemblyReport | None = None

@@ -43,8 +43,8 @@ class UpstreamSettings:
     Every field here answers a MUST: one host (FR-003), an attributable `User-Agent`
     (FR-041), explicit timeouts and bounded retries (FR-042), and pacing (FR-043).
     MarvelCDB publishes no rate limit, and its absence is not permission — the figures are
-    self-imposed and stated here rather than left to inference. An assembly makes two or
-    three requests, so a one-second floor costs nothing.
+    self-imposed and stated here rather than left to inference. An assembly makes a handful
+    of requests — seven for `cap`, measured — so a one-second floor costs nothing.
     """
 
     host: str = "marvelcdb.com"

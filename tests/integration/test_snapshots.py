@@ -58,6 +58,8 @@ class MutableUpstream:
     def __init__(self) -> None:
         self.last_modified = UPSTREAM_LAST_MODIFIED
         self.extra: dict[str, list[dict]] = {}
+        #: Every path requested, in order. T113 counts these; the pinning tests ignore them.
+        self.requests: list[str] = []
 
     @property
     def transport(self) -> httpx.MockTransport:
@@ -74,6 +76,7 @@ class MutableUpstream:
         if request.url.host != "marvelcdb.com":
             raise UnstubbedRequest(f"outbound request to {request.url}")
         path = request.url.path
+        self.requests.append(path)
         headers = {
             "cache-control": f"max-age={UPSTREAM_MAX_AGE}, public",
             "last-modified": self.last_modified,
@@ -228,3 +231,75 @@ def test_a_run_started_after_the_refresh_gets_the_new_data(client, writable_libr
     second = start_and_confirm(client, writable_library)
     assert second["snapshot_revision"] != first["snapshot_revision"]
     assert second["report"]["cards_in_pack"] == first["report"]["cards_in_pack"] + 1
+
+
+# ------------------------------------------------------ T113, FR-040, SC-006d, research R4
+
+CAP_FOLDER = ACCEPTANCE_HEROES["cap"]
+
+#: `cards/cap.json` holds 34 records. The number is here so the assertion below can say what
+#: it is refusing rather than only what it expects.
+CAP_CARD_COUNT = 34
+
+
+def paths_of_kind(requests: list[str], prefix: str) -> list[str]:
+    return [p for p in requests if p.startswith(prefix)]
+
+
+def test_the_request_count_follows_packs_referenced_and_never_the_card_count(
+    client, writable_library, upstream
+):
+    """FR-040, SC-006d — the bulk endpoint exists so a pack costs one request, not 34.
+
+    The naive implementation asks upstream about each card it cannot place, and against
+    `cap` that is 34 requests at the client's one-per-second floor. The bound asserted here
+    is structural instead: **one `cards/<pack>` request per distinct pack referenced**, no
+    pack fetched twice, and the whole thing far below the card count.
+
+    Measured against the derived fixture library on 2026-08-18, a `cap` assembly issues
+    seven requests:
+
+    1. `/api/public/packs/` — the pack index, once per installation, not per run
+    2. `/api/public/cards/cap.json` — the pack itself
+    3. `/api/public/card/01071.json` — prefix `01` maps to no pack held yet, so ask
+    4. `/api/public/cards/core.json` — the seven `duplicate_of_code` reprints, in one request
+    5. `/api/public/card/30018.json` — a `duplicated_by` link into a pack the fixtures omit
+    6. `/api/public/card/17031.json` — likewise, but this one resolves
+    7. `/api/public/cards/stld.json` — the pack step 6 named
+
+    Two things the earlier estimate of "three" missed, both real: the cascade follows
+    `duplicated_by` as well as `duplicate_of_code`, so a card whose own pack scan is absent
+    can borrow art from a *later* reprint; and a prefix that maps to no held pack costs one
+    `card/<code>` question before the pack it names can be fetched. Neither scales with the
+    card count, which is the property FR-040 is actually about.
+    """
+    start_and_confirm(client, writable_library, CAP_FOLDER)
+
+    pack_fetches = paths_of_kind(upstream.requests, "/api/public/cards/")
+    assert pack_fetches[0] == "/api/public/cards/cap.json"
+    assert len(pack_fetches) == len(set(pack_fetches)), (
+        f"a pack was fetched more than once: {pack_fetches}"
+    )
+    assert len(upstream.requests) < CAP_CARD_COUNT, (
+        f"{len(upstream.requests)} requests for a {CAP_CARD_COUNT}-card pack — the count is "
+        "following the cards rather than the packs"
+    )
+    assert paths_of_kind(upstream.requests, "/api/public/packs/") == ["/api/public/packs/"]
+    assert "/api/public/cards/" not in upstream.requests, (
+        "the whole-database endpoint is refused by FR-040 even though it is one request"
+    )
+
+
+def test_a_second_run_inside_max_age_issues_no_request_at_all(client, writable_library, upstream):
+    """FR-039, SC-006d — fresh means *none*, not a cheap conditional one.
+
+    A 304 still costs a volunteer-run service a request, which is why this asserts zero
+    rather than "no 200". It covers the awkward half too: a card code that upstream cannot
+    place is remembered as unplaceable, because a question with no answer asked once per run
+    forever is the same traffic as never having cached anything.
+    """
+    start_and_confirm(client, writable_library, CAP_FOLDER)
+    upstream.requests.clear()
+
+    start_and_confirm(client, writable_library, CAP_FOLDER)
+    assert upstream.requests == []

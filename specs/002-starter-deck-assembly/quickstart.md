@@ -301,7 +301,7 @@ uv run pytest tests/unit/test_upstream_models.py tests/unit/test_upstream_client
 
 | Assertion | Requirement |
 |---|---|
-| Assembling `cap` issues **3** requests — the pack index, `cards/cap`, and `cards/core` for its seven reprint links — not 34. The count follows distinct packs referenced, never card count (R4) | FR-040, SC-006d |
+| Assembling `cap` issues **7** requests, not 34 — the count follows distinct packs referenced and questions asked about codes, never the card count (R4). Measured 2026-08-18, see below | FR-040, SC-006d |
 | A second run against a snapshot inside `max-age` issues **zero** | FR-039, SC-006d |
 | Past `max-age`, one conditional `If-Modified-Since`; a `304` keeps the revision | FR-039, R8 |
 | No request is ever made to a host other than `marvelcdb.com` | FR-003 |
@@ -315,6 +315,27 @@ uv run pytest tests/unit/test_upstream_models.py tests/unit/test_upstream_client
 The last row is checkable mechanically and should be: the repository is public, and FR-038a
 governs fixtures as much as runtime. A grep for retained-but-forbidden fields in
 `tests/fixtures/` belongs in this test, not in a reviewer's memory.
+
+**The request count was estimated at three and measures seven** (T113, 2026-08-18). Both
+figures satisfy FR-040; what changed is the account of *why*. The estimate counted only
+`duplicate_of_code` links, all seven of which point into the Core Set and cost one
+`cards/core.json` between them. Two things it missed:
+
+1. The cascade follows `duplicated_by` as well, so a card whose own pack holds no scan can
+   borrow art from a *later* reprint. `cap` has three such links.
+2. A card code whose two-digit prefix maps to no pack already on disk costs one
+   `card/{code}.json` question before the pack it names can be fetched — the prefix→pack map
+   is learned from stored snapshots, so it cannot answer for a pack never held.
+
+Neither scales with the card count, which is what FR-040 is about. The seven for `cap`:
+`packs/`, `cards/cap`, `card/01071`, `cards/core`, `card/30018`, `card/17031`, `cards/stld`.
+
+The "second run issues zero" row **failed when it was first written** and is a fixed defect,
+not a passing assertion that always held. `card/30018` is a reprint link into a pack MarvelCDB
+does not serve; the answer — "no such card" — was not stored, so every run re-asked it,
+forever. A 404 is now distinguished from a failure to connect (`UpstreamNotFound`) and
+remembered under the same freshness window as a snapshot, which is what makes FR-039's "no
+request at all" true of a whole run rather than of each pack separately.
 
 ---
 

@@ -644,6 +644,14 @@ components:
             Each unresolved card individually, named, so the wizard can ask about one card at a
             time rather than presenting a failed run (FR-026d).
           items: { $ref: "#/components/schemas/UnresolvedCard" }
+        customized:
+          type: boolean
+          description: |
+            The user has changed something about this run — supplied a file for a card,
+            omitted one, or chosen a deck list other than the one proposed (FR-026i).
+            Needed *before* confirmation, not after: `save_as` is required for a customized
+            run and refused for an uncustomized one, so a client without this field can only
+            discover which by being told 400.
         reused:
           type: [boolean, "null"]
           description: A stored PDF was served rather than rendered again (FR-026h, SC-006i).

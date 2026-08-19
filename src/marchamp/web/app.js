@@ -563,6 +563,11 @@ function renderAssembly() {
 
     /* FR-026a: reaching `ready` does not print. The button is the confirmation. */
     $("assembly-confirm").hidden = run.state !== "ready";
+    /* FR-026i: a customized run must name its PDF and an untouched one must not, so the
+     * field appears exactly when `save_as` is required. Before `customized` was on the run
+     * response there was no way to know which, and this button posted `{}` either way —
+     * which meant a user who supplied one missing card got a 400 instead of a PDF. */
+    $("assembly-save-as-field").hidden = !(run.state === "ready" && run.customized);
     const download = $("assembly-download");
     download.hidden = run.state !== "complete";
     if (run.state === "complete") download.href = `/api/assemblies/${run.id}/document`;
@@ -806,13 +811,18 @@ async function confirmAssembly() {
   assemblyError("");
   $("assembly-progress").textContent = "Building the PDF…";
   try {
-    /* `save_as` is omitted deliberately: an uncustomized run produces the pack's standard
-     * PDF and the API refuses a name for it (FR-026h, FR-026i). A customized run is US4's
-     * and US5's, and will pass one here. */
+    /* `save_as` is required for a customized run and refused for an uncustomized one
+     * (FR-026h, FR-026i), so it is sent exactly when the run says it was customized. The
+     * fallback name is the hero folder: a saved PDF the user cannot tell apart from the
+     * others is barely better than one they cannot find. */
+    const customized = assembly.run.customized;
+    const typed = $("assembly-save-as").value.trim();
+    const body = customized ? { save_as: typed || assembly.run.hero_folder } : {};
     assembly.run = await assemblyRequest(
       `/api/assemblies/${assembly.run.id}/confirmation`,
-      { method: "POST", body: {} },
+      { method: "POST", body },
     );
+    $("assembly-save-as").value = "";
     renderAssembly();
   } catch (err) {
     $("assembly-progress").textContent = "";

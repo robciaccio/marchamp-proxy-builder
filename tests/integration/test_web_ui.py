@@ -343,3 +343,31 @@ def test_the_assembly_client_still_only_uses_the_public_api(script):
     """Principle II, re-asserted over the routes US5 adds."""
     for path in re.findall(r'"(/api/[^"]*)"', script):
         assert path.startswith("/api/"), path
+
+
+def test_a_customized_run_is_asked_to_name_its_pdf_before_it_can_be_built(markup, script):
+    """FR-026i — and the reason the run response carries `customized` at all.
+
+    `save_as` is required for a customized run and refused for an uncustomized one, so a
+    client that cannot tell them apart cannot get either right. This one posted `{}`
+    unconditionally, which meant a user who supplied a file for one missing card — US4's
+    whole path — reached the Build button and got a 400 with no way forward.
+
+    Asserted at both ends: the field exists in the markup, and the script decides on
+    `run.customized` rather than on anything it inferred for itself.
+    """
+    assert 'id="assembly-save-as-field"' in markup
+    assert 'id="assembly-save-as"' in markup
+    assert "run.customized" in script
+    assert "save_as" in script
+
+
+def test_an_uncustomized_run_is_not_offered_a_name(markup, script):
+    """The other half, and not symmetry for its own sake.
+
+    An untouched run produces the pack's *standard* PDF, which belongs to the pack rather
+    than to this attempt — every other run of that pack is served the same file (FR-026h).
+    Offering a name for it would invite the user to believe they owned a copy they do not.
+    """
+    assert "hidden" in markup.split('id="assembly-save-as-field"')[1].split(">")[0]
+    assert "customized ? { save_as:" in script

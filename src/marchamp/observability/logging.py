@@ -46,6 +46,15 @@ class AssemblyRecord:
     `omitted_card_codes` is what FR-030b requires of this record specifically: printing a
     pack with a card left out must be legible as such afterwards, and the report alone is
     not enough because a report can be regenerated while a log line is what happened.
+
+    `pack_source` and `resolutions` are the two places the tool could have been wrong without
+    anyone noticing. A confident *wrong* identification is SC-009's failure mode and it looks
+    identical in the output to a right one, so whether the pack was identified or chosen by
+    the user is recorded rather than inferred. And every face carries the cascade step that
+    found it: an exact positional hit inside the named folder is the only unremarkable
+    provenance, and the rest are the tool having gone looking (FR-024, SC-005). A run that
+    printed forty cards by name match is a run worth a second look, and only this field says
+    so afterwards.
     """
 
     run_id: str
@@ -54,14 +63,31 @@ class AssemblyRecord:
     outcome: str
     cards_printed: int
     cards_in_pack: int
+    #: `identified` or `user_selected` (FR-012b, SC-009a).
+    pack_source: str = ""
     page_count: int | None = None
     reused: bool = False
     customized: bool = False
+    #: One `{card_code, side, provenance, source}` per printed face. Codes and enum values
+    #: only — a filename here would defeat the whole point of the record (FR-009).
+    resolutions: list[dict[str, str]] = field(default_factory=list)
     omitted_card_codes: list[str] = field(default_factory=list)
     manual_card_codes: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return asdict(self)
+
+    @property
+    def provenance_counts(self) -> dict[str, int]:
+        """How many faces each cascade step accounted for.
+
+        Derived rather than stored: the counts are what a person reads, the list is what
+        they audit, and storing both is how the two come to disagree.
+        """
+        counts: dict[str, int] = {}
+        for entry in self.resolutions:
+            counts[entry["provenance"]] = counts.get(entry["provenance"], 0) + 1
+        return counts
 
 
 def write_record(record: GenerationRecord | AssemblyRecord, stream: TextIO | None = None) -> None:
