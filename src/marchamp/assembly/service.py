@@ -62,6 +62,7 @@ from marchamp.assembly.resolve import (
     resolve_pack,
 )
 from marchamp.assets.overlay import UPLOAD_PREFIX, OverlayStore
+from marchamp.assets.store import AssetUnreadable
 from marchamp.config import Settings
 from marchamp.layout.geometry import PageSize
 from marchamp.layout.paginate import paginate
@@ -199,6 +200,38 @@ def _apply_user_answers(record: RunRecord, outcome) -> tuple[list[Resolution], l
     resolutions = [r for r in outcome.resolutions if (r.card_code, r.side.value) not in overrides]
     unresolved = [u for u in outcome.unresolved if (u.card_code, u.side.value) not in overrides]
     return [*resolutions, *overrides.values()], unresolved
+
+
+class LibraryStalled(AssemblyError):
+    """A library file could not be read *right now* (FR-021, FR-026f).
+
+    `library_problem` is FR-026f's answer for a library that is wholly unavailable — moved,
+    unmounted, unreadable. It checks the *root*, which is the right check for the case it
+    describes and no help at all for the one that actually happened: a mount that is up,
+    holding a file the sync client has not materialised, which times out on read and reads
+    fine a minute later.
+
+    `503` rather than `409` or `500`. Not a server fault — nothing here is broken — and not
+    a conflict with the run's state, which is unchanged and still perfectly good. It is
+    "temporarily unable, try again", which is both true and the whole remedy.
+    """
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail, status=503)
+
+
+def stalled_library(exc: AssetUnreadable) -> LibraryStalled:
+    """Turn an unreadable asset into a sentence a person can act on.
+
+    Names the file, because "something could not be read" leaves the user unable to tell a
+    syncing library from a corrupt scan. Says to try again, because for the reported case
+    waiting *is* the fix and nothing else in the message implies that.
+    """
+    return LibraryStalled(
+        f"{exc} — the library could not be read just now. This usually means a synced "
+        "folder has not finished downloading that file. Nothing is lost: wait a moment and "
+        "open this run again."
+    )
 
 
 def library_problem(record: RunRecord) -> str | None:
@@ -468,14 +501,20 @@ class AssemblyService:
         cards = list(snapshot.cards)
 
         index = build_index(record.library_root, file_cap=self.settings.limits.library_scan_files)
-        outcome = resolve_pack(
-            expand_pack(cards),
-            cards,
-            index,
-            record.hero_folder,
-            record.library_root,
-            self._load_printing,
-        )
+        try:
+            outcome = resolve_pack(
+                expand_pack(cards),
+                cards,
+                index,
+                record.hero_folder,
+                record.library_root,
+                self._load_printing,
+            )
+        except AssetUnreadable as exc:
+            # Raised before the record is touched, so the run is exactly as it was and a
+            # later pass re-resolves from scratch. The test asserts that, because a refactor
+            # moving the write earlier would trade a transient stall for lost work.
+            raise stalled_library(exc) from exc
         resolutions, unresolved = _apply_user_answers(record, outcome)
         decklist = self._decklist_state(record, index)
 
@@ -877,7 +916,13 @@ class AssemblyService:
         pages = paginate(built.catalog, built.deck.id, PageSize[record.page_size], store)
 
         if stored is None:
-            data = compose(pages, PageSize[record.page_size], FitMode(record.fit_mode), store)
+            try:
+                data = compose(pages, PageSize[record.page_size], FitMode(record.fit_mode), store)
+            except AssetUnreadable as exc:
+                # Resolution digested every scan and the renderer decodes them again, so a
+                # library that stalls between the two lands here instead. Same condition,
+                # same answer — no partial PDF is written either way (FR-020a).
+                raise stalled_library(exc) from exc
             stored = (
                 self.pdfs.put_saved(data, save_as)
                 if customized
