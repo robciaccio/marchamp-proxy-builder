@@ -31,6 +31,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from marchamp.assets.store import AssetUnreadable
 from marchamp.library.filenames import (
     IMAGE_SUFFIXES,
     Form,
@@ -242,9 +243,31 @@ def build_index(root: Path, file_cap: int = DEFAULT_FILE_CAP) -> LibraryIndex:
     root = Path(root)
     index = LibraryIndex(root=root)
 
+    def unreadable(exc: OSError) -> None:
+        """Stop the walk, naming the folder (FR-021, FR-026f).
+
+        **`os.walk` ignores `scandir` errors unless given this.** That default turns a
+        folder the mount could not read into a folder that simply is not there, and every
+        caller downstream reads "not in the index" as "not in the library" — so a Drive
+        stall surfaces as "this folder matches no pack", which sends the user off to check
+        filenames that were never wrong (reported 2026-08-19).
+
+        Raising rather than collecting: a partial index *is* the wrong answer, and a warning
+        attached to a result the user has no reason to distrust is barely better than none.
+        """
+        if not exc.filename:
+            where = str(root)
+        else:
+            try:
+                relative = Path(exc.filename).relative_to(root)
+                where = str(root) if relative == Path(".") else str(relative)
+            except ValueError:
+                where = str(exc.filename)
+        raise AssetUnreadable(f"{where}: {exc.strerror or exc}") from exc
+
     per_folder: dict[str, list[str]] = {}
     seen = 0
-    for dirpath, _dirnames, filenames in os.walk(root):
+    for dirpath, _dirnames, filenames in os.walk(root, onerror=unreadable):
         folder = str(Path(dirpath).relative_to(root))
         folder = "" if folder == "." else folder
         images = sorted(f for f in filenames if Path(f).suffix.lower() in IMAGE_SUFFIXES)

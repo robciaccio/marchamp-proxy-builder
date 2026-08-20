@@ -180,3 +180,41 @@ def test_a_stall_while_rendering_is_also_not_a_500(client, scan_library, monkeyp
     assert response.status_code != 500, response.text
     assert response.status_code == 503, response.text
     assert STALLED_SCAN in response.json()["detail"]
+
+
+# ------------------------- a folder the walk cannot read, reported rather than lost
+
+
+def test_a_hero_folder_that_cannot_be_read_is_not_reported_as_matching_no_pack(
+    client, scan_library, monkeypatch
+):
+    """The reported "not found, here are some alternatives" (2026-08-19).
+
+    `os.walk` ignored `scandir` errors, so a stalled folder was simply absent from the index
+    and identification said — correctly, given what it could see — that nothing matched. The
+    user is then told to check filenames that were never wrong. Rebuilt from that folder's
+    real names, Spider-Ham verifies against its pack at 0.95.
+
+    The assertion that matters is the second one: a 503 naming the folder is a different
+    sentence from `unidentified`, and only one of them is true.
+    """
+    import os
+
+    original = os.scandir
+
+    def guarded(path=".", *args, **kwargs):
+        if Path(path).name == "Odinson_Thor":
+            raise TimeoutError(60, "Operation timed out", str(path))
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "scandir", guarded)
+
+    created = client.post(
+        "/api/assemblies",
+        json={"library_root": str(scan_library), "hero_folder": THOR_FOLDER},
+    )
+
+    assert created.status_code == 503, created.text
+    detail = created.json()["detail"]
+    assert "Odinson_Thor" in detail, detail
+    assert "again" in detail.lower(), detail
