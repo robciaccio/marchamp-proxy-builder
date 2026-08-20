@@ -41,6 +41,7 @@ from typing import Any
 
 from marchamp.assembly.faces import DECKLIST_CODE, Face, Group, Side
 from marchamp.assets.overlay import UPLOAD_PREFIX
+from marchamp.assets.store import AssetUnreadable
 from marchamp.library.index import LibraryIndex
 from marchamp.upstream.models import PackCard
 
@@ -186,12 +187,30 @@ def face_suffixes(face: Face) -> tuple[str | None, ...]:
     return (None, "a")
 
 
-def digest_of(path: Path) -> str:
-    """`sha256` of the file's bytes — the identity the FR-026h reuse key is built on."""
+def digest_of(path: Path, ref: str | None = None) -> str:
+    """`sha256` of the file's bytes — the identity the FR-026h reuse key is built on.
+
+    **Every failure here is `AssetUnreadable`, never a bare `OSError` (FR-021, FR-026f).**
+    This is the one library read that does not go through the asset adapter, and it was
+    therefore the one that crashed: a Google Drive library reported
+    `TimeoutError: [Errno 60]` on a placeholder it had not materialised yet, and it reached
+    the user as a 500 with no explanation (2026-08-18). The same run succeeded minutes
+    later, which is exactly why a 500 was the wrong answer — FR-021 classifies a file that
+    is locked, permission-denied, or still syncing as *the* retryable condition, and the
+    adapter has always named it that way.
+
+    Reading a whole file over a network mount is also the slowest thing this module does, so
+    the failure it raises is the one most worth getting right.
+    """
     hasher = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(_DIGEST_BLOCK), b""):
-            hasher.update(block)
+    try:
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(_DIGEST_BLOCK), b""):
+                hasher.update(block)
+    except OSError as exc:
+        # `TimeoutError` and friends are all `OSError`; catching the base is deliberate,
+        # because a network filesystem can fail in ways this code has not met yet.
+        raise AssetUnreadable(f"{ref or path.name}: {exc.strerror or exc}") from exc
     return hasher.hexdigest()
 
 
@@ -496,7 +515,7 @@ def _resolution(
         provenance=provenance,
         source=Source.LIBRARY,
         ref=ref,
-        content_digest=digest_of(Path(library_root) / ref),
+        content_digest=digest_of(Path(library_root) / ref, ref),
         # FR-016: from the pack being printed, never from the printing lent the image.
         quantity=card.quantity,
         note=note,
