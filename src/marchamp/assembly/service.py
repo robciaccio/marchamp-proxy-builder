@@ -380,7 +380,13 @@ class AssemblyService:
             root, relative, page_size=str(page_size).upper(), fit_mode=str(fit_mode).upper()
         )
 
-        index = build_index(root, file_cap=self.settings.limits.library_scan_files)
+        try:
+            index = build_index(root, file_cap=self.settings.limits.library_scan_files)
+        except AssetUnreadable as exc:
+            # A folder the walk could not read used to vanish from the index, so the run
+            # reached `unidentified` and told the user their folder matched no pack — a
+            # confident wrong answer to a question about a mount, not about filenames.
+            raise stalled_library(exc) from exc
         result = identify(relative, index, self.snapshots.pack_index(), self._load_pack_cards)
 
         record.identification = result.to_json()
@@ -500,7 +506,12 @@ class AssemblyService:
         snapshot = self._pinned_snapshot(record, pack_code)
         cards = list(snapshot.cards)
 
-        index = build_index(record.library_root, file_cap=self.settings.limits.library_scan_files)
+        try:
+            index = build_index(
+                record.library_root, file_cap=self.settings.limits.library_scan_files
+            )
+        except AssetUnreadable as exc:
+            raise stalled_library(exc) from exc
         try:
             outcome = resolve_pack(
                 expand_pack(cards),
