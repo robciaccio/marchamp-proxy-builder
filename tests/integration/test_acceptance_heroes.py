@@ -231,12 +231,22 @@ def test_the_printed_pack_carries_all_four_of_the_things_sc_002a_names(client, s
     )
     hero = next(c for c in pack_cards("thor") if c.type_code == "hero")
     expected_identity = {hero.code, *hero.linked_codes}
-    identity = {r["card_code"] for r in report["resolutions"] if r["group"] == "identity"}
-    assert identity == expected_identity, (
+    identity = {
+        r["card_code"]: r["file"] for r in report["resolutions"] if r["group"] == "identity"
+    }
+    assert set(identity) == expected_identity, (
         f"the identity printed {sorted(identity)} against the {sorted(expected_identity)} "
         "its card data records. A hero side with no alter-ego side is unplayable, and the "
         "report would still say one identity card"
     )
+    # Which image landed on which side, not only that both codes resolved. Comparing codes
+    # alone is what let Phoenix ship with its two faces swapped: both files exist, both
+    # resolve, and the set of codes is identical either way (2026-08-20). The sides are
+    # asserted for every acceptance hero in `test_identity_faces.py`; this line exists so
+    # that the test which *claims* to check the identity cannot pass on a swap.
+    assert "hero" in identity[hero.code].lower(), identity[hero.code]
+    for code in hero.linked_codes:
+        assert "alter-ego" in identity[code].lower(), identity[code]
     assert report["faces_printed"] >= report["cards_printed"], (
         "a double-sided card is one card and two faces (SC-006a)"
     )

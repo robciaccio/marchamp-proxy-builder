@@ -91,6 +91,50 @@ class ParsedFilename:
     card_identity: str = ""
     #: Normalised candidate names, for the FR-023 lookup. Never an identity claim.
     name_keys: frozenset[str] = field(default_factory=frozenset)
+    #: Which side of an identity this filename says it is, from its own words. `None` for
+    #: the overwhelming majority of files, which are not identity faces and say nothing.
+    face_role: FaceRole | None = None
+
+
+class FaceRole(StrEnum):
+    """Which side of an identity card a filename says it holds.
+
+    Read from the filename's own words rather than from its `_1a`/`_1b` suffix, because the
+    library applies that suffix both ways round: measured 2026-08-20 across 50 hero folders,
+    38 write `_Hero_1a`/`_Alter-Ego_1b`, **10 write the suffixes inverted**, and 2 give both
+    faces the same letter. The label is a statement about the card; the suffix is a filing
+    habit, and here it is not a reliable one.
+    """
+
+    HERO = "hero"
+    ALTER_EGO = "alter_ego"
+
+
+#: Normalised segment values that name a side. `Hero_Giant` and `Hero_Tiny` are Ant-Man's two
+#: hero forms and both say `Hero` in their own segment, which is why this matches segments
+#: rather than the whole stem.
+_FACE_ROLE_SEGMENTS = {
+    "hero": FaceRole.HERO,
+    "alterego": FaceRole.ALTER_EGO,
+}
+
+
+def face_role(stem: str) -> FaceRole | None:
+    """Which identity side this filename claims, or `None` when it claims neither.
+
+    Whole segments only, for the reason `_same_type` gives: `Hero` must not match
+    `Heroic Conditioning`, which is a real Justice upgrade sitting in a real hero folder.
+
+    Returns `None` when a stem somehow claims both, rather than picking one. That is a
+    filename nobody can read, and guessing at it is how the bug this exists to fix was
+    introduced.
+    """
+    found = {
+        _FACE_ROLE_SEGMENTS[key]
+        for segment in stem.split("_")
+        if (key := normalise(segment)) in _FACE_ROLE_SEGMENTS
+    }
+    return found.pop() if len(found) == 1 else None
 
 
 def normalise(text: str) -> str:
@@ -209,6 +253,7 @@ def parse_filename(filename: str) -> ParsedFilename:
     """Classify one filename. Never decides what card it is."""
     stem = _stem(filename)
     keys = _name_keys(stem)
+    role = face_role(stem)
 
     identity = normalise(stem)
 
@@ -216,7 +261,9 @@ def parse_filename(filename: str) -> ParsedFilename:
         # Checked first: a decklist scan matches no other convention, and without this it
         # would be reported as an uninterpretable file in the one folder where FR-031
         # demands every file be accounted for — on eight of the ten acceptance heroes.
-        return ParsedFilename(filename, stem, Form.DECKLIST, card_identity=identity, name_keys=keys)
+        return ParsedFilename(
+            filename, stem, Form.DECKLIST, card_identity=identity, name_keys=keys, face_role=role
+        )
 
     leading = LEADING_COPY_RE.match(stem)
     if leading:
@@ -242,6 +289,7 @@ def parse_filename(filename: str) -> ParsedFilename:
             face_suffix=(trailing.group(2) or "").lower() or None if trailing else None,
             card_identity=normalise(rest),
             name_keys=keys,
+            face_role=role,
         )
 
     set_form = TRAILING_POSITION_SET_RE.search(stem)
@@ -253,6 +301,7 @@ def parse_filename(filename: str) -> ParsedFilename:
             position=int(set_form.group(1)),
             card_identity=identity,
             name_keys=keys,
+            face_role=role,
         )
 
     positional = TRAILING_POSITION_RE.search(stem)
@@ -265,6 +314,7 @@ def parse_filename(filename: str) -> ParsedFilename:
             face_suffix=(positional.group(2) or "").lower() or None,
             card_identity=identity,
             name_keys=keys,
+            face_role=role,
         )
 
     # Faction_Name_Type with no number: not an error, and name-matched only (R5). All
@@ -276,7 +326,9 @@ def parse_filename(filename: str) -> ParsedFilename:
             filename, stem, Form.NO_NUMBER, card_identity=identity, name_keys=keys
         )
 
-    return ParsedFilename(filename, stem, Form.UNPARSEABLE, card_identity=identity, name_keys=keys)
+    return ParsedFilename(
+        filename, stem, Form.UNPARSEABLE, card_identity=identity, name_keys=keys, face_role=role
+    )
 
 
 def detect_copy_counting(filenames: list[str]) -> bool:
