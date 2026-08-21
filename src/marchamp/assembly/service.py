@@ -128,19 +128,35 @@ def _validate_paths(library_root: Path, hero_folder: str) -> tuple[Path, str]:
     return root, relative
 
 
-def image_identity(resolutions: Sequence[Resolution]) -> str:
-    """The identity of the images a run resolved — the third part of FR-026h's key.
+def output_identity(
+    resolutions: Sequence[Resolution], page_size: str = "LETTER", fit_mode: str = "CROP"
+) -> str:
+    """The identity of the document a run would produce — the third part of FR-026h's key.
 
     Content, not paths. Two runs that resolved the same bytes share a PDF even if one of
     them read them from a folder that has since been renamed (SC-006h); a run where one card
     now resolves to different bytes rebuilds (SC-006k). The card code is hashed alongside the
     digest so swapping two cards' images is a different identity, not the same multiset.
+
+    **Paper size and fit mode are part of it, and their absence was a bug** (found
+    2026-08-20). This was `image_identity` and hashed the images alone, so a Letter/Crop
+    document and an A4/Stretch document of the same pack shared one key: printing a pack
+    twice with different settings silently served the first document back. The images are
+    the same in both, which is exactly why hashing only the images could not tell them
+    apart — and why nothing caught it until the wizard could ask for a second setting.
+
+    The default arguments keep the pre-existing key stable for the overwhelmingly common
+    Letter/Crop case, so already-stored documents are not orphaned by this change.
     """
     hasher = hashlib.sha256()
     for resolution in sorted(resolutions, key=lambda r: (r.card_code, r.side.value)):
         hasher.update(
             f"{resolution.card_code}:{resolution.side.value}:{resolution.content_digest}\n".encode()
         )
+    if (page_size, fit_mode) != ("LETTER", "CROP"):
+        # Appended only when it is not the default, so every document stored before this
+        # change keeps the key it already has on disk.
+        hasher.update(f"page_size={page_size}\nfit_mode={fit_mode}\n".encode())
     # Truncated to 16 hex, matching `compute_revision`. This value becomes a path segment in
     # `pdfs/standard/<pack>@<revision>@<identity>.pdf`, and `StateLayout` validates it as
     # exactly 16 hex characters — a full digest is refused there, so every standard PDF
@@ -895,7 +911,7 @@ class AssemblyService:
         cards = list(snapshot.cards)
         resolutions = [Resolution.from_json(r) for r in record.resolutions]
         decklist = DecklistState.from_json(record.decklist) if record.decklist else None
-        identity = image_identity(resolutions)
+        identity = output_identity(resolutions, record.page_size, record.fit_mode)
 
         record.state = RunState.RENDERING
         record = self.runs.write(record)
