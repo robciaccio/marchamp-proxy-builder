@@ -404,6 +404,11 @@ function assemblyError(message) {
   box.hidden = !message;
 }
 
+function checkedValue(name, fallback) {
+  const chosen = document.querySelector(`input[name="${name}"]:checked`);
+  return chosen ? chosen.value : fallback;
+}
+
 async function assemblyRequest(path, options = {}) {
   const { formData, body, ...rest } = options;
   const headers = { ...(options.headers || {}) };
@@ -447,6 +452,11 @@ async function startAssembly(event) {
       body: {
         library_root: $("library-root").value.trim(),
         hero_folder: $("hero-folder").value.trim(),
+        /* Sent explicitly rather than left to the API's defaults. They happen to be LETTER
+         * and CROP, which is why omitting them looked harmless and was not: a user on A4
+         * could not reach it, and every pack was cropped ~1.2 mm without being told. */
+        page_size: checkedValue("assembly_page_size", "LETTER"),
+        fit_mode: checkedValue("assembly_fit_mode", "CROP"),
       },
     });
     renderAssembly();
@@ -535,6 +545,14 @@ function renderAssembly() {
     $("report-in-pack").textContent = report.cards_in_pack;
     $("report-faces").textContent = report.faces_printed;
     $("report-decklist").textContent = report.decklist_printed ? "included" : "not included";
+    /* Off the run rather than off the form: a run reopened days later must report what it
+     * was built with, not whatever the radios happen to show now (FR-026b). */
+    $("report-paper").textContent = run.page_size === "A4" ? "A4" : "Letter";
+    $("report-fit").textContent = {
+      CROP: "Crop — trimmed ~1.2 mm",
+      FIT: "Fit — 61.8 mm wide",
+      STRETCH: "Stretch — distorted ~2.7%",
+    }[run.fit_mode] || run.fit_mode;
 
     renderGaps(run);
 

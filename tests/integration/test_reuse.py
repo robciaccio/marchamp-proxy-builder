@@ -15,7 +15,7 @@ Because the third part is *content*, a run must resolve before reuse can be deci
 reuse skips is the render, not the resolve (SC-006i) — which is the opposite of the intuitive
 optimisation and the reason it is asserted here rather than assumed.
 
-**Scope note.** These drive `image_identity` and the PDF store directly rather than through
+**Scope note.** These drive `output_identity` and the PDF store directly rather than through
 `confirm()`. Reaching `ready` needs every card resolved, and cascade steps 2 and 4 are US3's
 (Phase 5). The reuse *decision* in `service.confirm` is exercised end to end by T115 once
 that lands.
@@ -29,7 +29,7 @@ import pytest
 
 from marchamp.assembly.faces import Side, expand_pack
 from marchamp.assembly.resolve import Provenance, Resolution, Source, resolve_pack
-from marchamp.assembly.service import image_identity
+from marchamp.assembly.service import output_identity
 from marchamp.library.index import build_index
 from marchamp.store.layout import StateLayout
 from marchamp.store.pdfs import PdfKind, PdfStore
@@ -102,13 +102,13 @@ def _swap_one_image(resolutions, digest: str = "f" * 64):
 
 
 def test_the_identity_is_stable_across_two_identical_resolutions(cap_resolutions):
-    assert image_identity(cap_resolutions) == image_identity(list(cap_resolutions))
+    assert output_identity(cap_resolutions) == output_identity(list(cap_resolutions))
 
 
 def test_the_identity_does_not_depend_on_the_order_cards_resolved_in(cap_resolutions):
     """The cascade answers in whatever order it happens to; the key must not follow that."""
     shuffled = list(reversed(cap_resolutions))
-    assert image_identity(shuffled) == image_identity(cap_resolutions)
+    assert output_identity(shuffled) == output_identity(cap_resolutions)
 
 
 def test_the_identity_does_not_depend_on_the_library_root(cap_resolutions):
@@ -117,14 +117,14 @@ def test_the_identity_does_not_depend_on_the_library_root(cap_resolutions):
     Refs are library-relative by construction (FR-009), so this asserts the property that
     makes that pay off: nothing absolute reaches the key.
     """
-    identity = image_identity(cap_resolutions)
+    identity = output_identity(cap_resolutions)
     assert all(not r.ref.startswith("/") for r in cap_resolutions)
-    assert identity == image_identity(cap_resolutions)
+    assert identity == output_identity(cap_resolutions)
 
 
 def test_one_card_resolving_to_different_bytes_changes_the_identity(cap_resolutions):
     """SC-006k — the assertion that makes the third key component worth having."""
-    assert image_identity(_swap_one_image(cap_resolutions)) != image_identity(cap_resolutions)
+    assert output_identity(_swap_one_image(cap_resolutions)) != output_identity(cap_resolutions)
 
 
 def test_swapping_two_cards_images_changes_the_identity(cap_resolutions):
@@ -154,7 +154,7 @@ def test_swapping_two_cards_images_changes_the_identity(cap_resolutions):
         ),
         *rest,
     ]
-    assert image_identity(swapped) != image_identity(ordered)
+    assert output_identity(swapped) != output_identity(ordered)
 
 
 def test_a_front_and_a_back_are_not_interchangeable(scan_library):
@@ -174,14 +174,14 @@ def test_a_front_and_a_back_are_not_interchangeable(scan_library):
         Resolution(side=Side.FRONT, ref="b.tiff", content_digest="2" * 64, **common),
         Resolution(side=Side.BACK, ref="a.tiff", content_digest="1" * 64, **common),
     ]
-    assert image_identity(forwards) != image_identity(backwards)
+    assert output_identity(forwards) != output_identity(backwards)
 
 
 # ------------------------------------------------------------------ the stored PDF key
 
 
 def test_a_stored_pdf_is_served_when_all_three_components_match(store, cap_resolutions):
-    identity = image_identity(cap_resolutions)
+    identity = output_identity(cap_resolutions)
     store.put_standard("cap", REVISION, identity, PDF_BYTES)
     found = store.find_standard("cap", REVISION, identity)
     assert found is not None
@@ -191,22 +191,22 @@ def test_a_stored_pdf_is_served_when_all_three_components_match(store, cap_resol
 
 def test_a_refreshed_snapshot_rebuilds(store, cap_resolutions):
     """SC-006i's other half — old card data must not print under a new revision."""
-    identity = image_identity(cap_resolutions)
+    identity = output_identity(cap_resolutions)
     store.put_standard("cap", REVISION, identity, PDF_BYTES)
     assert store.find_standard("cap", OTHER_REVISION, identity) is None
 
 
 def test_a_different_pack_never_shares_a_pdf(store, cap_resolutions):
-    identity = image_identity(cap_resolutions)
+    identity = output_identity(cap_resolutions)
     store.put_standard("cap", REVISION, identity, PDF_BYTES)
     assert store.find_standard("thor", REVISION, identity) is None
 
 
 def test_one_changed_image_rebuilds(store, cap_resolutions):
     """SC-006k end to end against the store, not only against the hash."""
-    store.put_standard("cap", REVISION, image_identity(cap_resolutions), PDF_BYTES)
+    store.put_standard("cap", REVISION, output_identity(cap_resolutions), PDF_BYTES)
     assert (
-        store.find_standard("cap", REVISION, image_identity(_swap_one_image(cap_resolutions)))
+        store.find_standard("cap", REVISION, output_identity(_swap_one_image(cap_resolutions)))
         is None
     )
 
@@ -217,17 +217,54 @@ def test_a_moved_library_still_serves_the_same_pdf(store, cap_resolutions):
     Modelled by keying with the identity computed from resolutions whose refs are unchanged
     — which is exactly the situation after a rename, because refs are library-relative.
     """
-    identity = image_identity(cap_resolutions)
+    identity = output_identity(cap_resolutions)
     store.put_standard("cap", REVISION, identity, PDF_BYTES)
-    recomputed = image_identity(list(cap_resolutions))
+    recomputed = output_identity(list(cap_resolutions))
     assert store.find_standard("cap", REVISION, recomputed) is not None
 
 
 def test_a_saved_pdf_is_separate_from_the_packs_standard_one(store, cap_resolutions):
     """FR-026i — a customized run's document is the user's, not the pack's."""
-    identity = image_identity(cap_resolutions)
+    identity = output_identity(cap_resolutions)
     standard = store.put_standard("cap", REVISION, identity, PDF_BYTES)
     saved = store.put_saved(b"%PDF-1.7\ndifferent\n%%EOF\n", "my captain america")
     assert saved.kind is PdfKind.SAVED
     assert saved.path != standard.path
     assert store.find_standard("cap", REVISION, identity) is not None
+
+
+# ------------------------- paper and fitting belong to the key (found 2026-08-20)
+
+
+def test_paper_size_and_fit_mode_change_the_identity(cap_resolutions):
+    """The bug this closes: two different documents shared one reuse key.
+
+    The images are identical across all of these — same cards, same bytes — which is exactly
+    why hashing the images alone could not tell them apart. Printing a pack on Letter and
+    then asking for A4 silently served the Letter document back, and nothing said so.
+
+    It went unnoticed because the wizard could not ask for a second setting until the same
+    day this was found; the API had carried both fields since 002 shipped.
+    """
+    letter_crop = output_identity(cap_resolutions)
+    variants = {
+        "letter/crop": letter_crop,
+        "a4/crop": output_identity(cap_resolutions, "A4", "CROP"),
+        "letter/fit": output_identity(cap_resolutions, "LETTER", "FIT"),
+        "letter/stretch": output_identity(cap_resolutions, "LETTER", "STRETCH"),
+        "a4/stretch": output_identity(cap_resolutions, "A4", "STRETCH"),
+    }
+    assert len(set(variants.values())) == len(variants), (
+        f"two render settings share one key: {variants}"
+    )
+
+
+def test_the_default_key_is_unchanged_by_this_fix(cap_resolutions):
+    """Documents already on disk keep the name they were stored under.
+
+    Letter and Crop are the defaults and were the only settings reachable before, so every
+    stored document is one of those. Appending to the hash unconditionally would have
+    orphaned all of them — a rebuild of ~200 MB apiece for a change that concerns nobody who
+    never picked anything else.
+    """
+    assert output_identity(cap_resolutions) == output_identity(cap_resolutions, "LETTER", "CROP")

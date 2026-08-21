@@ -211,6 +211,73 @@
             <span class="field__hint">Relative to the library folder above.</span>
           </label>
 
+          <!--
+            FR-009c applies here exactly as it does to a catalog deck: every mode's cost is
+            stated at the point of choice, and `stretch` is never selectable without the word
+            "distorts" beside it (FR-014). The pack path shipped without these and silently
+            took Letter and Crop, so every pack printed so far was trimmed ~1.2 mm top and
+            bottom without being asked, and A4 was unreachable from the interface.
+
+            The radio *names* are prefixed. Feature 001's controls use the bare
+            `page_size`/`fit_mode` and `app.js` reads them with a document-wide
+            `querySelectorAll`, so an unprefixed second set here would be read as 001's and
+            the two forms would silently fight over one value.
+
+            Chosen before the run starts, because a run records both when it is created and
+            there is no request that changes them afterwards.
+          -->
+          <fieldset class="choices">
+            <legend>Paper size</legend>
+            <label class="choice">
+              <input type="radio" name="assembly_page_size" value="LETTER" checked />
+              <span class="choice__body">
+                <span class="choice__name">Letter</span>
+                <span class="choice__cost">216 × 279 mm. Nine cards per sheet.</span>
+              </span>
+            </label>
+            <label class="choice">
+              <input type="radio" name="assembly_page_size" value="A4" />
+              <span class="choice__body">
+                <span class="choice__name">A4</span>
+                <span class="choice__cost">210 × 297 mm. Nine cards per sheet.</span>
+              </span>
+            </label>
+          </fieldset>
+
+          <fieldset class="choices">
+            <legend>Fitting the art to a standard card</legend>
+            <label class="choice">
+              <input type="radio" name="assembly_fit_mode" value="CROP" checked />
+              <span class="choice__body">
+                <span class="choice__name">Crop</span>
+                <span class="choice__cost">
+                  Trims about 1.2 mm from the top and bottom of the art. Prints at exact
+                  standard size, with nothing showing behind it in a sleeve.
+                </span>
+              </span>
+            </label>
+            <label class="choice">
+              <input type="radio" name="assembly_fit_mode" value="FIT" />
+              <span class="choice__body">
+                <span class="choice__name">Fit</span>
+                <span class="choice__cost">
+                  Keeps the whole image. The printed face is 61.8 mm wide instead of 63.5 mm,
+                  so it is narrower than a real card and the backing card shows at the edges.
+                </span>
+              </span>
+            </label>
+            <label class="choice">
+              <input type="radio" name="assembly_fit_mode" value="STRETCH" />
+              <span class="choice__body">
+                <span class="choice__name">Stretch</span>
+                <span class="choice__cost choice__cost--warn">
+                  Distorts the art, squashing it about 2.7% vertically. Nothing is trimmed
+                  and the size is exact, but the picture is no longer the right shape.
+                </span>
+              </span>
+            </label>
+          </fieldset>
+
           <div class="actions">
             <button type="submit" class="btn btn--primary" id="assembly-start">
               Find the pack
@@ -284,6 +351,11 @@
             <div><dt>Cards in the pack</dt><dd id="report-in-pack">—</dd></div>
             <div><dt>Printed faces</dt><dd id="report-faces">—</dd></div>
             <div><dt>Deck list</dt><dd id="report-decklist">—</dd></div>
+            <!-- Reported as well as chosen. The run has always carried both, and a report
+                 that does not say which paper and which fitting produced it leaves the user
+                 unable to tell a cropped sheet from a fitted one after the fact. -->
+            <div><dt>Paper</dt><dd id="report-paper">—</dd></div>
+            <div><dt>Fitting</dt><dd id="report-fit">—</dd></div>
           </dl>
 
           <!-- FR-026d. Each card gets its own row with its own file picker and its own

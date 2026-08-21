@@ -371,3 +371,47 @@ def test_an_uncustomized_run_is_not_offered_a_name(markup, script):
     """
     assert "hidden" in markup.split('id="assembly-save-as-field"')[1].split(">")[0]
     assert "customized ? { save_as:" in script
+
+
+def test_the_pack_path_offers_paper_and_fitting(markup, script):
+    """FR-009c, FR-014 — every mode's cost stated where it is chosen, on *both* paths.
+
+    The pack path shipped without these controls and silently used the API's defaults, so
+    every pack printed was cropped ~1.2 mm top and bottom without being asked and A4 could
+    not be reached from the interface at all. The API has carried both fields since 002
+    shipped; only the wizard omitted them.
+    """
+    assert 'name="assembly_page_size"' in markup
+    assert 'name="assembly_fit_mode"' in markup
+    for value in ("LETTER", "A4", "CROP", "FIT", "STRETCH"):
+        assert f'value="{value}"' in markup
+    assert "page_size: checkedValue" in script
+    assert "fit_mode: checkedValue" in script
+
+
+def test_the_pack_paths_stretch_option_says_it_distorts(markup):
+    """FR-014, the same bar 001 is held to by `test_stretch_cannot_be_chosen_without_...`.
+
+    Asserted against the fitting fieldset that belongs to the pack form, so a build that
+    dropped the pack controls could not pass on 001's copy sitting elsewhere in the page.
+    """
+    fieldset = markup.split('name="assembly_fit_mode"')[-1]
+    assert "distorts" in fieldset.lower()
+    assert "1.2 mm" in markup and "61.8 mm" in markup
+
+
+def test_the_pack_controls_do_not_collide_with_the_deck_controls(markup, script):
+    """`app.js` reads 001's radios with a document-wide `querySelectorAll` on the bare
+    names, so an unprefixed second set would be read as 001's and the two forms would
+    silently fight over one value."""
+    assert markup.count('name="page_size"') == 2  # 001's Letter and A4, and no more
+    assert markup.count('name="fit_mode"') == 3  # 001's three modes, and no more
+    assert "querySelectorAll('input[name=\"page_size\"]')" in script
+
+
+def test_the_report_says_which_paper_and_fitting_produced_it(markup, script):
+    """A run reopened days later must report what it was built with (FR-026b), which is why
+    this reads the run rather than the form."""
+    assert 'id="report-paper"' in markup
+    assert 'id="report-fit"' in markup
+    assert "run.page_size" in script and "run.fit_mode" in script
