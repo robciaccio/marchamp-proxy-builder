@@ -126,7 +126,16 @@ def test_the_name_path_is_phoenixs_primary_route_not_a_safety_net(phoenix):
     name path quietly stops being what carries this hero.
     """
     provenances = [r["provenance"] for r in phoenix["report"]["resolutions"]]
-    assert provenances.count("name") > len(provenances) / 2
+    # Both halves of the name path count. It was split on 2026-08-20 so that a match in the
+    # hero's own folder outranks borrowing another pack's printing; Phoenix's cards are
+    # overwhelmingly in the first half, and the criterion is about the *path* carrying this
+    # hero rather than about which of its two steps did.
+    by_name = sum(provenances.count(p) for p in ("name", "folder_name"))
+    assert by_name > len(provenances) / 2
+    assert provenances.count("folder_name") > 0, (
+        "Phoenix's own folder is where these cards are; a run crediting them all to the "
+        "library-wide step would mean the hero folder stopped being searched first"
+    )
     assert "folder_position" not in provenances, (
         "a copy-counting folder must contribute no positions at all; one appearing here "
         "means a copy number was read as a position, which is a wrong answer rather than none"
@@ -248,7 +257,9 @@ def test_every_name_match_is_reported_as_one(phoenix, wonder_man):
     would be least likely to catch it.
     """
     for run in (phoenix, wonder_man):
-        matched = [r for r in run["report"]["resolutions"] if r["provenance"] == "name"]
+        matched = [
+            r for r in run["report"]["resolutions"] if r["provenance"] in ("name", "folder_name")
+        ]
         assert matched
         for entry in matched:
             assert entry["note"], entry["card_code"]

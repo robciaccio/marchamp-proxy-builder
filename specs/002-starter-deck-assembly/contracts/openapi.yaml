@@ -887,6 +887,12 @@ components:
             report (FR-024, SC-005). `manual` stays distinguishable from every automatic
             resolution (FR-029, SC-006c).
 
+            `folder_name` is a name match **inside the folder the user named**, and it
+            outranks `reprint`: a scan of the pack being printed is preferred over the same
+            card's printing borrowed from another pack. `name` is the same mechanism applied
+            to the rest of the library and still ranks below `reprint`, because a match in
+            someone else's folder is a guess where `duplicate_of_code` is card data.
+
             `decklist_name` is the deck list card, matched on its filename rather than through
             the cascade (FR-013d). It is reported like any other printed card because FR-015e
             makes the report the only thing a user sorting a cut stack can tell the four groups
@@ -894,7 +900,7 @@ components:
             FR-029 requires to be visible, which it cannot be if the card is absent from the
             report entirely. It is still never counted among the pack's cards (FR-013b, FR-018).
           enum:
-            [decklist_name, folder_position, library_position, reprint, name, manual, omitted]
+            [decklist_name, folder_position, library_position, folder_name, reprint, name, manual, omitted]
         source: { type: string, enum: [library, upload] }
         file:
           type: string
