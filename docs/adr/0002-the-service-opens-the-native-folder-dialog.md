@@ -1,7 +1,10 @@
 # 0002. The service opens the platform's native folder dialog, and never enumerates the filesystem
 
 Date: 2026-08-21
-Status: Proposed
+Status: Proposed — feature shelved 2026-08-21 before acceptance. The decision below stands as
+the panel left it; it was never ratified and no code was written against it. The Host/Origin
+hardening it lists as a precondition was split out and survives independently as
+[issue #38](https://github.com/robciaccio/marchamp-proxy-builder/issues/38).
 
 ## Context
 
@@ -167,7 +170,9 @@ that would have to be repealed, the user's stated preference wins.
 
 ### Conditions attached to the decision
 
-1. **The Host/Origin hardening lands first, in its own PR, before this feature.**
+1. **The Host/Origin hardening lands first, in its own PR, before this feature.** *(Tracked
+   independently as [issue #38](https://github.com/robciaccio/marchamp-proxy-builder/issues/38)
+   — it is not shelved with this feature and does not depend on it.)*
    `TrustedHostMiddleware(allowed_hosts=["127.0.0.1", "localhost"])` plus Origin /
    `Sec-Fetch-Site` rejection on non-GET. All four panellists rated this the highest-value
    change on the table, and it is overdue regardless of OD-001.

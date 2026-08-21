@@ -4,7 +4,12 @@
 
 **Created**: 2026-08-21
 
-**Status**: Draft
+**Status**: Shelved 2026-08-21 — specified and decided, not scheduled. Nothing here is
+blocked or unresolved; the feature was deprioritised. To resume, start at
+[ADR 0002](../../docs/adr/0002-the-service-opens-the-native-folder-dialog.md) and verify the
+front-most premise it names before writing any code. The pre-existing defect found while
+researching this feature is **not** shelved with it — it is
+[issue #38](https://github.com/robciaccio/marchamp-proxy-builder/issues/38).
 
 **Input**: Reported from real use, 2026-08-21. "In the UI when a user is asked for the base
 directory and the hero directory, they are currently forced to type out the whole path on the
