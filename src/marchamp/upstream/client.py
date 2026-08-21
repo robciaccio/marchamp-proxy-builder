@@ -127,12 +127,16 @@ class MarvelCdbClient:
         self,
         settings: UpstreamSettings | None = None,
         transport: httpx.BaseTransport | None = None,
-        resolve: Callable[[str], list[str]] = _default_resolve,
+        resolve: Callable[[str], list[str]] | None = None,
         monotonic: Callable[[], float] | None = None,
         sleep: Callable[[float], None] | None = None,
     ) -> None:
         self.settings = settings or UpstreamSettings()
-        self._resolve = resolve
+        # Resolved at call time rather than bound as a default argument, matching
+        # `monotonic` and `sleep` above. A default argument is captured when the function is
+        # defined, so `_default_resolve` could not be substituted for a whole process — and
+        # the suite needed real DNS to reach a `MockTransport` that answers without one.
+        self._resolve = resolve if resolve is not None else _default_resolve
         self._monotonic = monotonic or time.monotonic
         self._sleep = sleep or time.sleep
         self.timeout = httpx.Timeout(
