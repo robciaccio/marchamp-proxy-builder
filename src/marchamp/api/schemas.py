@@ -268,6 +268,7 @@ class ResolutionEntry(BaseModel):
         "decklist_name",
         "folder_position",
         "library_position",
+        "folder_name",
         "reprint",
         "name",
         "manual",

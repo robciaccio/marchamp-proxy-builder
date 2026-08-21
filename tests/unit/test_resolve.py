@@ -443,7 +443,10 @@ def test_the_name_path_carries_a_folder_that_numbers_copies(wonder_man_result):
     route the card has.
     """
     by_code = {r.card_code: r for r in wonder_man_result.resolutions}
-    assert by_code["58003"].provenance is Provenance.NAME
+    # `FOLDER_NAME` since 2026-08-20, not `NAME`: the file is in the hero folder, and the
+    # name path was split so that half outranks the reprint step. Same mechanism, same
+    # note, and still a reported substitution — only the step it is credited to changed.
+    assert by_code["58003"].provenance is Provenance.FOLDER_NAME
     assert by_code["58003"].ref == "Heros/Simon Williams_Wonderman/2_Active Altruism_Event.tif"
 
 
@@ -454,7 +457,7 @@ def test_the_name_path_absorbs_the_librarys_typos(wonder_man_result):
     card whose scan is sitting in the folder.
     """
     by_code = {r.card_code: r for r in wonder_man_result.resolutions}
-    assert by_code["58016"].provenance is Provenance.NAME
+    assert by_code["58016"].provenance is Provenance.FOLDER_NAME
     assert by_code["58016"].ref.endswith("Justice_Battlefild Benevolence_Event.tif")
 
 
@@ -495,7 +498,7 @@ def test_a_name_match_is_narrowed_by_the_cards_type_when_the_name_alone_is_ambig
     """
     by_code = {r.card_code: r for r in wonder_man_result.resolutions}
     assert by_code["58007"].ref.endswith("12_Wonder Fans_Support.tif")
-    assert by_code["58007"].provenance is Provenance.NAME
+    assert by_code["58007"].provenance is Provenance.FOLDER_NAME
 
 
 def test_a_name_is_only_ever_matched_against_the_card_being_sought(scan_library):
@@ -555,7 +558,9 @@ def test_a_name_match_is_reported_as_a_name_match(wonder_man_result):
     """
     by_code = {r.card_code: r for r in wonder_man_result.resolutions}
     altruism = by_code["58003"]
-    assert altruism.provenance is Provenance.NAME
+    assert altruism.provenance is Provenance.FOLDER_NAME
+    # The point of the test is that it is *remarkable*, and promoting the step above the
+    # reprint must not have promoted it to unremarkable. Only `folder_position` is that.
     assert altruism.substituted
     note = (altruism.note or "").lower()
     assert "name" in note
@@ -580,6 +585,9 @@ def test_the_report_carries_the_step_that_found_each_card(wonder_man_result, sca
         unresolved=wonder_man_result.unresolved,
     )
     by_code = {e["card_code"]: e for e in report.resolutions}
-    assert by_code["58003"]["provenance"] == "name"
+    # `folder_name`, because this scan is in the hero folder. The value the user reads is
+    # the step that found the card, so splitting the name path in two is visible here by
+    # design rather than by accident (2026-08-20).
+    assert by_code["58003"]["provenance"] == "folder_name"
     assert by_code["58003"]["note"]
     assert by_code["58003"]["file"].endswith("2_Active Altruism_Event.tif")
