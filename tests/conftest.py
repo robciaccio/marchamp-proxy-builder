@@ -436,6 +436,45 @@ def multipage_catalog_path(tmp_path: Path) -> Path:
     return p
 
 
+#: A public, non-reserved address for the allowlisted host. The value never reaches a
+#: socket — `_check_destination` resolves the host only to *validate* what it points at, and
+#: httpx then connects by hostname on its own — so any address outside the denied ranges
+#: does the job.
+OFFLINE_ADDRESS = "104.21.0.1"
+
+
+@pytest.fixture(autouse=True)
+def offline_resolver(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stop the suite needing DNS to talk to a stub.
+
+    Every outbound request resolves the allowlisted host first, as the SSRF guard the
+    constitution's egress clause requires (ASVS 13.2.5). That check runs even when the
+    transport is a `MockTransport` and no packet will leave the machine — so a test that
+    makes no request at all still needed `marvelcdb.com` to resolve, and the whole
+    integration suite failed on a laptop with no network:
+
+        marvelcdb.com did not resolve: [Errno 8] nodename nor servname provided
+
+    Measured 2026-08-20, when a DNS blip mid-run failed six tests and errored dozens more,
+    none of which touch the network.
+
+    Autouse rather than a fixture each client-building test opts into, because there are a
+    dozen places that construct a client and the failure mode of forgetting one is a test
+    that passes everywhere except offline.
+
+    **Two things this deliberately does not weaken.** A test that passes `resolve=` to the
+    constructor bypasses this entirely, which is how `test_egress.py` drives loopback,
+    link-local and private addresses through the real guard. And `physical` tests are
+    exempt: they talk to the live API by design, and the whole point of them is that
+    nothing is stubbed.
+    """
+    if request.node.get_closest_marker("physical"):
+        return
+    from marchamp.upstream import client as upstream_client
+
+    monkeypatch.setattr(upstream_client, "_default_resolve", lambda host: [OFFLINE_ADDRESS])
+
+
 @pytest.fixture
 def patched_upstream(upstream_transport, monkeypatch) -> httpx.MockTransport:
     """Point every `MarvelCdbClient` the app builds at the fixture transport.
